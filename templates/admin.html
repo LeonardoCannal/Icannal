@@ -51,7 +51,7 @@
           <div class="notif-lista" id="notif-lista"></div>
         </div>
       </div>
-      <a href="{{ url_for('index') }}">Voltar ao Cannal</a>
+      <a href="{{ url_for('index') }}">Voltar ao i.cannal</a>
       &nbsp;&nbsp;·&nbsp;&nbsp;
       <a href="{{ url_for('perfil') }}">Meu Perfil</a>
       &nbsp;&nbsp;·&nbsp;&nbsp;
@@ -207,6 +207,14 @@
   </div>
 
   <script>
+  // Escapa texto antes de colocar em HTML (nomes/endereços com caracteres
+  // especiais não podem virar código na tela do admin).
+  function esc(valor){
+    return String(valor == null ? '' : valor)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
     const modalOverlay = document.getElementById('modal-overlay');
     const modalTitulo = document.getElementById('modal-titulo');
     const modalFechar = document.getElementById('modal-fechar');
@@ -227,15 +235,15 @@
       let badge = '';
       if(coluna === 'agendados' && item.compromisso){
         const [ano, mes, dia] = item.compromisso.data.split('-');
-        badge = `<span>📅 ${dia}/${mes} às ${item.compromisso.horario}</span>`;
+        badge = `<span>📅 ${esc(dia)}/${esc(mes)} às ${esc(item.compromisso.horario)}</span>`;
       }
       div.innerHTML = `
-        <strong${classeNome}>${item.nome}</strong>
-        <span>${item.especialidade || ''}</span>
-        <span>${item.crm || ''}</span>
-        <span>${linhaLocal}</span>
-        <span>${item.endereco || ''}</span>
-        <span>${item.telefone || ''}</span>
+        <strong${classeNome}>${esc(item.nome)}</strong>
+        <span>${esc(item.especialidade)}</span>
+        <span>${esc(item.crm)}</span>
+        <span>${esc(linhaLocal)}</span>
+        <span>${esc(item.endereco)}</span>
+        <span>${esc(item.telefone)}</span>
         ${badge}
       `;
       return div;
@@ -313,8 +321,8 @@
               const local = [a.cidade, a.uf].filter(Boolean).join(' - ');
               return `
                 <div class="modal-card">
-                  <strong>${dia}/${mes} às ${a.horario} — ${a.medico_nome}</strong>
-                  <span>${a.especialidade || ''}${local ? ' · ' + local : ''}</span>
+                  <strong>${esc(dia)}/${esc(mes)} às ${esc(a.horario)} — ${esc(a.medico_nome)}</strong>
+                  <span>${esc(a.especialidade)}${local ? ' · ' + esc(local) : ''}</span>
                 </div>
               `;
             }).join('');
@@ -409,9 +417,9 @@
       const temConta = !!s.nome;
       div.innerHTML = `
         <div class="notif-item-info">
-          <strong>${s.nome || 'CPF não cadastrado'}</strong>
-          <span>${s.cpf}</span>
-          <span>${s.criado_em}</span>
+          <strong>${esc(s.nome || 'CPF não cadastrado')}</strong>
+          <span>${esc(s.cpf)}</span>
+          <span>${esc(s.criado_em)}</span>
         </div>
         <div class="notif-acoes">
           ${temConta ? `<button type="button" class="notif-btn-redefinir" data-id="${s.id}">Redefinir senha</button>` : ''}
@@ -500,6 +508,14 @@
 
     btnNotif.addEventListener('click', (e) => {
       e.stopPropagation();
+      // No celular o painel é uma folha fixa: encaixa logo abaixo do cabeçalho.
+      if(window.innerWidth <= 640){
+        const cabecalho = document.querySelector('.admin-header');
+        const base = cabecalho ? cabecalho.getBoundingClientRect().bottom : 0;
+        notifPainel.style.top = Math.max(8, base + 8) + 'px';
+      } else {
+        notifPainel.style.top = '';
+      }
       notifPainel.classList.toggle('aberto');
     });
 

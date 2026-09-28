@@ -132,8 +132,10 @@
   @media (max-width: 640px){
     header{ padding:14px 18px; }
     .logo-completo{ height:28px; }
-    nav{ width:100%; justify-content:flex-start; overflow-x:auto; }
-    .nav-link{ padding:8px 12px; font-size:13px; white-space:nowrap; }
+    nav{ width:100%; justify-content:flex-start; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+    nav::-webkit-scrollbar{ display:none; }
+    .nav-link{ padding:9px 13px; font-size:13px; white-space:nowrap; flex-shrink:0; }
+    .campo input{ font-size:16px; }
     .sub-header{ padding:10px 18px; font-size:12px; }
     main{ padding:0 16px 60px; }
     .hero{ padding:24px 20px 56px; margin:20px 0 -32px; border-radius:18px; }
@@ -157,7 +159,7 @@
   </div>
   <nav>
     <a href="{{ url_for('index') }}" class="nav-link">Buscar</a>
-    <a href="{{ url_for('index') }}" class="nav-link">Painel Médico</a>
+    <a href="{{ url_for('index') }}#painel" class="nav-link">Painel Médico</a>
     {% if current_user.is_admin %}
     <a href="{{ url_for('admin') }}" class="nav-link">Painel Admin</a>
     {% endif %}

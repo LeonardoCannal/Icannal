@@ -219,3 +219,17 @@ ele não precisa mais dos outros arquivos do projeto pra funcionar.
 - **Termos de uso**: scraping automatizado pode não estar de acordo com os
   Termos de Uso de cada site. Recomendado para uso pessoal/interno, com
   volume baixo de requisições.
+
+## Variáveis de ambiente do servidor
+
+| Variável | Pra quê |
+|---|---|
+| `SECRET_KEY` | Chave fixa e secreta das sessões de login (obrigatória em produção; sem ela o login cai de forma intermitente). |
+| `DATABASE_URL` | Conexão com o banco (Supabase/Postgres). Sem ela, o sistema usa um arquivo SQLite local. |
+| `COOKIE_SEGURO=1` | Opcional. Com o site em HTTPS, faz o cookie de login só trafegar criptografado. Não use em teste por HTTP, senão o login não funciona. |
+
+## Segurança embutida
+
+- Depois de 8 tentativas de login erradas seguidas no mesmo CPF, o login espera 10 minutos.
+- Textos de médicos e usuários são escapados antes de aparecer na tela.
+- Datas de agendamento são validadas (formato, passado, limite de 2 anos).

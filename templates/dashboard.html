@@ -28,7 +28,7 @@
           <div class="notif-lista" id="notif-lista"></div>
         </div>
       </div>
-      <a href="{{ url_for('index') }}">Voltar ao Cannal</a>
+      <a href="{{ url_for('index') }}">Voltar ao i.cannal</a>
       &nbsp;&nbsp;·&nbsp;&nbsp;
       <a href="{{ url_for('perfil') }}">Meu Perfil</a>
       &nbsp;&nbsp;·&nbsp;&nbsp;
@@ -163,6 +163,14 @@
   </div>
 
   <script>
+  // Escapa texto antes de colocar em HTML (nomes/endereços com caracteres
+  // especiais não podem virar código na tela do admin).
+  function esc(valor){
+    return String(valor == null ? '' : valor)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
     const dadosMeses = {{ stats.serie_meses | tojson }};
     const dadosEspecialidades = {{ stats.top_especialidades | tojson }};
     const dadosEstados = {{ stats.por_estado | tojson }};
@@ -271,7 +279,7 @@
       celula.className = 'heatmap-celula';
       celula.style.background = total === 0 ? '#EFEFEF' : `rgba(136, 173, 54, ${0.18 + intensidade * 0.82})`;
       celula.style.color = intensidade > 0.5 ? '#fff' : '#343C4C';
-      celula.innerHTML = `<strong>${uf}</strong><span>${total}</span>`;
+      celula.innerHTML = `<strong>${esc(uf)}</strong><span>${esc(total)}</span>`;
       heatmapEl.appendChild(celula);
     });
 
@@ -298,9 +306,9 @@
       const temConta = !!s.nome;
       div.innerHTML = `
         <div class="notif-item-info">
-          <strong>${s.nome || 'CPF não cadastrado'}</strong>
-          <span>${s.cpf}</span>
-          <span>${s.criado_em}</span>
+          <strong>${esc(s.nome || 'CPF não cadastrado')}</strong>
+          <span>${esc(s.cpf)}</span>
+          <span>${esc(s.criado_em)}</span>
         </div>
         <div class="notif-acoes">
           ${temConta ? `<button type="button" class="notif-btn-redefinir" data-id="${s.id}">Redefinir senha</button>` : ''}
@@ -389,6 +397,14 @@
 
     btnNotif.addEventListener('click', (e) => {
       e.stopPropagation();
+      // No celular o painel é uma folha fixa: encaixa logo abaixo do cabeçalho.
+      if(window.innerWidth <= 640){
+        const cabecalho = document.querySelector('.admin-header');
+        const base = cabecalho ? cabecalho.getBoundingClientRect().bottom : 0;
+        notifPainel.style.top = Math.max(8, base + 8) + 'px';
+      } else {
+        notifPainel.style.top = '';
+      }
       notifPainel.classList.toggle('aberto');
     });
 

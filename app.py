@@ -36,7 +36,6 @@ from auth import (
     registrar_busca,
     estatisticas_dashboard,
     estatisticas_usuario,
-    estatisticas_ticker,
     bucket_painel,
     listar_horarios_dia,
     agendar_medico,
@@ -45,6 +44,7 @@ from auth import (
     salvar_observacoes,
     dias_sem_visitar,
     buscar_compromisso_do_medico,
+    data_valida,
 )
 import webbrowser
 import threading
@@ -53,6 +53,7 @@ import sys
 import os
 import io
 import secrets
+import time
 from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
@@ -90,6 +91,64 @@ app = Flask(
 # defina a variável de ambiente SECRET_KEY com um valor fixo e secreto —
 # senão, toda vez que o servidor reiniciar, todo mundo é deslogado.
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+
+# Cookie de login: não acessível por JavaScript e não enviado em requisições
+# vindas de outros sites. Com o site em HTTPS (VPS/Render), defina a variável
+# COOKIE_SEGURO=1 pra ele também só trafegar criptografado.
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("COOKIE_SEGURO") == "1"
+
+
+def _corpo_json():
+    """Corpo JSON da requisição como dict (ou {} se vier vazio/inválido)."""
+    dados = request.get_json(force=True, silent=True)
+    return dados if isinstance(dados, dict) else {}
+
+
+def _inteiro(valor):
+    """Converte pra int ou devolve None (evita erro 500 com id inválido)."""
+    try:
+        return int(valor)
+    except (TypeError, ValueError):
+        return None
+
+
+# Proteção simples contra tentativas de adivinhar senha: depois de várias
+# falhas seguidas no mesmo CPF, o login espera alguns minutos.
+_TENTATIVAS_LOGIN = {}
+_TRAVA_LOGIN = threading.Lock()
+MAX_TENTATIVAS_LOGIN = 8
+JANELA_LOGIN_SEG = 600
+
+
+def _chave_login(cpf):
+    return "".join(ch for ch in (cpf or "") if ch.isdigit())
+
+
+def _login_bloqueado(chave):
+    agora = time.time()
+    with _TRAVA_LOGIN:
+        recentes = [t for t in _TENTATIVAS_LOGIN.get(chave, []) if agora - t < JANELA_LOGIN_SEG]
+        if recentes:
+            _TENTATIVAS_LOGIN[chave] = recentes
+        else:
+            _TENTATIVAS_LOGIN.pop(chave, None)
+        return len(recentes) >= MAX_TENTATIVAS_LOGIN
+
+
+def _registrar_falha_login(chave):
+    agora = time.time()
+    with _TRAVA_LOGIN:
+        if len(_TENTATIVAS_LOGIN) > 5000:
+            for k in [k for k, v in _TENTATIVAS_LOGIN.items() if not v or agora - v[-1] >= JANELA_LOGIN_SEG]:
+                _TENTATIVAS_LOGIN.pop(k, None)
+        _TENTATIVAS_LOGIN.setdefault(chave, []).append(agora)
+
+
+def _limpar_falhas_login(chave):
+    with _TRAVA_LOGIN:
+        _TENTATIVAS_LOGIN.pop(chave, None)
 
 inicializar_auth(app, caminho_dados_persistentes("cannal.db"))
 
@@ -179,13 +238,21 @@ def login():
     if request.method == "POST":
         cpf = request.form.get("cpf", "").strip()
         senha = request.form.get("senha", "")
+        chave = _chave_login(cpf)
+
+        if _login_bloqueado(chave):
+            erro = "Muitas tentativas de login. Aguarde alguns minutos e tente de novo."
+            return render_template("login.html", erro=erro), 429
+
         usuario = buscar_usuario_por_cpf(cpf)
 
         if usuario and checar_senha(usuario, senha):
+            _limpar_falhas_login(chave)
             atualizar_ultimo_login(usuario["id"])
             fazer_login(usuario["id"])
             return redirect(url_for("index"))
 
+        _registrar_falha_login(chave)
         erro = "CPF ou senha incorretos."
 
     return render_template("login.html", erro=erro)
@@ -243,7 +310,7 @@ def logout():
 
 @app.route("/api/esqueci-senha", methods=["POST"])
 def api_esqueci_senha():
-    dados = request.get_json(force=True) or {}
+    dados = _corpo_json()
     cpf = dados.get("cpf", "")
     registrar_solicitacao_senha(cpf)
     return jsonify({"ok": True})
@@ -386,7 +453,7 @@ def admin_notificacao_atender(solicitacao_id):
 @app.route("/admin/notificacoes/<int:solicitacao_id>/redefinir", methods=["POST"])
 @admin_required
 def admin_notificacao_redefinir(solicitacao_id):
-    dados = request.get_json(force=True) or {}
+    dados = _corpo_json()
     nova_senha = dados.get("senha", "")
 
     if len(nova_senha) < 6:
@@ -415,17 +482,11 @@ def admin_dashboard():
 @login_required
 def index():
     usuario = usuario_logado()
-    ticker = estatisticas_ticker()
     dias_inativo = dias_sem_visitar(usuario["id"])
     return render_template(
         "index.html",
         especialidades=NOMES_ESPECIALIDADES,
         max_especialidades=MAX_ESPECIALIDADES_POR_BUSCA,
-        ticker={
-            "medicos_base": f"{ticker['medicos_base']:,}".replace(",", "."),
-            "visitados_mes": f"{ticker['visitados_mes']:,}".replace(",", "."),
-            "buscas_hoje": f"{ticker['buscas_hoje']:,}".replace(",", "."),
-        },
         aviso_inatividade=(dias_inativo is not None and dias_inativo >= 10),
         dias_inativo=dias_inativo,
     )
@@ -543,7 +604,7 @@ def api_painel_listar():
 @login_required
 def api_painel_adicionar():
     usuario = usuario_logado()
-    medico = request.get_json(force=True) or {}
+    medico = _corpo_json()
 
     if not medico.get("nome"):
         return jsonify({"ok": False, "mensagem": "Dados do médico incompletos."}), 400
@@ -556,14 +617,15 @@ def api_painel_adicionar():
 @login_required
 def api_painel_mover():
     usuario = usuario_logado()
-    dados = request.get_json(force=True) or {}
-    entrada_id = dados.get("id")
+    dados = _corpo_json()
+    entrada_id = _inteiro(dados.get("id"))
     novo_status = dados.get("status")
 
-    if not entrada_id or novo_status not in ("prospectado", "agendado", "visitado"):
+    # "agendado" só existe através do botão Agendar (que exige data e horário).
+    if not entrada_id or novo_status not in ("prospectado", "visitado"):
         return jsonify({"ok": False, "mensagem": "Requisição inválida."}), 400
 
-    ok = mover_no_painel(usuario["id"], int(entrada_id), novo_status)
+    ok = mover_no_painel(usuario["id"], entrada_id, novo_status)
     return jsonify({"ok": ok})
 
 
@@ -571,7 +633,7 @@ def api_painel_mover():
 @login_required
 def api_painel_observacoes(entrada_id):
     usuario = usuario_logado()
-    dados = request.get_json(force=True) or {}
+    dados = _corpo_json()
     texto = (dados.get("texto") or "").strip()
 
     ok = salvar_observacoes(usuario["id"], entrada_id, texto)
@@ -582,15 +644,15 @@ def api_painel_observacoes(entrada_id):
 @login_required
 def api_painel_agendar():
     usuario = usuario_logado()
-    dados = request.get_json(force=True) or {}
-    entrada_id = dados.get("id")
-    data = (dados.get("data") or "").strip()
-    horario = (dados.get("horario") or "").strip()
+    dados = _corpo_json()
+    entrada_id = _inteiro(dados.get("id"))
+    data = str(dados.get("data") or "").strip()
+    horario = str(dados.get("horario") or "").strip()
 
     if not entrada_id or not data or not horario:
         return jsonify({"ok": False, "mensagem": "Escolha uma data e um horário."}), 400
 
-    ok, mensagem = agendar_medico(usuario["id"], int(entrada_id), data, horario)
+    ok, mensagem = agendar_medico(usuario["id"], entrada_id, data, horario)
     return jsonify({"ok": ok, "mensagem": mensagem})
 
 
@@ -612,10 +674,9 @@ def agenda():
 @login_required
 def api_agenda_mes():
     usuario = usuario_logado()
-    try:
-        ano = int(request.args.get("ano"))
-        mes = int(request.args.get("mes"))
-    except (TypeError, ValueError):
+    ano = _inteiro(request.args.get("ano"))
+    mes = _inteiro(request.args.get("mes"))
+    if ano is None or mes is None or not (2000 <= ano <= 2100) or not (1 <= mes <= 12):
         return jsonify({"erro": "Parâmetros inválidos."}), 400
 
     return jsonify({"dias": listar_compromissos_mes(usuario["id"], ano, mes)})
@@ -626,8 +687,8 @@ def api_agenda_mes():
 def api_agenda_dia():
     usuario = usuario_logado()
     data = (request.args.get("data") or "").strip()
-    if not data:
-        return jsonify({"erro": "Informe a data."}), 400
+    if not data_valida(data):
+        return jsonify({"erro": "Informe uma data válida (AAAA-MM-DD)."}), 400
 
     return jsonify({"horarios": listar_horarios_dia(usuario["id"], data)})
 
