@@ -1,6 +1,6 @@
 """
 auth.py
-Cadastro, login, controle de usuários e Painel Médico do Cannal.
+Cadastro, login, controle de usuários e Painel Médico do i.cannal.
 
 - Usa a sessão nativa do Flask pra controlar quem está logado.
 - Senhas são guardadas com hash (nunca em texto puro), usando o
@@ -13,11 +13,11 @@ Cadastro, login, controle de usuários e Painel Médico do Cannal.
 BANCO DE DADOS — SQLite local OU PostgreSQL externo:
 - Se a variável de ambiente DATABASE_URL estiver definida (é o que o
   Render preenche sozinho quando você conecta um banco PostgreSQL ao
-  serviço, ou a connection string do Supabase), o Cannal usa esse banco
+  serviço, ou a connection string do Supabase), o i.cannal usa esse banco
   externo — os cadastros ficam permanentes mesmo quando o serviço
   reinicia.
 - Se DATABASE_URL não estiver definida (rodando local ou no .exe), o
-  Cannal usa um arquivo `cannal.db` (SQLite) do lado do programa.
+  i.cannal usa um arquivo `cannal.db` (SQLite) do lado do programa.
 - Você não precisa mudar nada no código pra trocar entre os dois — é só
   a variável de ambiente estar definida ou não.
 
@@ -106,6 +106,14 @@ def inicializar_auth(app, sqlite_path):
                 criado_em TEXT NOT NULL
             )
         """
+        sql_visitas = """
+            CREATE TABLE IF NOT EXISTS visitas_log (
+                id SERIAL PRIMARY KEY,
+                usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+                painel_medico_id INTEGER NOT NULL REFERENCES painel_medicos(id),
+                visitado_em TEXT NOT NULL
+            )
+        """
         sql_agenda = """
             CREATE TABLE IF NOT EXISTS agenda_compromissos (
                 id SERIAL PRIMARY KEY,
@@ -164,6 +172,14 @@ def inicializar_auth(app, sqlite_path):
                 criado_em TEXT NOT NULL
             )
         """
+        sql_visitas = """
+            CREATE TABLE IF NOT EXISTS visitas_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+                painel_medico_id INTEGER NOT NULL REFERENCES painel_medicos(id),
+                visitado_em TEXT NOT NULL
+            )
+        """
         sql_agenda = """
             CREATE TABLE IF NOT EXISTS agenda_compromissos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -183,11 +199,29 @@ def inicializar_auth(app, sqlite_path):
         cursor.execute(sql_buscas_log)
         cursor.execute(sql_solicitacoes_senha)
         cursor.execute(sql_agenda)
+        cursor.execute(sql_visitas)
 
     # Bancos criados antes dessa versão não têm essa coluna — adiciona sem
     # quebrar se ela já existir (mesmo problema que já pegou o "cpf" antes).
     _adicionar_coluna_se_faltar("painel_medicos", "visitado_em", "TEXT")
     _adicionar_coluna_se_faltar("painel_medicos", "observacoes", "TEXT")
+
+    # Médicos já marcados como visitados antes dessas colunas existirem ficam
+    # sem data: usa a data em que entraram no painel como aproximação. Depois,
+    # copia a última visita de cada médico pro histórico (só o que ainda não
+    # está lá), pra os gráficos mensais não perderem visitas antigas.
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE painel_medicos SET visitado_em = adicionado_em "
+            "WHERE status = 'visitado' AND visitado_em IS NULL"
+        )
+        cursor.execute(
+            "INSERT INTO visitas_log (usuario_id, painel_medico_id, visitado_em) "
+            "SELECT p.usuario_id, p.id, p.visitado_em FROM painel_medicos p "
+            "WHERE p.visitado_em IS NOT NULL "
+            "AND NOT EXISTS (SELECT 1 FROM visitas_log v WHERE v.painel_medico_id = p.id)"
+        )
 
     @app.context_processor
     def injetar_usuario_logado():
@@ -457,22 +491,59 @@ def adicionar_ao_painel(usuario_id: int, medico: dict):
 
 
 def mover_no_painel(usuario_id: int, entrada_id: int, novo_status: str) -> bool:
+    """Move o médico entre prospectado/visitado (o 'agendado' só nasce pelo
+    botão Agendar). Cada visita fica registrada no histórico (visitas_log),
+    então revisitar o mesmo médico não apaga a visita anterior das estatísticas."""
     if novo_status not in ("prospectado", "agendado", "visitado"):
         return False
     with _conexao() as conn:
         cursor = conn.cursor()
+        cursor.execute(
+            _q("SELECT status FROM painel_medicos WHERE id = ? AND usuario_id = ?"),
+            (entrada_id, usuario_id),
+        )
+        linha = cursor.fetchone()
+        if not linha:
+            return False
+        status_atual = linha["status"]
+
         if novo_status == "visitado":
+            if status_atual == "visitado":
+                return True  # já estava visitado: não conta duas vezes
             agora = datetime.utcnow().isoformat()
             cursor.execute(
                 _q("UPDATE painel_medicos SET status = ?, visitado_em = ? WHERE id = ? AND usuario_id = ?"),
                 (novo_status, agora, entrada_id, usuario_id),
             )
-        else:
             cursor.execute(
-                _q("UPDATE painel_medicos SET status = ?, visitado_em = NULL WHERE id = ? AND usuario_id = ?"),
-                (novo_status, entrada_id, usuario_id),
+                _q("INSERT INTO visitas_log (usuario_id, painel_medico_id, visitado_em) VALUES (?, ?, ?)"),
+                (usuario_id, entrada_id, agora),
             )
-        return cursor.rowcount > 0
+            return True
+
+        # Desfazer uma visita (voltar pra Prospectados): tira a visita mais
+        # recente do histórico e volta a "última visita" pra anterior (se houver).
+        if status_atual == "visitado":
+            cursor.execute(
+                _q("SELECT id FROM visitas_log WHERE usuario_id = ? AND painel_medico_id = ? ORDER BY visitado_em DESC, id DESC LIMIT 1"),
+                (usuario_id, entrada_id),
+            )
+            ultima = cursor.fetchone()
+            if ultima:
+                cursor.execute(_q("DELETE FROM visitas_log WHERE id = ?"), (ultima["id"],))
+            cursor.execute(
+                _q("SELECT MAX(visitado_em) AS anterior FROM visitas_log WHERE usuario_id = ? AND painel_medico_id = ?"),
+                (usuario_id, entrada_id),
+            )
+            anterior = cursor.fetchone()["anterior"]
+        else:
+            anterior = None
+
+        cursor.execute(
+            _q("UPDATE painel_medicos SET status = ?, visitado_em = ? WHERE id = ? AND usuario_id = ?"),
+            (novo_status, anterior, entrada_id, usuario_id),
+        )
+        return True
 
 
 def bucket_painel(painel_rows):
@@ -512,6 +583,40 @@ def listar_painel_usuario(usuario_id: int):
 
 
 # ---------------------------------------------------------------------------
+# Fuso horário (Brasil, UTC-3 — o país não usa horário de verão desde 2019)
+# ---------------------------------------------------------------------------
+
+FUSO_BRASIL = timedelta(hours=3)
+
+
+def agora_brasil(agora_utc=None):
+    """Data/hora de agora no horário de Brasília."""
+    return (agora_utc or datetime.utcnow()) - FUSO_BRASIL
+
+
+def hoje_brasil(agora_utc=None) -> str:
+    """Data de hoje no Brasil, no formato AAAA-MM-DD."""
+    return agora_brasil(agora_utc).strftime("%Y-%m-%d")
+
+
+def inicio_hoje_brasil_utc(agora_utc=None) -> str:
+    """Meia-noite de hoje no Brasil, convertida pra UTC (ISO). Serve pra
+    comparar com os carimbos de data/hora que o banco guarda em UTC."""
+    meia_noite = agora_brasil(agora_utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    return (meia_noite + FUSO_BRASIL).isoformat()
+
+
+def data_valida(data) -> bool:
+    """True só se for uma data real, no formato exato AAAA-MM-DD."""
+    if not isinstance(data, str):
+        return False
+    try:
+        return datetime.strptime(data, "%Y-%m-%d").strftime("%Y-%m-%d") == data
+    except ValueError:
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Agenda de visitas
 # ---------------------------------------------------------------------------
 
@@ -519,10 +624,33 @@ HORARIOS_AGENDA = [
     f"{h:02d}:{m:02d}" for h in range(8, 18) for m in (0, 30)
 ]  # 08:00 até 17:30, de 30 em 30 min
 
+LIMITE_AGENDA_DIAS = 730  # não deixa agendar além de ~2 anos
 
-def listar_horarios_dia(usuario_id: int, data: str):
-    """Devolve os 20 horários do dia (08:00–17:30), cada um marcado como livre
-    ou já ocupado (com os dados do médico daquele compromisso)."""
+
+def _horario_ja_passou(data: str, horario: str, agora_utc=None) -> bool:
+    agora = agora_brasil(agora_utc)
+    hoje = agora.strftime("%Y-%m-%d")
+    if data < hoje:
+        return True
+    if data == hoje:
+        return horario <= agora.strftime("%H:%M")
+    return False
+
+
+def _ultimo_compromisso_id(cursor, usuario_id: int, painel_medico_id: int):
+    cursor.execute(
+        _q("""SELECT id FROM agenda_compromissos
+              WHERE usuario_id = ? AND painel_medico_id = ?
+              ORDER BY data DESC, horario DESC LIMIT 1"""),
+        (usuario_id, painel_medico_id),
+    )
+    row = cursor.fetchone()
+    return row["id"] if row else None
+
+
+def listar_horarios_dia(usuario_id: int, data: str, agora_utc=None):
+    """Devolve os 20 horários do dia (08:00–17:30), cada um marcado como livre,
+    ocupado (com os dados do médico daquele compromisso) ou já passado."""
     with _conexao() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -540,17 +668,26 @@ def listar_horarios_dia(usuario_id: int, data: str):
         {
             "horario": h,
             "ocupado": h in ocupados,
+            "passado": _horario_ja_passou(data, h, agora_utc),
             "medico": ocupados.get(h),
         }
         for h in HORARIOS_AGENDA
     ]
 
 
-def agendar_medico(usuario_id: int, entrada_id: int, data: str, horario: str):
+def agendar_medico(usuario_id: int, entrada_id: int, data: str, horario: str, agora_utc=None):
     """Marca um horário da agenda do usuário pra visitar um médico específico
-    do painel dele. Retorna (ok, mensagem)."""
+    do painel dele. Se o médico já estava agendado, é um reagendamento (o
+    horário antigo é liberado). Retorna (ok, mensagem)."""
+    if not data_valida(data):
+        return False, "Data inválida."
     if horario not in HORARIOS_AGENDA:
         return False, "Horário inválido."
+    if _horario_ja_passou(data, horario, agora_utc):
+        return False, "Esse horário já passou. Escolha uma data ou horário futuro."
+    limite = (agora_brasil(agora_utc) + timedelta(days=LIMITE_AGENDA_DIAS)).strftime("%Y-%m-%d")
+    if data > limite:
+        return False, "Escolha uma data dentro dos próximos 2 anos."
 
     agora = datetime.utcnow().isoformat()
 
@@ -572,6 +709,10 @@ def agendar_medico(usuario_id: int, entrada_id: int, data: str, horario: str):
         if cursor.fetchone():
             return False, "Esse horário já está ocupado na sua agenda."
 
+        antigo_id = None
+        if entrada["status"] == "agendado":
+            antigo_id = _ultimo_compromisso_id(cursor, usuario_id, entrada_id)
+
         try:
             cursor.execute(
                 _q("""INSERT INTO agenda_compromissos (usuario_id, painel_medico_id, data, horario, criado_em)
@@ -581,8 +722,11 @@ def agendar_medico(usuario_id: int, entrada_id: int, data: str, horario: str):
         except ErroIntegridade:
             return False, "Esse horário já está ocupado na sua agenda."
 
+        if antigo_id is not None:
+            cursor.execute(_q("DELETE FROM agenda_compromissos WHERE id = ?"), (antigo_id,))
+
         cursor.execute(
-            _q("UPDATE painel_medicos SET status = 'agendado', visitado_em = NULL WHERE id = ? AND usuario_id = ?"),
+            _q("UPDATE painel_medicos SET status = 'agendado' WHERE id = ? AND usuario_id = ?"),
             (entrada_id, usuario_id),
         )
 
@@ -590,18 +734,30 @@ def agendar_medico(usuario_id: int, entrada_id: int, data: str, horario: str):
 
 
 def cancelar_agendamento(usuario_id: int, entrada_id: int) -> bool:
-    """Libera o horário da agenda e volta o médico pra 'prospectado'."""
+    """Libera o horário do agendamento atual. Só age em médicos que estão como
+    'agendado'; os compromissos antigos (histórico) são preservados."""
     with _conexao() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            _q("DELETE FROM agenda_compromissos WHERE usuario_id = ? AND painel_medico_id = ?"),
-            (usuario_id, entrada_id),
-        )
-        cursor.execute(
-            _q("UPDATE painel_medicos SET status = 'prospectado' WHERE id = ? AND usuario_id = ?"),
+            _q("SELECT status, visitado_em FROM painel_medicos WHERE id = ? AND usuario_id = ?"),
             (entrada_id, usuario_id),
         )
-        return cursor.rowcount > 0
+        linha = cursor.fetchone()
+        if not linha or linha["status"] != "agendado":
+            return False
+        # Se o médico já tinha sido visitado antes (reagendamento de revisita),
+        # cancelar devolve ele pra Visitados/Revisitar; senão, pra Prospectados.
+        status_volta = "visitado" if linha["visitado_em"] else "prospectado"
+
+        atual_id = _ultimo_compromisso_id(cursor, usuario_id, entrada_id)
+        if atual_id is not None:
+            cursor.execute(_q("DELETE FROM agenda_compromissos WHERE id = ?"), (atual_id,))
+
+        cursor.execute(
+            _q("UPDATE painel_medicos SET status = ? WHERE id = ? AND usuario_id = ?"),
+            (status_volta, entrada_id, usuario_id),
+        )
+        return True
 
 
 def listar_compromissos_mes(usuario_id: int, ano: int, mes: int):
@@ -623,14 +779,14 @@ def listar_compromissos_mes(usuario_id: int, ano: int, mes: int):
 
 
 def buscar_compromisso_do_medico(usuario_id: int, painel_medico_id: int):
-    """O compromisso agendado (data/horário) mais próximo pra esse médico,
-    usado pra mostrar o selo de data no card da coluna Agendados."""
+    """O compromisso mais recente (data/horário) desse médico, usado pra
+    mostrar o selo de data no card da coluna Agendados."""
     with _conexao() as conn:
         cursor = conn.cursor()
         cursor.execute(
             _q("""SELECT data, horario FROM agenda_compromissos
                   WHERE usuario_id = ? AND painel_medico_id = ?
-                  ORDER BY data, horario LIMIT 1"""),
+                  ORDER BY data DESC, horario DESC LIMIT 1"""),
             (usuario_id, painel_medico_id),
         )
         row = cursor.fetchone()
@@ -641,7 +797,11 @@ def buscar_compromisso_do_medico(usuario_id: int, painel_medico_id: int):
 # Observações do médico
 # ---------------------------------------------------------------------------
 
+LIMITE_OBSERVACOES = 2000
+
+
 def salvar_observacoes(usuario_id: int, entrada_id: int, texto: str) -> bool:
+    texto = (texto or "")[:LIMITE_OBSERVACOES]
     with _conexao() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -655,27 +815,33 @@ def salvar_observacoes(usuario_id: int, entrada_id: int, texto: str) -> bool:
 # Alerta de inatividade (sem visitar médicos do painel há muito tempo)
 # ---------------------------------------------------------------------------
 
-def dias_sem_visitar(usuario_id: int):
-    """Quantos dias fazem desde a última vez que o usuário marcou um médico
-    como visitado. None se ele nunca visitou nenhum."""
+def dias_sem_visitar(usuario_id: int, agora_utc=None):
+    """Há quantos dias o usuário não visita ninguém do painel. Conta a partir
+    da última visita; se nunca visitou, conta a partir do dia em que colocou o
+    primeiro médico no painel. None se o painel dele está vazio."""
     with _conexao() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            _q("SELECT MAX(visitado_em) AS ultima FROM painel_medicos WHERE usuario_id = ? AND visitado_em IS NOT NULL"),
+            _q("SELECT MAX(visitado_em) AS ultima FROM visitas_log WHERE usuario_id = ?"),
             (usuario_id,),
         )
-        linha = cursor.fetchone()
-        ultima = linha["ultima"] if linha else None
+        ultima = (cursor.fetchone() or {"ultima": None})["ultima"]
+        cursor.execute(
+            _q("SELECT MIN(adicionado_em) AS primeira FROM painel_medicos WHERE usuario_id = ?"),
+            (usuario_id,),
+        )
+        primeira = (cursor.fetchone() or {"primeira": None})["primeira"]
 
-    if not ultima:
+    referencia = ultima or primeira
+    if not referencia:
         return None
 
     try:
-        dt = datetime.fromisoformat(ultima)
+        dt = datetime.fromisoformat(referencia)
     except ValueError:
         return None
 
-    return (datetime.utcnow() - dt).days
+    return ((agora_utc or datetime.utcnow()) - dt).days
 
 
 def chaves_no_painel_usuario(usuario_id: int) -> set:
@@ -811,39 +977,12 @@ def _mes_anterior(dt):
     return _inicio_do_mes(primeiro - timedelta(days=1))
 
 
-def estatisticas_ticker():
-    """Números curtos pro "ticker" da tela de busca — bem mais leve que o
-    dashboard completo do admin (só 3 consultas)."""
-    agora = datetime.utcnow()
-    hoje_str = agora.strftime("%Y-%m-%d")
-    inicio_mes_atual_str = _inicio_do_mes(agora).isoformat()
-
-    with _conexao() as conn:
-        cursor = conn.cursor()
-
-        def contar(sql, params=()):
-            cursor.execute(_q(sql), params)
-            return cursor.fetchone()["total"]
-
-        medicos_base = contar("SELECT COUNT(DISTINCT chave_medico) AS total FROM painel_medicos")
-        visitados_mes = contar(
-            "SELECT COUNT(*) AS total FROM painel_medicos WHERE status = 'visitado' AND visitado_em >= ?",
-            (inicio_mes_atual_str,),
-        )
-        buscas_hoje = contar("SELECT COUNT(*) AS total FROM buscas_log WHERE criado_em >= ?", (hoje_str,))
-
-    return {
-        "medicos_base": medicos_base,
-        "visitados_mes": visitados_mes,
-        "buscas_hoje": buscas_hoje,
-    }
-
-
 def estatisticas_dashboard():
     """Junta todos os números do Dashboard do admin numa única consulta ao
     banco (várias queries agregadas, mas uma conexão só)."""
     agora = datetime.utcnow()
-    hoje_str = agora.strftime("%Y-%m-%d")
+    hoje_ts = inicio_hoje_brasil_utc(agora)   # meia-noite de hoje (Brasil), em UTC
+    hoje_data = hoje_brasil(agora)            # AAAA-MM-DD de hoje no Brasil
     d7_str = (agora - timedelta(days=7)).isoformat()
     d30_str = (agora - timedelta(days=30)).isoformat()
 
@@ -888,11 +1027,11 @@ def estatisticas_dashboard():
         )
 
         visitados_mes_atual = contar(
-            "SELECT COUNT(*) AS total FROM painel_medicos WHERE status = 'visitado' AND visitado_em >= ?",
+            "SELECT COUNT(*) AS total FROM visitas_log WHERE visitado_em >= ?",
             (inicio_mes_atual_str,),
         )
         visitados_mes_anterior = contar(
-            "SELECT COUNT(*) AS total FROM painel_medicos WHERE status = 'visitado' AND visitado_em >= ? AND visitado_em < ?",
+            "SELECT COUNT(*) AS total FROM visitas_log WHERE visitado_em >= ? AND visitado_em < ?",
             (inicio_mes_anterior_str, inicio_mes_atual_str),
         )
         if visitados_mes_anterior > 0:
@@ -900,11 +1039,11 @@ def estatisticas_dashboard():
         else:
             variacao_visitados_pct = 100 if visitados_mes_atual > 0 else 0
 
-        buscas_hoje = contar("SELECT COUNT(*) AS total FROM buscas_log WHERE criado_em >= ?", (hoje_str,))
+        buscas_hoje = contar("SELECT COUNT(*) AS total FROM buscas_log WHERE criado_em >= ?", (hoje_ts,))
         buscas_7d = contar("SELECT COUNT(*) AS total FROM buscas_log WHERE criado_em >= ?", (d7_str,))
         buscas_30d = contar("SELECT COUNT(*) AS total FROM buscas_log WHERE criado_em >= ?", (d30_str,))
 
-        ativos_hoje = contar("SELECT COUNT(*) AS total FROM usuarios WHERE ultimo_login >= ?", (hoje_str,))
+        ativos_hoje = contar("SELECT COUNT(*) AS total FROM usuarios WHERE ultimo_login >= ?", (hoje_ts,))
         ativos_7d = contar("SELECT COUNT(*) AS total FROM usuarios WHERE ultimo_login >= ?", (d7_str,))
         ativos_30d = contar("SELECT COUNT(*) AS total FROM usuarios WHERE ultimo_login >= ?", (d30_str,))
 
@@ -942,10 +1081,10 @@ def estatisticas_dashboard():
             FROM agenda_compromissos a
             JOIN painel_medicos p ON p.id = a.painel_medico_id
             JOIN usuarios u ON u.id = a.usuario_id
-            WHERE a.data >= ?
+            WHERE a.data >= ? AND p.status = 'agendado'
             ORDER BY a.data, a.horario
             LIMIT 15
-        """), (hoje_str,))
+        """), (hoje_data,))
         proximos_agendamentos = [dict(r) for r in cursor.fetchall()]
 
         serie_meses = []
@@ -957,7 +1096,7 @@ def estatisticas_dashboard():
                 (inicio_str, fim_str),
             )
             visitados_no_mes = contar(
-                "SELECT COUNT(*) AS total FROM painel_medicos WHERE status = 'visitado' AND visitado_em >= ? AND visitado_em < ?",
+                "SELECT COUNT(*) AS total FROM visitas_log WHERE visitado_em >= ? AND visitado_em < ?",
                 (inicio_str, fim_str),
             )
             serie_meses.append({
@@ -996,7 +1135,8 @@ def estatisticas_usuario(usuario_id: int):
     """Mesma ideia do estatisticas_dashboard(), mas só com os números de UM
     usuário — pro admin abrir o dashboard individual clicando no nome dele."""
     agora = datetime.utcnow()
-    hoje_str = agora.strftime("%Y-%m-%d")
+    hoje_ts = inicio_hoje_brasil_utc(agora)
+    hoje_data = hoje_brasil(agora)
     d7_str = (agora - timedelta(days=7)).isoformat()
     d30_str = (agora - timedelta(days=30)).isoformat()
     d60_str = (agora - timedelta(days=60)).isoformat()
@@ -1020,14 +1160,13 @@ def estatisticas_usuario(usuario_id: int):
                 (usuario_id, desde_str),
             )
             visitados = contar(
-                """SELECT COUNT(*) AS total FROM painel_medicos
-                   WHERE usuario_id = ? AND status = 'visitado' AND visitado_em >= ?""",
+                "SELECT COUNT(*) AS total FROM visitas_log WHERE usuario_id = ? AND visitado_em >= ?",
                 (usuario_id, desde_str),
             )
             return {"prospectados": prospectados, "visitados": visitados}
 
         tabela_periodos = [
-            {"label": "Hoje", **linha_periodo(hoje_str)},
+            {"label": "Hoje", **linha_periodo(hoje_ts)},
             {"label": "7 dias", **linha_periodo(d7_str)},
             {"label": "30 dias", **linha_periodo(d30_str)},
             {"label": "60 dias", **linha_periodo(d60_str)},
@@ -1048,12 +1187,11 @@ def estatisticas_usuario(usuario_id: int):
         )
 
         visitados_mes_atual = contar(
-            "SELECT COUNT(*) AS total FROM painel_medicos WHERE usuario_id = ? AND status = 'visitado' AND visitado_em >= ?",
+            "SELECT COUNT(*) AS total FROM visitas_log WHERE usuario_id = ? AND visitado_em >= ?",
             (usuario_id, inicio_mes_atual_str),
         )
         visitados_mes_anterior = contar(
-            """SELECT COUNT(*) AS total FROM painel_medicos
-               WHERE usuario_id = ? AND status = 'visitado' AND visitado_em >= ? AND visitado_em < ?""",
+            "SELECT COUNT(*) AS total FROM visitas_log WHERE usuario_id = ? AND visitado_em >= ? AND visitado_em < ?",
             (usuario_id, inicio_mes_anterior_str, inicio_mes_atual_str),
         )
         if visitados_mes_anterior > 0:
@@ -1061,7 +1199,7 @@ def estatisticas_usuario(usuario_id: int):
         else:
             variacao_visitados_pct = 100 if visitados_mes_atual > 0 else 0
 
-        buscas_hoje = contar("SELECT COUNT(*) AS total FROM buscas_log WHERE usuario_id = ? AND criado_em >= ?", (usuario_id, hoje_str))
+        buscas_hoje = contar("SELECT COUNT(*) AS total FROM buscas_log WHERE usuario_id = ? AND criado_em >= ?", (usuario_id, hoje_ts))
         buscas_7d = contar("SELECT COUNT(*) AS total FROM buscas_log WHERE usuario_id = ? AND criado_em >= ?", (usuario_id, d7_str))
         buscas_30d = contar("SELECT COUNT(*) AS total FROM buscas_log WHERE usuario_id = ? AND criado_em >= ?", (usuario_id, d30_str))
 
@@ -1079,10 +1217,10 @@ def estatisticas_usuario(usuario_id: int):
             SELECT a.data, a.horario, p.nome AS medico_nome, p.especialidade, p.cidade, p.uf
             FROM agenda_compromissos a
             JOIN painel_medicos p ON p.id = a.painel_medico_id
-            WHERE a.usuario_id = ? AND a.data >= ?
+            WHERE a.usuario_id = ? AND a.data >= ? AND p.status = 'agendado'
             ORDER BY a.data, a.horario
             LIMIT 10
-        """), (usuario_id, hoje_str))
+        """), (usuario_id, hoje_data))
         proximos_agendamentos = [dict(r) for r in cursor.fetchall()]
 
     return {

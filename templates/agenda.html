@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>i.cannal · Agenda</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -22,7 +22,7 @@
   body{ margin:0; font-family:'Montserrat',sans-serif; background:var(--fundo); color:var(--texto); }
   h1,h2,h3{ margin:0; }
 
-  header{ background:var(--marinho-profundo); color:#fff; padding:18px 32px; display:flex; align-items:center; justify-content:space-between; }
+  header{ background:var(--marinho-profundo); color:#fff; padding:18px 32px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
   .logo-completo{ height:32px; width:auto; display:block; }
 
   nav{ display:flex; gap:4px; background:rgba(255,255,255,.07); padding:4px; border-radius:999px; align-items:center; }
@@ -167,6 +167,10 @@
   @media (max-width:640px){
     header{ padding:14px 18px; }
     .logo-completo{ height:28px; }
+    nav{ width:100%; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding:3px; gap:2px; }
+    nav::-webkit-scrollbar{ display:none; }
+    nav a{ padding:9px 13px; font-size:12.5px; white-space:nowrap; flex-shrink:0; }
+    .cal-nav{ width:34px; height:34px; }
     .hero-secao{ padding:28px 20px 64px; }
     .hero-secao h1{ font-size:20px; }
     main{ margin-top:-40px; padding:0 16px; }
@@ -186,7 +190,7 @@
   </svg>
   <nav>
     <a href="{{ url_for('index') }}">Buscar</a>
-    <a href="{{ url_for('index') }}">Painel Médico</a>
+    <a href="{{ url_for('index') }}#painel">Painel Médico</a>
     <a href="{{ url_for('agenda') }}" class="ativo">Agenda</a>
     {% if current_user.is_admin %}
     <a href="{{ url_for('admin') }}">Painel Admin</a>
@@ -228,6 +232,12 @@
 </main>
 
 <script>
+  function esc(valor){
+    return String(valor == null ? '' : valor)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   const NOMES_MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
   const NOMES_DIAS_SEMANA = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
 
@@ -307,15 +317,15 @@
           if(h.ocupado && h.medico){
             const local = [h.medico.cidade, h.medico.uf].filter(Boolean).join(' - ');
             linha.innerHTML = `
-              <span class="horario-hora">${h.horario}</span>
+              <span class="horario-hora">${esc(h.horario)}</span>
               <div class="horario-conteudo">
-                <strong>${h.medico.nome}</strong>
-                <span>${h.medico.especialidade || ''}${local ? ' · ' + local : ''}</span>
+                <strong>${esc(h.medico.nome)}</strong>
+                <span>${esc(h.medico.especialidade)}${local ? ' · ' + esc(local) : ''}</span>
               </div>
             `;
           } else {
             linha.innerHTML = `
-              <span class="horario-hora">${h.horario}</span>
+              <span class="horario-hora">${esc(h.horario)}</span>
               <div class="horario-conteudo"><span class="horario-livre">Disponível</span></div>
             `;
           }
