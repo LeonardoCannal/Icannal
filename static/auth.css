@@ -57,11 +57,13 @@ body{
 .auth-logo{
   display: block;
   margin: 0 auto 24px;
-  height: 34px;
+  height: 56px;              /* 32px de logo + 12px de folga em cima e embaixo */
   background: var(--escuro);
-  padding: 10px 16px;
-  border-radius: 12px;
+  padding: 12px 20px;
+  border-radius: 14px;
 }
+
+.logo-admin{ height: 36px; width: auto; display: block; }
 
 .auth-card h1{
   font-size: 19px;
@@ -869,6 +871,9 @@ table.tabela-admin th, table.tabela-admin td{
   .auth-tela{ padding: 16px; }
 
   .auth-card{ padding: 24px 20px; }
+
+  .auth-logo{ height: 52px; padding: 11px 18px; }
+  .logo-admin{ height: 30px; }
 
   .admin-header{
     padding: 14px 18px;
