@@ -69,6 +69,27 @@
 
   .card h2{ font-size:16px; font-weight:700; margin:0 0 18px; color:var(--roxo-escuro); }
 
+  .sugestao-progresso-wrap{ display:flex; align-items:center; gap:12px; }
+
+  .sugestao-progresso-barra{
+    flex:1;
+    height:10px;
+    background:var(--borda);
+    border-radius:999px;
+    overflow:hidden;
+  }
+
+  .sugestao-progresso-preenchido{
+    height:100%;
+    background:var(--roxo);
+    border-radius:999px;
+    transition:width .3s ease;
+  }
+
+  .sugestao-progresso-texto{ font-size:12.5px; font-weight:700; color:var(--texto-suave); white-space:nowrap; }
+
+  .sugestao-vazia{ font-size:13px; color:var(--texto-suave); line-height:1.6; margin:0; }
+
   .dados-lista{ display:flex; flex-direction:column; gap:15px; }
   .dados-item{ display:flex; flex-direction:column; gap:3px; }
   .dados-item span.rotulo{ font-size:12px; font-weight:600; color:var(--texto-suave); }
@@ -199,6 +220,18 @@
         <span class="valor">{{ ultimo_login }}</span>
       </div>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>Sugestão de visitas este mês</h2>
+    {% if sugestao_visitas_mes %}
+    <div class="sugestao-progresso-wrap">
+      <div class="sugestao-progresso-barra"><div class="sugestao-progresso-preenchido" style="width:{{ progresso_sugestao_pct }}%;"></div></div>
+      <span class="sugestao-progresso-texto">{{ visitados_mes_atual }} de {{ sugestao_visitas_mes }} visitas ({{ progresso_sugestao_pct }}%)</span>
+    </div>
+    {% else %}
+    <p class="sugestao-vazia">Sua equipe ainda não definiu uma sugestão de visitas pra você este mês.</p>
+    {% endif %}
   </div>
 
   <div class="card">

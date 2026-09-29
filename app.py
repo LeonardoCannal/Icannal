@@ -36,6 +36,7 @@ from auth import (
     registrar_busca,
     estatisticas_dashboard,
     estatisticas_usuario,
+    progresso_sugestao_usuario,
     bucket_painel,
     listar_horarios_dia,
     agendar_medico,
@@ -294,12 +295,17 @@ def perfil():
             usuario = buscar_usuario_por_id(usuario["id"])
             sucesso = "Senha atualizada com sucesso."
 
+    stats_pessoais = progresso_sugestao_usuario(usuario["id"])
+
     return render_template(
         "perfil.html",
         usuario=usuario,
         cpf_formatado=formatar_cpf(usuario["cpf"]),
         criado_em=formatar_data_br(usuario["criado_em"]),
         ultimo_login=formatar_data_br(usuario["ultimo_login"]),
+        sugestao_visitas_mes=stats_pessoais["sugestao_visitas_mes"],
+        progresso_sugestao_pct=stats_pessoais["progresso_sugestao_pct"],
+        visitados_mes_atual=stats_pessoais["visitados_mes_atual"],
         erro=erro,
         sucesso=sucesso,
     )

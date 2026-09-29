@@ -1261,6 +1261,36 @@ def estatisticas_dashboard():
     }
 
 
+def progresso_sugestao_usuario(usuario_id: int, agora_utc=None):
+    """Versão leve de estatisticas_usuario() — só a sugestão de visitas e o
+    progresso do mês, pra mostrar em Meu Perfil sem rodar as consultas
+    pesadas do dashboard completo (tabela por período, especialidades etc.)."""
+    agora = agora_utc or datetime.utcnow()
+    inicio_mes_atual_str = _inicio_do_mes(agora).isoformat()
+
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("SELECT sugestao_visitas_mes FROM usuarios WHERE id = ?"), (usuario_id,))
+        linha = cursor.fetchone()
+        sugestao_visitas_mes = linha["sugestao_visitas_mes"] if linha else None
+
+        cursor.execute(
+            _q("SELECT COUNT(*) AS total FROM visitas_log WHERE usuario_id = ? AND visitado_em >= ?"),
+            (usuario_id, inicio_mes_atual_str),
+        )
+        visitados_mes_atual = cursor.fetchone()["total"]
+
+    progresso_sugestao_pct = None
+    if sugestao_visitas_mes:
+        progresso_sugestao_pct = round(min(100, visitados_mes_atual / sugestao_visitas_mes * 100))
+
+    return {
+        "sugestao_visitas_mes": sugestao_visitas_mes,
+        "progresso_sugestao_pct": progresso_sugestao_pct,
+        "visitados_mes_atual": visitados_mes_atual,
+    }
+
+
 def estatisticas_usuario(usuario_id: int):
     """Mesma ideia do estatisticas_dashboard(), mas só com os números de UM
     usuário — pro admin abrir o dashboard individual clicando no nome dele."""
