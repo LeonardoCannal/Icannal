@@ -528,6 +528,25 @@
   }
   .banner-inatividade-icone{ font-size:18px; flex-shrink:0; }
 
+  /* Banner de lembrete (visitas de amanhã) */
+  .banner-lembrete{
+    position:relative;
+    z-index:2;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    background:var(--roxo-suave);
+    border:1px solid var(--roxo);
+    color:#3F5416;
+    padding:14px 18px;
+    border-radius:14px;
+    font-size:13.5px;
+    font-weight:600;
+    margin-bottom:20px;
+  }
+  .banner-lembrete-icone{ font-size:18px; flex-shrink:0; }
+  .banner-lembrete a{ color:#3F5416; text-decoration:underline; font-weight:700; }
+
   /* Card de aviso (substitui o alert() do navegador) */
   .aviso-overlay{
     display:flex;
@@ -633,6 +652,65 @@
   }
 
   .cadastro-cabecalho h2{ font-size:17px; font-weight:800; margin:0; color:var(--texto); }
+
+  /* Modal: resultado da visita */
+  .modal-resultado-painel{ max-width:420px; }
+
+  .resultado-opcoes{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-bottom:14px;
+  }
+
+  .btn-resultado-opcao{
+    padding:14px 10px;
+    border-radius:12px;
+    border:1.5px solid var(--borda);
+    background:var(--fundo);
+    font-family:'Montserrat',sans-serif;
+    font-size:13px;
+    font-weight:700;
+    color:var(--texto);
+    cursor:pointer;
+    transition:transform .15s ease, border-color .15s ease;
+  }
+  .btn-resultado-opcao:hover{ transform:translateY(-1px); }
+  .btn-resultado-interessado{ border-color:#5C7A22; color:#3F5416; }
+  .btn-resultado-interessado:hover{ background:var(--roxo-suave); }
+  .btn-resultado-sem_interesse{ border-color:#C13B3B; color:#C13B3B; }
+  .btn-resultado-sem_interesse:hover{ background:#FBEAEA; }
+  .btn-resultado-pedir_retorno{ border-color:#B8860B; color:#95650B; }
+  .btn-resultado-pedir_retorno:hover{ background:#FBEFD6; }
+  .btn-resultado-amostra_entregue{ border-color:#2E6F9E; color:#1F567C; }
+  .btn-resultado-amostra_entregue:hover{ background:#E3EFF7; }
+
+  .resultado-pular{
+    width:100%;
+    background:none;
+    border:none;
+    color:var(--texto-suave);
+    font-family:'Montserrat',sans-serif;
+    font-size:12.5px;
+    padding:8px;
+    cursor:pointer;
+    text-decoration:underline;
+  }
+  .resultado-pular:hover{ color:var(--texto); }
+
+  .painel-badge-resultado{
+    display:inline-block;
+    align-self:flex-start;
+    margin-top:4px;
+    padding:3px 10px;
+    border-radius:999px;
+    font-size:10.5px;
+    font-weight:700;
+  }
+  .painel-badge-resultado-interessado{ background:var(--roxo-suave); color:#3F5416; }
+  .painel-badge-resultado-sem_interesse{ background:#FBEAEA; color:#C13B3B; }
+  .painel-badge-resultado-pedir_retorno{ background:#FBEFD6; color:#95650B; }
+  .painel-badge-resultado-amostra_entregue{ background:#E3EFF7; color:#1F567C; }
 
   /* Modais genéricos (agendar / observações) — mesmo padrão do aviso-overlay */
   .modal-overlay{
@@ -937,6 +1015,13 @@
     </div>
     {% endif %}
 
+    {% if visitas_amanha > 0 %}
+    <div class="banner-lembrete">
+      <span class="banner-lembrete-icone">📅</span>
+      <span>Amanhã você tem {{ visitas_amanha }} visita{{ 's' if visitas_amanha != 1 else '' }} agendada{{ 's' if visitas_amanha != 1 else '' }}. <a href="{{ url_for('agenda') }}">Ver na Agenda</a></span>
+    </div>
+    {% endif %}
+
     <div class="card-busca">
       <div class="campo">
         <label>Especialidades</label>
@@ -1121,6 +1206,21 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-resultado">
+  <div class="modal-painel modal-resultado-painel">
+    <div class="modal-cabecalho">
+      <h2 id="resultado-titulo">Como foi a visita?</h2>
+      <button type="button" id="resultado-fechar" class="modal-fechar" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="resultado-opcoes">
+      {% for chave, rotulo in resultados_visita.items() %}
+      <button type="button" class="btn-resultado-opcao btn-resultado-{{ chave }}" data-resultado="{{ chave }}">{{ rotulo }}</button>
+      {% endfor %}
+    </div>
+    <button type="button" id="resultado-pular" class="resultado-pular">Marcar visitado sem informar o resultado</button>
+  </div>
+</div>
+
 <script>
   // Escapa texto antes de colocar em HTML (evita que um nome/endereço com
   // caracteres especiais vire código na tela).
@@ -1131,6 +1231,7 @@
   }
 
   const especialidades = {{ especialidades | tojson }};
+  const resultadosVisita = {{ resultados_visita | tojson }};
   const MAX_ESPECIALIDADES = {{ max_especialidades }};
 
   let historico = []; // buscas recentes, em memória, some ao recarregar a página
@@ -1497,6 +1598,9 @@
     if(coluna === 'agendados' && item.compromisso){
       badgeAgenda = `<span class="painel-badge-agenda">📅 ${esc(formatarDataBR(item.compromisso.data))} às ${esc(item.compromisso.horario)}</span>`;
     }
+    if((coluna === 'visitados' || coluna === 'revisitar') && item.resultado_visita && resultadosVisita[item.resultado_visita]){
+      badgeAgenda = `<span class="painel-badge-resultado painel-badge-resultado-${esc(item.resultado_visita)}">${esc(resultadosVisita[item.resultado_visita])}</span>`;
+    }
 
     div.innerHTML = `
       <div class="painel-card-topo">
@@ -1536,7 +1640,7 @@
       btnVisitado.type = 'button';
       btnVisitado.className = 'painel-btn-mover';
       btnVisitado.textContent = 'Marcar visitado';
-      btnVisitado.addEventListener('click', () => moverNoPainel(item.id, 'visitado'));
+      btnVisitado.addEventListener('click', () => abrirModalResultado(item.id, item.nome));
       acoes.appendChild(btnVisitado);
 
       const btnCancelar = document.createElement('button');
@@ -1547,7 +1651,7 @@
       acoes.appendChild(btnCancelar);
     }
 
-    if(coluna === 'visitados'){
+    if(coluna === 'visitados' || coluna === 'revisitar'){
       const btnVoltar = document.createElement('button');
       btnVoltar.type = 'button';
       btnVoltar.className = 'painel-btn-mover';
@@ -1607,16 +1711,42 @@
       });
   }
 
-  function moverNoPainel(id, novoStatus){
+  function moverNoPainel(id, novoStatus, resultado){
+    const corpo = { id, status: novoStatus };
+    if(resultado) corpo.resultado = resultado;
     fetch('/api/painel/mover', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, status: novoStatus })
+      body: JSON.stringify(corpo)
     })
       .then(res => res.json())
       .then(() => carregarPainel())
       .catch(() => mostrarAviso('Não foi possível mover o médico agora.'));
   }
+
+  // ===== Modal: resultado da visita =====
+  const modalResultado = document.getElementById('modal-resultado');
+  const resultadoTitulo = document.getElementById('resultado-titulo');
+  let resultadoEntradaId = null;
+
+  function abrirModalResultado(entradaId, nomeMedico){
+    resultadoEntradaId = entradaId;
+    resultadoTitulo.textContent = `Como foi a visita a ${nomeMedico}?`;
+    modalResultado.classList.add('aberto');
+  }
+
+  document.getElementById('resultado-fechar').addEventListener('click', () => modalResultado.classList.remove('aberto'));
+  modalResultado.addEventListener('click', (e) => { if(e.target === modalResultado) modalResultado.classList.remove('aberto'); });
+  document.getElementById('resultado-pular').addEventListener('click', () => {
+    modalResultado.classList.remove('aberto');
+    moverNoPainel(resultadoEntradaId, 'visitado');
+  });
+  document.querySelectorAll('.btn-resultado-opcao').forEach(botao => {
+    botao.addEventListener('click', () => {
+      modalResultado.classList.remove('aberto');
+      moverNoPainel(resultadoEntradaId, 'visitado', botao.dataset.resultado);
+    });
+  });
 
   function cancelarAgendamento(entradaId){
     fetch(`/api/painel/${entradaId}/cancelar-agendamento`, { method: 'POST' })

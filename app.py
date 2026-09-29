@@ -43,6 +43,10 @@ from auth import (
     listar_compromissos_mes,
     salvar_observacoes,
     dias_sem_visitar,
+    roteiro_do_dia,
+    contar_visitas_amanha,
+    definir_meta_usuario,
+    RESULTADOS_VISITA,
     buscar_compromisso_do_medico,
     data_valida,
 )
@@ -483,12 +487,15 @@ def admin_dashboard():
 def index():
     usuario = usuario_logado()
     dias_inativo = dias_sem_visitar(usuario["id"])
+    visitas_amanha = contar_visitas_amanha(usuario["id"])
     return render_template(
         "index.html",
         especialidades=NOMES_ESPECIALIDADES,
         max_especialidades=MAX_ESPECIALIDADES_POR_BUSCA,
         aviso_inatividade=(dias_inativo is not None and dias_inativo >= 10),
         dias_inativo=dias_inativo,
+        visitas_amanha=visitas_amanha,
+        resultados_visita=RESULTADOS_VISITA,
     )
 
 
@@ -620,12 +627,18 @@ def api_painel_mover():
     dados = _corpo_json()
     entrada_id = _inteiro(dados.get("id"))
     novo_status = dados.get("status")
+    resultado = dados.get("resultado")
 
     # "agendado" só existe através do botão Agendar (que exige data e horário).
     if not entrada_id or novo_status not in ("prospectado", "visitado"):
         return jsonify({"ok": False, "mensagem": "Requisição inválida."}), 400
+    if resultado is not None:
+        if novo_status != "visitado":
+            return jsonify({"ok": False, "mensagem": "Resultado só se aplica ao marcar como visitado."}), 400
+        if resultado not in RESULTADOS_VISITA:
+            return jsonify({"ok": False, "mensagem": "Resultado da visita inválido."}), 400
 
-    ok = mover_no_painel(usuario["id"], entrada_id, novo_status)
+    ok = mover_no_painel(usuario["id"], entrada_id, novo_status, resultado=resultado)
     return jsonify({"ok": ok})
 
 
@@ -691,6 +704,28 @@ def api_agenda_dia():
         return jsonify({"erro": "Informe uma data válida (AAAA-MM-DD)."}), 400
 
     return jsonify({"horarios": listar_horarios_dia(usuario["id"], data)})
+
+
+@app.route("/api/roteiro")
+@login_required
+def api_roteiro():
+    usuario = usuario_logado()
+    data = (request.args.get("data") or "").strip()
+    if not data_valida(data):
+        return jsonify({"erro": "Informe uma data válida (AAAA-MM-DD)."}), 400
+
+    return jsonify({"visitas": roteiro_do_dia(usuario["id"], data)})
+
+
+@app.route("/admin/usuarios/<int:user_id>/meta", methods=["POST"])
+@admin_required
+def admin_definir_meta(user_id):
+    dados = _corpo_json()
+    meta = dados.get("meta")
+    if meta == "" or meta is None:
+        meta = None
+    ok = definir_meta_usuario(user_id, meta)
+    return jsonify({"ok": ok})
 
 
 def abrir_navegador():

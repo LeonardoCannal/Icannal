@@ -612,6 +612,41 @@ body{
 
 .heatmap-celula strong{ font-size: 12px; }
 
+.ranking-lista{ display: flex; flex-direction: column; gap: 10px; }
+
+.ranking-item{
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.ranking-item-top{ background: var(--claro); }
+
+.ranking-posicao{
+  width: 26px;
+  flex-shrink: 0;
+  text-align: center;
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--cinza);
+}
+
+.ranking-item-top .ranking-posicao{ color: var(--verde-escuro); }
+
+.ranking-info{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+
+.ranking-linha-topo{ display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+.ranking-nome{ font-size: 13px; font-weight: 700; color: var(--escuro); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ranking-total{ font-size: 12px; font-weight: 700; color: var(--cinza); white-space: nowrap; }
+
+.ranking-barra{ height: 6px; background: var(--claro); border-radius: 999px; overflow: hidden; }
+
+.ranking-barra-preenchida{ height: 100%; background: var(--verde); border-radius: 999px; }
+
 table.tabela-admin{
   width: 100%;
   border-collapse: collapse;
@@ -698,6 +733,59 @@ table.tabela-admin tbody tr:hover{ background: var(--fundo); }
 }
 
 .modal-secao-titulo:first-of-type{ margin-top: 0; }
+
+.meta-bloco{ display: flex; flex-direction: column; gap: 12px; }
+
+.meta-editar{ display: flex; gap: 8px; }
+
+.meta-input{
+  flex: 1;
+  max-width: 180px;
+  padding: 10px 13px;
+  border: 1.5px solid var(--claro);
+  border-radius: 10px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 13px;
+  color: var(--escuro);
+  background: var(--fundo);
+}
+
+.meta-input:focus{ outline: none; border-color: var(--verde); background: #fff; }
+
+.meta-btn-salvar{
+  background: var(--verde);
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-family: 'Montserrat', sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s ease;
+}
+
+.meta-btn-salvar:hover{ background: var(--verde-escuro); }
+
+.meta-progresso-wrap{ display: flex; align-items: center; gap: 12px; }
+
+.meta-progresso-barra{
+  flex: 1;
+  height: 10px;
+  background: var(--claro);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.meta-progresso-preenchido{
+  height: 100%;
+  background: var(--verde);
+  border-radius: 999px;
+  transition: width .3s ease;
+}
+
+.meta-progresso-texto{ font-size: 12px; font-weight: 700; color: var(--cinza); white-space: nowrap; }
 
 table.tabela-periodos{
   width: 100%;

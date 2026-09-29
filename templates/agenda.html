@@ -126,6 +126,27 @@
   .agenda-dia-painel h2{ font-size:15px; font-weight:800; color:var(--roxo-escuro); margin-bottom:4px; }
   .agenda-dia-painel .subtitulo{ font-size:12.5px; color:var(--texto-suave); margin-bottom:16px; display:block; }
 
+  .dia-cabecalho{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+
+  .btn-roteiro{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:var(--marinho-profundo);
+    color:#fff;
+    border:none;
+    padding:9px 16px;
+    border-radius:10px;
+    font-family:'Montserrat',sans-serif;
+    font-size:12.5px;
+    font-weight:700;
+    cursor:pointer;
+    white-space:nowrap;
+    transition:background .15s ease;
+  }
+  .btn-roteiro:hover{ background:var(--verde-escuro); }
+  .btn-roteiro svg{ width:15px; height:15px; }
+
   .horarios-lista-agenda{
     display:flex;
     flex-direction:column;
@@ -223,8 +244,16 @@
       </div>
 
       <div class="agenda-dia-painel">
-        <h2 id="dia-titulo">Hoje</h2>
-        <span class="subtitulo" id="dia-subtitulo"></span>
+        <div class="dia-cabecalho">
+          <div>
+            <h2 id="dia-titulo">Hoje</h2>
+            <span class="subtitulo" id="dia-subtitulo"></span>
+          </div>
+          <button type="button" id="btn-roteiro" class="btn-roteiro" style="display:none;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 6-9 12-9 12S3 16 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Abrir rota do dia
+          </button>
+        </div>
         <div class="horarios-lista-agenda" id="horarios-lista"></div>
       </div>
     </div>
@@ -246,6 +275,8 @@
   const diaTitulo = document.getElementById('dia-titulo');
   const diaSubtitulo = document.getElementById('dia-subtitulo');
   const horariosLista = document.getElementById('horarios-lista');
+  const btnRoteiro = document.getElementById('btn-roteiro');
+  let enderecosDoRoteiro = [];
 
   let mesRef = new Date();
   let diaSelecionado = null;
@@ -305,6 +336,18 @@
     diaSubtitulo.textContent = NOMES_DIAS_SEMANA[dataObj.getDay()];
 
     horariosLista.innerHTML = '<div class="vazio">Carregando...</div>';
+    btnRoteiro.style.display = 'none';
+    enderecosDoRoteiro = [];
+
+    fetch(`/api/roteiro?data=${dataStr}`)
+      .then(res => res.json())
+      .then(dados => {
+        enderecosDoRoteiro = (dados.visitas || [])
+          .map(v => [v.endereco, v.cidade, v.uf].filter(Boolean).join(', '))
+          .filter(Boolean);
+        btnRoteiro.style.display = enderecosDoRoteiro.length > 0 ? 'inline-flex' : 'none';
+      })
+      .catch(() => { btnRoteiro.style.display = 'none'; });
 
     fetch(`/api/agenda/dia?data=${dataStr}`)
       .then(res => res.json())
@@ -344,6 +387,12 @@
   document.getElementById('cal-mes-proximo').addEventListener('click', () => {
     mesRef = new Date(mesRef.getFullYear(), mesRef.getMonth() + 1, 1);
     renderizarCalendario();
+  });
+
+  btnRoteiro.addEventListener('click', () => {
+    if(enderecosDoRoteiro.length === 0) return;
+    const paradas = enderecosDoRoteiro.map(encodeURIComponent).join('/');
+    window.open(`https://www.google.com/maps/dir/${paradas}`, '_blank');
   });
 
   // Abre já no dia de hoje
