@@ -734,11 +734,11 @@ table.tabela-admin tbody tr:hover{ background: var(--fundo); }
 
 .modal-secao-titulo:first-of-type{ margin-top: 0; }
 
-.meta-bloco{ display: flex; flex-direction: column; gap: 12px; }
+.sugestao-bloco{ display: flex; flex-direction: column; gap: 12px; }
 
-.meta-editar{ display: flex; gap: 8px; }
+.sugestao-editar{ display: flex; gap: 8px; }
 
-.meta-input{
+.sugestao-input{
   flex: 1;
   max-width: 180px;
   padding: 10px 13px;
@@ -750,9 +750,9 @@ table.tabela-admin tbody tr:hover{ background: var(--fundo); }
   background: var(--fundo);
 }
 
-.meta-input:focus{ outline: none; border-color: var(--verde); background: #fff; }
+.sugestao-input:focus{ outline: none; border-color: var(--verde); background: #fff; }
 
-.meta-btn-salvar{
+.sugestao-btn-salvar{
   background: var(--verde);
   color: #fff;
   border: none;
@@ -766,11 +766,11 @@ table.tabela-admin tbody tr:hover{ background: var(--fundo); }
   transition: background .15s ease;
 }
 
-.meta-btn-salvar:hover{ background: var(--verde-escuro); }
+.sugestao-btn-salvar:hover{ background: var(--verde-escuro); }
 
-.meta-progresso-wrap{ display: flex; align-items: center; gap: 12px; }
+.sugestao-progresso-wrap{ display: flex; align-items: center; gap: 12px; }
 
-.meta-progresso-barra{
+.sugestao-progresso-barra{
   flex: 1;
   height: 10px;
   background: var(--claro);
@@ -778,14 +778,14 @@ table.tabela-admin tbody tr:hover{ background: var(--fundo); }
   overflow: hidden;
 }
 
-.meta-progresso-preenchido{
+.sugestao-progresso-preenchido{
   height: 100%;
   background: var(--verde);
   border-radius: 999px;
   transition: width .3s ease;
 }
 
-.meta-progresso-texto{ font-size: 12px; font-weight: 700; color: var(--cinza); white-space: nowrap; }
+.sugestao-progresso-texto{ font-size: 12px; font-weight: 700; color: var(--cinza); white-space: nowrap; }
 
 table.tabela-periodos{
   width: 100%;
