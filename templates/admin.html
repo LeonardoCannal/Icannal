@@ -174,6 +174,18 @@
         </div>
       </div>
 
+      <h3 class="modal-secao-titulo">Meta mensal de visitas</h3>
+      <div class="meta-bloco">
+        <div class="meta-editar">
+          <input type="number" id="dash-meta-input" class="meta-input" min="0" max="100000" placeholder="Sem meta definida">
+          <button type="button" id="dash-meta-salvar" class="meta-btn-salvar">Salvar meta</button>
+        </div>
+        <div class="meta-progresso-wrap" id="dash-meta-progresso-wrap" style="display:none;">
+          <div class="meta-progresso-barra"><div class="meta-progresso-preenchido" id="dash-meta-barra"></div></div>
+          <span class="meta-progresso-texto" id="dash-meta-texto"></span>
+        </div>
+      </div>
+
       <h3 class="modal-secao-titulo">Próximos agendamentos</h3>
       <div class="modal-lista" id="dash-proximos-agendamentos"></div>
 
@@ -292,9 +304,16 @@
     const modalOverlayDash = document.getElementById('modal-overlay-dash');
     const modalDashTitulo = document.getElementById('modal-dash-titulo');
     const modalDashFechar = document.getElementById('modal-dash-fechar');
+    const metaInput = document.getElementById('dash-meta-input');
+    const metaSalvarBtn = document.getElementById('dash-meta-salvar');
+    const metaProgressoWrap = document.getElementById('dash-meta-progresso-wrap');
+    const metaBarra = document.getElementById('dash-meta-barra');
+    const metaTexto = document.getElementById('dash-meta-texto');
     let graficoEspecialidadesUsuario = null;
+    let usuarioDashAtualId = null;
 
     function abrirDashboardUsuario(id, nome){
+      usuarioDashAtualId = id;
       modalDashTitulo.textContent = `Dashboard — ${nome}`;
       modalOverlayDash.classList.add('aberto');
 
@@ -306,6 +325,15 @@
           document.getElementById('dash-total-visitados').textContent = dados.total_visitados;
           document.getElementById('dash-total-revisitar').textContent = dados.total_revisitar;
           document.getElementById('dash-visitados-mes').textContent = dados.visitados_mes_atual;
+
+          metaInput.value = dados.meta_visitas_mes || '';
+          if(dados.meta_visitas_mes && dados.progresso_meta_pct !== null){
+            metaProgressoWrap.style.display = 'flex';
+            metaBarra.style.width = dados.progresso_meta_pct + '%';
+            metaTexto.textContent = `${dados.visitados_mes_atual} de ${dados.meta_visitas_mes} visitas (${dados.progresso_meta_pct}%)`;
+          } else {
+            metaProgressoWrap.style.display = 'none';
+          }
 
           const variacaoEl = document.getElementById('dash-variacao-mes');
           const seta = dados.variacao_visitados_pct >= 0 ? '↑' : '↓';
@@ -385,6 +413,37 @@
     });
 
     modalDashFechar.addEventListener('click', () => modalOverlayDash.classList.remove('aberto'));
+
+    metaSalvarBtn.addEventListener('click', () => {
+      if(usuarioDashAtualId === null) return;
+      const valor = metaInput.value.trim();
+      if(valor !== '' && (isNaN(valor) || Number(valor) < 0)){
+        mostrarAvisoNotif('Informe um número válido pra meta.');
+        return;
+      }
+      metaSalvarBtn.disabled = true;
+      metaSalvarBtn.textContent = 'Salvando...';
+      fetch(`/admin/usuarios/${usuarioDashAtualId}/meta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meta: valor === '' ? null : Number(valor) })
+      })
+        .then(res => res.json())
+        .then(resp => {
+          metaSalvarBtn.disabled = false;
+          metaSalvarBtn.textContent = 'Salvar meta';
+          if(resp.ok){
+            abrirDashboardUsuario(usuarioDashAtualId, modalDashTitulo.textContent.replace('Dashboard — ', ''));
+          } else {
+            mostrarAvisoNotif('Não foi possível salvar a meta.');
+          }
+        })
+        .catch(() => {
+          metaSalvarBtn.disabled = false;
+          metaSalvarBtn.textContent = 'Salvar meta';
+          mostrarAvisoNotif('Erro de conexão ao salvar a meta.');
+        });
+    });
     modalOverlayDash.addEventListener('click', (e) => {
       if(e.target === modalOverlayDash) modalOverlayDash.classList.remove('aberto');
     });

@@ -134,6 +134,29 @@
     </div>
 
     <div class="card-grafico">
+      <h3>Ranking de promotores este mês</h3>
+      {% if stats.ranking and stats.ranking[0].total_visitas > 0 %}
+      <div class="ranking-lista">
+        {% set maior = stats.ranking[0].total_visitas %}
+        {% for r in stats.ranking %}
+        <div class="ranking-item {{ 'ranking-item-top' if loop.index <= 3 else '' }}">
+          <span class="ranking-posicao">{{ loop.index }}º</span>
+          <div class="ranking-info">
+            <div class="ranking-linha-topo">
+              <span class="ranking-nome">{{ r.nome }}</span>
+              <span class="ranking-total">{{ r.total_visitas }} visita{{ 's' if r.total_visitas != 1 else '' }}</span>
+            </div>
+            <div class="ranking-barra"><div class="ranking-barra-preenchida" style="width:{{ (r.total_visitas / maior * 100) if maior else 0 }}%;"></div></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="grafico-vazio">Ninguém visitou nenhum médico este mês ainda.</div>
+      {% endif %}
+    </div>
+
+    <div class="card-grafico">
       <h3>Médicos incluídos × visitados (últimos 6 meses)</h3>
       <div class="canvas-wrapper"><canvas id="grafico-meses"></canvas></div>
     </div>

@@ -205,6 +205,9 @@ def inicializar_auth(app, sqlite_path):
     # quebrar se ela já existir (mesmo problema que já pegou o "cpf" antes).
     _adicionar_coluna_se_faltar("painel_medicos", "visitado_em", "TEXT")
     _adicionar_coluna_se_faltar("painel_medicos", "observacoes", "TEXT")
+    _adicionar_coluna_se_faltar("painel_medicos", "resultado_visita", "TEXT")
+    _adicionar_coluna_se_faltar("visitas_log", "resultado", "TEXT")
+    _adicionar_coluna_se_faltar("usuarios", "meta_visitas_mes", "INTEGER")
 
     # Médicos já marcados como visitados antes dessas colunas existirem ficam
     # sem data: usa a data em que entraram no painel como aproximação. Depois,
@@ -490,11 +493,22 @@ def adicionar_ao_painel(usuario_id: int, medico: dict):
     return True, "Adicionado ao painel médico."
 
 
-def mover_no_painel(usuario_id: int, entrada_id: int, novo_status: str) -> bool:
+RESULTADOS_VISITA = {
+    "interessado": "Interessado",
+    "sem_interesse": "Sem interesse",
+    "pedir_retorno": "Pedir retorno",
+    "amostra_entregue": "Amostra entregue",
+}
+
+
+def mover_no_painel(usuario_id: int, entrada_id: int, novo_status: str, resultado: str = None) -> bool:
     """Move o médico entre prospectado/visitado (o 'agendado' só nasce pelo
     botão Agendar). Cada visita fica registrada no histórico (visitas_log),
-    então revisitar o mesmo médico não apaga a visita anterior das estatísticas."""
+    com o resultado daquela visita, então revisitar o mesmo médico não apaga
+    a visita anterior nem o resultado dela das estatísticas."""
     if novo_status not in ("prospectado", "agendado", "visitado"):
+        return False
+    if resultado is not None and resultado not in RESULTADOS_VISITA:
         return False
     with _conexao() as conn:
         cursor = conn.cursor()
@@ -512,12 +526,12 @@ def mover_no_painel(usuario_id: int, entrada_id: int, novo_status: str) -> bool:
                 return True  # já estava visitado: não conta duas vezes
             agora = datetime.utcnow().isoformat()
             cursor.execute(
-                _q("UPDATE painel_medicos SET status = ?, visitado_em = ? WHERE id = ? AND usuario_id = ?"),
-                (novo_status, agora, entrada_id, usuario_id),
+                _q("UPDATE painel_medicos SET status = ?, visitado_em = ?, resultado_visita = ? WHERE id = ? AND usuario_id = ?"),
+                (novo_status, agora, resultado, entrada_id, usuario_id),
             )
             cursor.execute(
-                _q("INSERT INTO visitas_log (usuario_id, painel_medico_id, visitado_em) VALUES (?, ?, ?)"),
-                (usuario_id, entrada_id, agora),
+                _q("INSERT INTO visitas_log (usuario_id, painel_medico_id, visitado_em, resultado) VALUES (?, ?, ?, ?)"),
+                (usuario_id, entrada_id, agora, resultado),
             )
             return True
 
@@ -525,23 +539,28 @@ def mover_no_painel(usuario_id: int, entrada_id: int, novo_status: str) -> bool:
         # recente do histórico e volta a "última visita" pra anterior (se houver).
         if status_atual == "visitado":
             cursor.execute(
-                _q("SELECT id FROM visitas_log WHERE usuario_id = ? AND painel_medico_id = ? ORDER BY visitado_em DESC, id DESC LIMIT 1"),
+                _q("SELECT id, resultado FROM visitas_log WHERE usuario_id = ? AND painel_medico_id = ? ORDER BY visitado_em DESC, id DESC LIMIT 1"),
                 (usuario_id, entrada_id),
             )
             ultima = cursor.fetchone()
             if ultima:
                 cursor.execute(_q("DELETE FROM visitas_log WHERE id = ?"), (ultima["id"],))
             cursor.execute(
-                _q("SELECT MAX(visitado_em) AS anterior FROM visitas_log WHERE usuario_id = ? AND painel_medico_id = ?"),
+                _q("""SELECT visitado_em, resultado FROM visitas_log
+                      WHERE usuario_id = ? AND painel_medico_id = ?
+                      ORDER BY visitado_em DESC LIMIT 1"""),
                 (usuario_id, entrada_id),
             )
-            anterior = cursor.fetchone()["anterior"]
+            anterior_linha = cursor.fetchone()
+            anterior = anterior_linha["visitado_em"] if anterior_linha else None
+            resultado_anterior = anterior_linha["resultado"] if anterior_linha else None
         else:
             anterior = None
+            resultado_anterior = None
 
         cursor.execute(
-            _q("UPDATE painel_medicos SET status = ?, visitado_em = ? WHERE id = ? AND usuario_id = ?"),
-            (novo_status, anterior, entrada_id, usuario_id),
+            _q("UPDATE painel_medicos SET status = ?, visitado_em = ?, resultado_visita = ? WHERE id = ? AND usuario_id = ?"),
+            (novo_status, anterior, resultado_anterior, entrada_id, usuario_id),
         )
         return True
 
@@ -844,6 +863,82 @@ def dias_sem_visitar(usuario_id: int, agora_utc=None):
     return ((agora_utc or datetime.utcnow()) - dt).days
 
 
+# ---------------------------------------------------------------------------
+# Roteiro do dia (visitas de hoje, em ordem, prontas pro Google Maps)
+# ---------------------------------------------------------------------------
+
+def roteiro_do_dia(usuario_id: int, data: str):
+    """As visitas agendadas de um dia, em ordem de horário, já com o endereço
+    pronto pra virar um roteiro no Google Maps."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _q("""
+                SELECT a.horario, p.id AS painel_medico_id, p.nome, p.especialidade,
+                       p.endereco, p.cidade, p.uf, p.telefone
+                FROM agenda_compromissos a
+                JOIN painel_medicos p ON p.id = a.painel_medico_id
+                WHERE a.usuario_id = ? AND a.data = ?
+                ORDER BY a.horario
+            """),
+            (usuario_id, data),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def contar_visitas_amanha(usuario_id: int, agora_utc=None) -> int:
+    """Quantas visitas o usuário tem agendadas pra amanhã (horário do Brasil).
+    Usado pro lembrete do dia anterior."""
+    amanha = (agora_brasil(agora_utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _q("SELECT COUNT(*) AS total FROM agenda_compromissos WHERE usuario_id = ? AND data = ?"),
+            (usuario_id, amanha),
+        )
+        return cursor.fetchone()["total"]
+
+
+# ---------------------------------------------------------------------------
+# Metas mensais e ranking entre promotores
+# ---------------------------------------------------------------------------
+
+def definir_meta_usuario(usuario_id: int, meta) -> bool:
+    """Define (ou remove, se meta for None) a meta de visitas do mês pra um
+    usuário. Só o admin chama isso."""
+    if meta is not None:
+        try:
+            meta = int(meta)
+        except (TypeError, ValueError):
+            return False
+        if meta < 0 or meta > 100000:
+            return False
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _q("UPDATE usuarios SET meta_visitas_mes = ? WHERE id = ?"),
+            (meta, usuario_id),
+        )
+        return cursor.rowcount > 0
+
+
+def ranking_visitas_mes(agora_utc=None, limite: int = 10):
+    """Quem mais visitou médicos este mês — pro ranking do dashboard geral."""
+    agora = agora_utc or datetime.utcnow()
+    inicio_mes = _inicio_do_mes(agora).isoformat()
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""
+            SELECT u.id, u.nome, COUNT(v.id) AS total_visitas
+            FROM usuarios u
+            LEFT JOIN visitas_log v ON v.usuario_id = u.id AND v.visitado_em >= ?
+            GROUP BY u.id, u.nome
+            ORDER BY total_visitas DESC, u.nome ASC
+            LIMIT ?
+        """), (inicio_mes, limite))
+        return [dict(r) for r in cursor.fetchall()]
+
+
 def chaves_no_painel_usuario(usuario_id: int) -> set:
     with _conexao() as conn:
         cursor = conn.cursor()
@@ -1128,6 +1223,7 @@ def estatisticas_dashboard():
         "por_cidade": por_cidade,
         "serie_meses": serie_meses,
         "proximos_agendamentos": proximos_agendamentos,
+        "ranking": ranking_visitas_mes(agora),
     }
 
 
@@ -1164,6 +1260,10 @@ def estatisticas_usuario(usuario_id: int):
                 (usuario_id, desde_str),
             )
             return {"prospectados": prospectados, "visitados": visitados}
+
+        cursor.execute(_q("SELECT meta_visitas_mes FROM usuarios WHERE id = ?"), (usuario_id,))
+        linha_meta = cursor.fetchone()
+        meta_visitas_mes = linha_meta["meta_visitas_mes"] if linha_meta else None
 
         tabela_periodos = [
             {"label": "Hoje", **linha_periodo(hoje_ts)},
@@ -1223,6 +1323,17 @@ def estatisticas_usuario(usuario_id: int):
         """), (usuario_id, hoje_data))
         proximos_agendamentos = [dict(r) for r in cursor.fetchall()]
 
+        cursor.execute(_q("""
+            SELECT resultado, COUNT(*) AS total FROM visitas_log
+            WHERE usuario_id = ? AND visitado_em >= ? AND resultado IS NOT NULL
+            GROUP BY resultado
+        """), (usuario_id, inicio_mes_atual_str))
+        resultados_mes = {r["resultado"]: r["total"] for r in cursor.fetchall()}
+
+    progresso_meta_pct = None
+    if meta_visitas_mes:
+        progresso_meta_pct = round(min(100, visitados_mes_atual / meta_visitas_mes * 100))
+
     return {
         "total_prospectados": total_prospectados,
         "total_agendados": total_agendados,
@@ -1237,4 +1348,7 @@ def estatisticas_usuario(usuario_id: int):
         "buscas_30d": buscas_30d,
         "top_especialidades": top_especialidades,
         "proximos_agendamentos": proximos_agendamentos,
+        "meta_visitas_mes": meta_visitas_mes,
+        "progresso_meta_pct": progresso_meta_pct,
+        "resultados_mes": resultados_mes,
     }
