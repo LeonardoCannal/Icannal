@@ -45,7 +45,7 @@ from auth import (
     dias_sem_visitar,
     roteiro_do_dia,
     contar_visitas_amanha,
-    definir_meta_usuario,
+    definir_sugestao_visitas,
     RESULTADOS_VISITA,
     buscar_compromisso_do_medico,
     data_valida,
@@ -717,14 +717,14 @@ def api_roteiro():
     return jsonify({"visitas": roteiro_do_dia(usuario["id"], data)})
 
 
-@app.route("/admin/usuarios/<int:user_id>/meta", methods=["POST"])
+@app.route("/admin/usuarios/<int:user_id>/sugestao-visitas", methods=["POST"])
 @admin_required
-def admin_definir_meta(user_id):
+def admin_definir_sugestao(user_id):
     dados = _corpo_json()
-    meta = dados.get("meta")
-    if meta == "" or meta is None:
-        meta = None
-    ok = definir_meta_usuario(user_id, meta)
+    sugestao = dados.get("sugestao")
+    if sugestao == "" or sugestao is None:
+        sugestao = None
+    ok = definir_sugestao_visitas(user_id, sugestao)
     return jsonify({"ok": ok})
 
 

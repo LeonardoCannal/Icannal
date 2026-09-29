@@ -207,7 +207,21 @@ def inicializar_auth(app, sqlite_path):
     _adicionar_coluna_se_faltar("painel_medicos", "observacoes", "TEXT")
     _adicionar_coluna_se_faltar("painel_medicos", "resultado_visita", "TEXT")
     _adicionar_coluna_se_faltar("visitas_log", "resultado", "TEXT")
-    _adicionar_coluna_se_faltar("usuarios", "meta_visitas_mes", "INTEGER")
+    _adicionar_coluna_se_faltar("usuarios", "sugestao_visitas_mes", "INTEGER")
+
+    # Renomeia "meta" pra "sugestão": em produção pra PJ não pode existir a
+    # palavra "meta" associada a visitas (poderia ser usada como indício de
+    # vínculo empregatício). Copia o que já estava salvo e apaga a coluna antiga.
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE usuarios SET sugestao_visitas_mes = meta_visitas_mes
+                WHERE meta_visitas_mes IS NOT NULL AND sugestao_visitas_mes IS NULL
+            """)
+        except Exception:
+            pass  # banco novo, "meta_visitas_mes" nunca existiu
+    _remover_coluna_se_existir("usuarios", "meta_visitas_mes")
 
     # Médicos já marcados como visitados antes dessas colunas existirem ficam
     # sem data: usa a data em que entraram no painel como aproximação. Depois,
@@ -257,6 +271,24 @@ def _adicionar_coluna_se_faltar(tabela: str, coluna: str, tipo_sql: str):
     try:
         cursor = conn.cursor()
         cursor.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo_sql}")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        conn.close()
+
+
+def _remover_coluna_se_existir(tabela: str, coluna: str):
+    """
+    Remove uma coluna que pode ter ficado de uma versão anterior do banco
+    (por exemplo, depois de renomear um campo). Só funciona em bancos
+    recentes (SQLite 3.35+/Postgres já suportam); se não suportar, ignora
+    silenciosamente — a coluna antiga só fica sem uso, sem quebrar nada.
+    """
+    conn = _get_conn_bruta()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(f"ALTER TABLE {tabela} DROP COLUMN {coluna}")
         conn.commit()
     except Exception:
         conn.rollback()
@@ -903,21 +935,23 @@ def contar_visitas_amanha(usuario_id: int, agora_utc=None) -> int:
 # Metas mensais e ranking entre promotores
 # ---------------------------------------------------------------------------
 
-def definir_meta_usuario(usuario_id: int, meta) -> bool:
-    """Define (ou remove, se meta for None) a meta de visitas do mês pra um
-    usuário. Só o admin chama isso."""
-    if meta is not None:
+def definir_sugestao_visitas(usuario_id: int, sugestao) -> bool:
+    """Define (ou remove, se sugestao for None) a sugestão de quantas visitas
+    fazer no mês, pra um usuário. Só o admin chama isso. Chamada de
+    "sugestão", não "meta": pra prestadores PJ, a palavra "meta" pode ser
+    usada como indício de vínculo empregatício."""
+    if sugestao is not None:
         try:
-            meta = int(meta)
+            sugestao = int(sugestao)
         except (TypeError, ValueError):
             return False
-        if meta < 0 or meta > 100000:
+        if sugestao < 0 or sugestao > 100000:
             return False
     with _conexao() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            _q("UPDATE usuarios SET meta_visitas_mes = ? WHERE id = ?"),
-            (meta, usuario_id),
+            _q("UPDATE usuarios SET sugestao_visitas_mes = ? WHERE id = ?"),
+            (sugestao, usuario_id),
         )
         return cursor.rowcount > 0
 
@@ -1261,9 +1295,9 @@ def estatisticas_usuario(usuario_id: int):
             )
             return {"prospectados": prospectados, "visitados": visitados}
 
-        cursor.execute(_q("SELECT meta_visitas_mes FROM usuarios WHERE id = ?"), (usuario_id,))
-        linha_meta = cursor.fetchone()
-        meta_visitas_mes = linha_meta["meta_visitas_mes"] if linha_meta else None
+        cursor.execute(_q("SELECT sugestao_visitas_mes FROM usuarios WHERE id = ?"), (usuario_id,))
+        linha_sugestao = cursor.fetchone()
+        sugestao_visitas_mes = linha_sugestao["sugestao_visitas_mes"] if linha_sugestao else None
 
         tabela_periodos = [
             {"label": "Hoje", **linha_periodo(hoje_ts)},
@@ -1330,9 +1364,9 @@ def estatisticas_usuario(usuario_id: int):
         """), (usuario_id, inicio_mes_atual_str))
         resultados_mes = {r["resultado"]: r["total"] for r in cursor.fetchall()}
 
-    progresso_meta_pct = None
-    if meta_visitas_mes:
-        progresso_meta_pct = round(min(100, visitados_mes_atual / meta_visitas_mes * 100))
+    progresso_sugestao_pct = None
+    if sugestao_visitas_mes:
+        progresso_sugestao_pct = round(min(100, visitados_mes_atual / sugestao_visitas_mes * 100))
 
     return {
         "total_prospectados": total_prospectados,
@@ -1348,7 +1382,7 @@ def estatisticas_usuario(usuario_id: int):
         "buscas_30d": buscas_30d,
         "top_especialidades": top_especialidades,
         "proximos_agendamentos": proximos_agendamentos,
-        "meta_visitas_mes": meta_visitas_mes,
-        "progresso_meta_pct": progresso_meta_pct,
+        "sugestao_visitas_mes": sugestao_visitas_mes,
+        "progresso_sugestao_pct": progresso_sugestao_pct,
         "resultados_mes": resultados_mes,
     }

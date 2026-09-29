@@ -174,15 +174,15 @@
         </div>
       </div>
 
-      <h3 class="modal-secao-titulo">Meta mensal de visitas</h3>
-      <div class="meta-bloco">
-        <div class="meta-editar">
-          <input type="number" id="dash-meta-input" class="meta-input" min="0" max="100000" placeholder="Sem meta definida">
-          <button type="button" id="dash-meta-salvar" class="meta-btn-salvar">Salvar meta</button>
+      <h3 class="modal-secao-titulo">Sugestão de visitas este mês</h3>
+      <div class="sugestao-bloco">
+        <div class="sugestao-editar">
+          <input type="number" id="dash-sugestao-input" class="sugestao-input" min="0" max="100000" placeholder="Sem sugestão definida">
+          <button type="button" id="dash-sugestao-salvar" class="sugestao-btn-salvar">Salvar sugestão</button>
         </div>
-        <div class="meta-progresso-wrap" id="dash-meta-progresso-wrap" style="display:none;">
-          <div class="meta-progresso-barra"><div class="meta-progresso-preenchido" id="dash-meta-barra"></div></div>
-          <span class="meta-progresso-texto" id="dash-meta-texto"></span>
+        <div class="sugestao-progresso-wrap" id="dash-sugestao-progresso-wrap" style="display:none;">
+          <div class="sugestao-progresso-barra"><div class="sugestao-progresso-preenchido" id="dash-sugestao-barra"></div></div>
+          <span class="sugestao-progresso-texto" id="dash-sugestao-texto"></span>
         </div>
       </div>
 
@@ -304,11 +304,11 @@
     const modalOverlayDash = document.getElementById('modal-overlay-dash');
     const modalDashTitulo = document.getElementById('modal-dash-titulo');
     const modalDashFechar = document.getElementById('modal-dash-fechar');
-    const metaInput = document.getElementById('dash-meta-input');
-    const metaSalvarBtn = document.getElementById('dash-meta-salvar');
-    const metaProgressoWrap = document.getElementById('dash-meta-progresso-wrap');
-    const metaBarra = document.getElementById('dash-meta-barra');
-    const metaTexto = document.getElementById('dash-meta-texto');
+    const sugestaoInput = document.getElementById('dash-sugestao-input');
+    const sugestaoSalvarBtn = document.getElementById('dash-sugestao-salvar');
+    const sugestaoProgressoWrap = document.getElementById('dash-sugestao-progresso-wrap');
+    const sugestaoBarra = document.getElementById('dash-sugestao-barra');
+    const sugestaoTexto = document.getElementById('dash-sugestao-texto');
     let graficoEspecialidadesUsuario = null;
     let usuarioDashAtualId = null;
 
@@ -326,13 +326,13 @@
           document.getElementById('dash-total-revisitar').textContent = dados.total_revisitar;
           document.getElementById('dash-visitados-mes').textContent = dados.visitados_mes_atual;
 
-          metaInput.value = dados.meta_visitas_mes || '';
-          if(dados.meta_visitas_mes && dados.progresso_meta_pct !== null){
-            metaProgressoWrap.style.display = 'flex';
-            metaBarra.style.width = dados.progresso_meta_pct + '%';
-            metaTexto.textContent = `${dados.visitados_mes_atual} de ${dados.meta_visitas_mes} visitas (${dados.progresso_meta_pct}%)`;
+          sugestaoInput.value = dados.sugestao_visitas_mes || '';
+          if(dados.sugestao_visitas_mes && dados.progresso_sugestao_pct !== null){
+            sugestaoProgressoWrap.style.display = 'flex';
+            sugestaoBarra.style.width = dados.progresso_sugestao_pct + '%';
+            sugestaoTexto.textContent = `${dados.visitados_mes_atual} de ${dados.sugestao_visitas_mes} visitas (${dados.progresso_sugestao_pct}%)`;
           } else {
-            metaProgressoWrap.style.display = 'none';
+            sugestaoProgressoWrap.style.display = 'none';
           }
 
           const variacaoEl = document.getElementById('dash-variacao-mes');
@@ -414,34 +414,34 @@
 
     modalDashFechar.addEventListener('click', () => modalOverlayDash.classList.remove('aberto'));
 
-    metaSalvarBtn.addEventListener('click', () => {
+    sugestaoSalvarBtn.addEventListener('click', () => {
       if(usuarioDashAtualId === null) return;
-      const valor = metaInput.value.trim();
+      const valor = sugestaoInput.value.trim();
       if(valor !== '' && (isNaN(valor) || Number(valor) < 0)){
-        mostrarAvisoNotif('Informe um número válido pra meta.');
+        mostrarAvisoNotif('Informe um número válido pra sugestão.');
         return;
       }
-      metaSalvarBtn.disabled = true;
-      metaSalvarBtn.textContent = 'Salvando...';
-      fetch(`/admin/usuarios/${usuarioDashAtualId}/meta`, {
+      sugestaoSalvarBtn.disabled = true;
+      sugestaoSalvarBtn.textContent = 'Salvando...';
+      fetch(`/admin/usuarios/${usuarioDashAtualId}/sugestao-visitas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ meta: valor === '' ? null : Number(valor) })
+        body: JSON.stringify({ sugestao: valor === '' ? null : Number(valor) })
       })
         .then(res => res.json())
         .then(resp => {
-          metaSalvarBtn.disabled = false;
-          metaSalvarBtn.textContent = 'Salvar meta';
+          sugestaoSalvarBtn.disabled = false;
+          sugestaoSalvarBtn.textContent = 'Salvar sugestão';
           if(resp.ok){
             abrirDashboardUsuario(usuarioDashAtualId, modalDashTitulo.textContent.replace('Dashboard — ', ''));
           } else {
-            mostrarAvisoNotif('Não foi possível salvar a meta.');
+            mostrarAvisoNotif('Não foi possível salvar a sugestão.');
           }
         })
         .catch(() => {
-          metaSalvarBtn.disabled = false;
-          metaSalvarBtn.textContent = 'Salvar meta';
-          mostrarAvisoNotif('Erro de conexão ao salvar a meta.');
+          sugestaoSalvarBtn.disabled = false;
+          sugestaoSalvarBtn.textContent = 'Salvar sugestão';
+          mostrarAvisoNotif('Erro de conexão ao salvar a sugestão.');
         });
     });
     modalOverlayDash.addEventListener('click', (e) => {
