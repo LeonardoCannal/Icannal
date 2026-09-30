@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, redirect, url_for
 from scraper import (
     buscar_medicos_doctoralia,
     buscar_medicos_sechat,
@@ -732,6 +732,22 @@ def admin_definir_sugestao(user_id):
         sugestao = None
     ok = definir_sugestao_visitas(user_id, sugestao)
     return jsonify({"ok": ok})
+
+
+@app.route("/sw.js")
+def service_worker():
+    # Precisa vir da raiz (não de /static/), senão o navegador só deixa ele
+    # controlar as páginas dentro de /static/ — e o objetivo é o site inteiro.
+    resposta = send_from_directory(resource_path("static"), "sw.js")
+    resposta.headers["Content-Type"] = "application/javascript"
+    resposta.headers["Service-Worker-Allowed"] = "/"
+    resposta.headers["Cache-Control"] = "no-cache"
+    return resposta
+
+
+@app.route("/offline")
+def offline():
+    return render_template("offline.html")
 
 
 def abrir_navegador():
