@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i.cannal · Base de médicos</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#171B22">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="i.cannal">
+<link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+<style>
+  .base-grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 860px){ .base-grid{ grid-template-columns: 1fr; } }
+
+  .base-instrucoes{ font-size: 13px; color: var(--cinza); line-height: 1.7; }
+  .base-instrucoes code{ background: var(--claro); padding: 1px 6px; border-radius: 6px; font-size: 12px; }
+  .base-instrucoes strong{ color: var(--escuro); }
+
+  .base-input{
+    width: 100%;
+    padding: 14px;
+    border: 1.5px dashed var(--claro);
+    border-radius: 12px;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 13px;
+    background: var(--fundo);
+    margin: 14px 0;
+  }
+
+  .base-resultado{ margin-top: 16px; font-size: 13px; line-height: 1.7; }
+  .base-resultado .ok{ color: var(--verde-escuro); font-weight: 700; }
+  .base-resultado .erro-linha{ color: #C13B3B; }
+  .base-resultado ul{ margin: 6px 0 0; padding-left: 18px; max-height: 220px; overflow-y: auto; }
+
+  .lista-slugs{
+    max-height: 360px;
+    overflow-y: auto;
+    border: 1px solid var(--claro);
+    border-radius: 12px;
+  }
+  .lista-slugs table{ width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .lista-slugs th{ position: sticky; top: 0; background: #fff; text-align: left; padding: 8px 12px; border-bottom: 1.5px solid var(--claro); }
+  .lista-slugs td{ padding: 7px 12px; border-bottom: 1px solid var(--claro); }
+  .lista-slugs td:first-child{ font-family: monospace; color: var(--verde-escuro); white-space: nowrap; }
+  .lista-slugs tr:last-child td{ border-bottom: none; }
+
+  .base-total{ font-size: 13px; color: var(--cinza); margin-bottom: 4px; }
+  .base-total strong{ color: var(--escuro); font-size: 20px; display: block; margin-bottom: 2px; }
+</style>
+</head>
+<body>
+  <div class="admin-header">
+    <svg class="logo-admin" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">
+      <polygon points="2,0 16,0 32,44 18,44" fill="#88AD36"/>
+      <polygon points="25,0 39,0 55,44 41,44" fill="#88AD36"/>
+      <text x="72" y="34" font-family="Montserrat, sans-serif" font-weight="900" font-size="34" textLength="204" lengthAdjust="spacing">
+        <tspan fill="#A8CC5A">I.</tspan><tspan fill="#FFFFFF">CANNAL</tspan>
+      </text>
+    </svg>
+    <div class="admin-header-direita">
+      <a href="{{ url_for('index') }}">Voltar ao i.cannal</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('perfil') }}">Meu Perfil</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('logout') }}">Sair</a>
+    </div>
+  </div>
+
+  <div class="hero-secao">
+    <div class="hero-secao-conteudo">
+      <h1>Base de médicos</h1>
+      <p>Importe uma planilha de médicos pra somar às buscas — sem depender dos sites externos.</p>
+    </div>
+  </div>
+
+  <div class="card-flutuante">
+    <div class="admin-nav">
+      <a href="{{ url_for('admin') }}" class="admin-nav-link">Usuários</a>
+      <a href="{{ url_for('admin_dashboard') }}" class="admin-nav-link">Dashboard</a>
+      <a href="{{ url_for('admin_base_propria') }}" class="admin-nav-link ativo">Base de médicos</a>
+    </div>
+
+    <div class="base-total">
+      <strong id="base-total-numero">{{ total_base }}</strong>
+      médico(s) na base própria agora
+    </div>
+
+    <div class="base-grid">
+      <div>
+        <h3 class="modal-secao-titulo" style="margin-top:18px;">Importar planilha (CSV)</h3>
+        <div class="base-instrucoes">
+          O arquivo precisa ter, na primeira linha, os nomes das colunas. Só <strong>nome</strong> e
+          <strong>especialidade</strong> são obrigatórias; as outras ajudam a busca a ser mais precisa:
+          <br><br>
+          <code>nome, crm, especialidade, cidade, uf, endereco, telefone</code>
+          <br><br>
+          Na coluna <strong>especialidade</strong>, use exatamente um dos códigos da lista ao lado
+          (por exemplo <code>cardiologista</code>, não "Cardiologista" nem "Cardiologia") — é assim que o
+          sistema casa o médico importado com o que o usuário escolhe na busca.
+          <br><br>
+          Pode importar a mesma planilha mais de uma vez pra atualizar os dados: um médico já existente
+          (mesmo CRM, ou mesmo nome + cidade) tem as informações atualizadas em vez de duplicado.
+          Limite de 20.000 médicos por arquivo.
+        </div>
+
+        <input type="file" id="base-arquivo" accept=".csv" class="base-input">
+        <button type="button" id="base-enviar" class="btn-cadastrar-manual">Importar</button>
+
+        <div id="base-resultado" class="base-resultado"></div>
+      </div>
+
+      <div>
+        <h3 class="modal-secao-titulo" style="margin-top:18px;">Códigos de especialidade aceitos</h3>
+        <div class="lista-slugs">
+          <table>
+            <thead><tr><th>Código (use na planilha)</th><th>Nome</th></tr></thead>
+            <tbody>
+              {% for slug, nome in especialidades %}
+              <tr><td>{{ slug }}</td><td>{{ nome }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  function esc(valor){
+    return String(valor == null ? '' : valor)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  const inputArquivo = document.getElementById('base-arquivo');
+  const btnEnviar = document.getElementById('base-enviar');
+  const divResultado = document.getElementById('base-resultado');
+  const totalNumero = document.getElementById('base-total-numero');
+
+  btnEnviar.addEventListener('click', () => {
+    const arquivo = inputArquivo.files[0];
+    if(!arquivo){
+      divResultado.innerHTML = '<span class="erro-linha">Escolha um arquivo .csv primeiro.</span>';
+      return;
+    }
+
+    const dados = new FormData();
+    dados.append('arquivo', arquivo);
+
+    btnEnviar.disabled = true;
+    btnEnviar.textContent = 'Importando...';
+    divResultado.innerHTML = '';
+
+    fetch('/admin/base-propria/importar', { method: 'POST', body: dados })
+      .then(res => res.json())
+      .then(resp => {
+        btnEnviar.disabled = false;
+        btnEnviar.textContent = 'Importar';
+
+        if(!resp.ok){
+          divResultado.innerHTML = `<span class="erro-linha">${esc(resp.mensagem || 'Não foi possível importar.')}</span>`;
+          return;
+        }
+
+        let html = `<span class="ok">${resp.adicionados} adicionado(s), ${resp.atualizados} atualizado(s)</span> de ${resp.total} linha(s) no arquivo.`;
+        if(resp.erros && resp.erros.length > 0){
+          html += `<br><br>${resp.erros.length} linha(s) com problema:<ul>`;
+          resp.erros.slice(0, 50).forEach(e => {
+            html += `<li class="erro-linha">Linha ${e.linha}: ${esc(e.motivo)}</li>`;
+          });
+          if(resp.erros.length > 50) html += `<li>... e mais ${resp.erros.length - 50}.</li>`;
+          html += '</ul>';
+        }
+        divResultado.innerHTML = html;
+        totalNumero.textContent = Number(totalNumero.textContent) + resp.adicionados;
+      })
+      .catch(() => {
+        btnEnviar.disabled = false;
+        btnEnviar.textContent = 'Importar';
+        divResultado.innerHTML = '<span class="erro-linha">Erro de conexão ao importar.</span>';
+      });
+  });
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>

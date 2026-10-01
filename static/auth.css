@@ -320,6 +320,7 @@ body{
 .admin-nav{
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
   margin-bottom: 22px;
   border-bottom: 1.5px solid var(--claro);
 }
@@ -786,6 +787,60 @@ table.tabela-admin tbody tr:hover{ background: var(--fundo); }
 }
 
 .sugestao-progresso-texto{ font-size: 12px; font-weight: 700; color: var(--cinza); white-space: nowrap; }
+
+/* Modal "Adicionar médicos" (admin inserindo no painel de um usuário) */
+.modal-adicionar-painel{ max-width: 620px; }
+
+.form-grid-2col{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+}
+
+.campo-largura-total{ grid-column: 1 / -1; }
+
+.campo select{
+  width: 100%;
+  padding: 13px 15px;
+  border: 1.5px solid var(--claro);
+  border-radius: 12px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 14px;
+  color: var(--escuro);
+  background: var(--fundo);
+}
+
+.campo select:focus{
+  outline: none;
+  border-color: var(--verde);
+  background: #fff;
+  box-shadow: 0 0 0 4px var(--verde-suave);
+}
+
+@media (max-width: 600px){
+  .form-grid-2col{ grid-template-columns: 1fr; }
+}
+
+/* Reutilizado em qualquer tela de importar planilha (CSV) */
+.base-instrucoes{ font-size: 13px; color: var(--cinza); line-height: 1.7; margin: 10px 0; }
+.base-instrucoes code{ background: var(--claro); padding: 1px 6px; border-radius: 6px; font-size: 12px; }
+.base-instrucoes strong{ color: var(--escuro); }
+
+.base-input{
+  width: 100%;
+  padding: 14px;
+  border: 1.5px dashed var(--claro);
+  border-radius: 12px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 13px;
+  background: var(--fundo);
+  margin-bottom: 10px;
+}
+
+.base-resultado{ margin-top: 14px; margin-bottom: 24px; font-size: 13px; line-height: 1.7; }
+.base-resultado .ok{ color: var(--verde-escuro); font-weight: 700; }
+.base-resultado .erro-linha{ color: #C13B3B; }
+.base-resultado ul{ margin: 6px 0 0; padding-left: 18px; max-height: 180px; overflow-y: auto; }
 
 table.tabela-periodos{
   width: 100%;
