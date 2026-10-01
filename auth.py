@@ -32,6 +32,7 @@ PAINEL MÉDICO:
 import os
 import re
 import sqlite3
+import unicodedata
 from contextlib import contextmanager
 from functools import wraps
 from datetime import datetime, timedelta
@@ -125,6 +126,22 @@ def inicializar_auth(app, sqlite_path):
                 UNIQUE(usuario_id, data, horario)
             )
         """
+        sql_base_propria = """
+            CREATE TABLE IF NOT EXISTS medicos_base_propria (
+                id SERIAL PRIMARY KEY,
+                chave_medico TEXT NOT NULL UNIQUE,
+                nome TEXT NOT NULL,
+                crm TEXT,
+                especialidade TEXT NOT NULL,
+                cidade TEXT,
+                cidade_norm TEXT,
+                uf TEXT,
+                endereco TEXT,
+                telefone TEXT,
+                importado_em TEXT NOT NULL,
+                importado_por INTEGER REFERENCES usuarios(id)
+            )
+        """
     else:
         sql_usuarios = """
             CREATE TABLE IF NOT EXISTS usuarios (
@@ -191,6 +208,22 @@ def inicializar_auth(app, sqlite_path):
                 UNIQUE(usuario_id, data, horario)
             )
         """
+        sql_base_propria = """
+            CREATE TABLE IF NOT EXISTS medicos_base_propria (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chave_medico TEXT NOT NULL UNIQUE,
+                nome TEXT NOT NULL,
+                crm TEXT,
+                especialidade TEXT NOT NULL,
+                cidade TEXT,
+                cidade_norm TEXT,
+                uf TEXT,
+                endereco TEXT,
+                telefone TEXT,
+                importado_em TEXT NOT NULL,
+                importado_por INTEGER REFERENCES usuarios(id)
+            )
+        """
 
     with _conexao() as conn:
         cursor = conn.cursor()
@@ -200,6 +233,7 @@ def inicializar_auth(app, sqlite_path):
         cursor.execute(sql_solicitacoes_senha)
         cursor.execute(sql_agenda)
         cursor.execute(sql_visitas)
+        cursor.execute(sql_base_propria)
 
     # Bancos criados antes dessa versão não têm essa coluna — adiciona sem
     # quebrar se ela já existir (mesmo problema que já pegou o "cpf" antes).
@@ -483,6 +517,141 @@ def computar_chave_medico(medico: dict) -> str:
     return f"nomecidade:{nome_norm}|{cidade_norm}"
 
 
+def _normalizar_cidade(cidade: str) -> str:
+    """Tira acento, deixa minúsculo — pra 'São Paulo' e 'Sao paulo' darem
+    o mesmo resultado na hora de comparar/filtrar."""
+    sem_acento = unicodedata.normalize("NFKD", cidade or "").encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", sem_acento.strip().lower())
+
+
+LIMITE_IMPORTACAO_BASE = 20000
+
+
+def importar_base_propria(admin_usuario_id: int, linhas: list, slugs_validos: set):
+    """
+    Importa uma planilha de médicos (comprada de terceiros, por exemplo)
+    pra base própria do sistema — fica disponível pra qualquer busca, sem
+    depender dos sites externos. Se o médico (pelo CRM, ou nome+cidade) já
+    estava na base, atualiza os dados em vez de duplicar.
+
+    `linhas`: lista de dicts com nome, crm, especialidade (slug), cidade,
+    uf, endereco, telefone. `slugs_validos`: o conjunto de slugs de
+    especialidade que o sistema reconhece (pra recusar linha com
+    especialidade desconhecida, em vez de aceitar qualquer texto).
+    Devolve um resumo: quantos entraram/atualizaram, e os erros por linha.
+    """
+    if len(linhas) > LIMITE_IMPORTACAO_BASE:
+        return {
+            "adicionados": 0, "atualizados": 0, "total": len(linhas),
+            "erros": [{"linha": 0, "motivo": f"Máximo de {LIMITE_IMPORTACAO_BASE} médicos por arquivo."}],
+        }
+
+    agora = datetime.utcnow().isoformat()
+    adicionados = 0
+    atualizados = 0
+    erros = []
+
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        for i, linha in enumerate(linhas, start=2):  # linha 1 do arquivo é o cabeçalho
+            nome = (linha.get("nome") or "").strip()
+            especialidade = (linha.get("especialidade") or "").strip().lower()
+            cidade = (linha.get("cidade") or "").strip()
+            crm = (linha.get("crm") or "").strip()
+            uf = (linha.get("uf") or "").strip().upper()
+            endereco = (linha.get("endereco") or "").strip()
+            telefone = (linha.get("telefone") or "").strip()
+
+            if not nome:
+                erros.append({"linha": i, "motivo": "Sem nome — linha ignorada."})
+                continue
+            if especialidade not in slugs_validos:
+                erros.append({"linha": i, "motivo": f"{nome}: especialidade \"{especialidade}\" não reconhecida."})
+                continue
+
+            chave = computar_chave_medico({"crm": crm, "nome": nome, "cidade": cidade})
+
+            cursor.execute(_q("SELECT id FROM medicos_base_propria WHERE chave_medico = ?"), (chave,))
+            existente = cursor.fetchone()
+
+            if existente:
+                cursor.execute(
+                    _q("""UPDATE medicos_base_propria
+                          SET nome = ?, crm = ?, especialidade = ?, cidade = ?, cidade_norm = ?,
+                              uf = ?, endereco = ?, telefone = ?, importado_em = ?, importado_por = ?
+                          WHERE id = ?"""),
+                    (nome, crm, especialidade, cidade, _normalizar_cidade(cidade), uf, endereco, telefone,
+                     agora, admin_usuario_id, existente["id"]),
+                )
+                atualizados += 1
+            else:
+                try:
+                    cursor.execute(
+                        _q("""INSERT INTO medicos_base_propria
+                              (chave_medico, nome, crm, especialidade, cidade, cidade_norm, uf, endereco, telefone, importado_em, importado_por)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""),
+                        (chave, nome, crm, especialidade, cidade, _normalizar_cidade(cidade), uf, endereco, telefone,
+                         agora, admin_usuario_id),
+                    )
+                    adicionados += 1
+                except ErroIntegridade:
+                    erros.append({"linha": i, "motivo": f"{nome}: já existe na base (conflito ao salvar)."})
+
+    return {"adicionados": adicionados, "atualizados": atualizados, "total": len(linhas), "erros": erros}
+
+
+def buscar_base_propria(especialidade_slugs: list, cidade: str, uf: str, nomes_especialidades: dict):
+    """
+    Busca médicos na base própria (importada) que batem com a especialidade
+    e a cidade escolhidas na tela de busca. Devolve no mesmo formato que os
+    resultados dos sites externos, pra entrar junto na mesma lista.
+    `nomes_especialidades`: dict slug -> nome de exibição (ex.: "cardiologista" -> "Cardiologista").
+    """
+    if not especialidade_slugs:
+        return []
+
+    cidade_norm = _normalizar_cidade(cidade)
+    marcadores = ",".join(["?"] * len(especialidade_slugs))
+
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        if uf:
+            cursor.execute(
+                _q(f"""SELECT * FROM medicos_base_propria
+                       WHERE especialidade IN ({marcadores}) AND cidade_norm = ? AND UPPER(uf) = ?"""),
+                (*especialidade_slugs, cidade_norm, uf.upper()),
+            )
+        else:
+            cursor.execute(
+                _q(f"""SELECT * FROM medicos_base_propria
+                       WHERE especialidade IN ({marcadores}) AND cidade_norm = ?"""),
+                (*especialidade_slugs, cidade_norm),
+            )
+        linhas = cursor.fetchall()
+
+    resultado = []
+    for linha in linhas:
+        resultado.append({
+            "nome": linha["nome"],
+            "crm": linha["crm"] or "Não encontrado",
+            "cidade": linha["cidade"] or "Não encontrado",
+            "uf": linha["uf"] or "Não encontrado",
+            "endereco": linha["endereco"] or "Não encontrado",
+            "telefone": linha["telefone"] or "Não disponível",
+            "especialidade": nomes_especialidades.get(linha["especialidade"], linha["especialidade"]),
+            "perfil_url": "Não encontrado",
+            "fonte": "Base própria",
+        })
+    return resultado
+
+
+def contar_base_propria():
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) AS total FROM medicos_base_propria")
+        return cursor.fetchone()["total"]
+
+
 def adicionar_ao_painel(usuario_id: int, medico: dict):
     """
     Adiciona um médico ao painel do usuário, como 'prospectado'.
@@ -523,6 +692,42 @@ def adicionar_ao_painel(usuario_id: int, medico: dict):
         except ErroIntegridade:
             return False, "Esse médico já está no seu painel."
     return True, "Adicionado ao painel médico."
+
+
+LIMITE_IMPORTACAO_PAINEL_ADMIN = 5000
+
+
+def admin_importar_painel_usuario(usuario_alvo_id: int, linhas: list):
+    """
+    O admin insere vários médicos de uma vez direto no painel de um usuário
+    específico (planilha de leads comprados, por exemplo). Usa a mesma regra
+    de sempre: nome é obrigatório, e um médico que já está em outro painel
+    (do mesmo usuário ou de outro) não entra duas vezes. Não interrompe no
+    meio — cada linha com problema é reportada, e o resto continua.
+    """
+    if len(linhas) > LIMITE_IMPORTACAO_PAINEL_ADMIN:
+        return {
+            "adicionados": 0, "total": len(linhas),
+            "erros": [{"linha": 0, "motivo": f"Máximo de {LIMITE_IMPORTACAO_PAINEL_ADMIN} médicos por arquivo."}],
+        }
+
+    adicionados = 0
+    erros = []
+    for i, linha in enumerate(linhas, start=2):  # linha 1 do arquivo é o cabeçalho
+        medico = {
+            campo: (linha.get(campo) or "").strip()
+            for campo in ("nome", "crm", "especialidade", "cidade", "uf", "endereco", "telefone")
+        }
+        if not medico["nome"]:
+            erros.append({"linha": i, "motivo": "Sem nome — linha ignorada."})
+            continue
+        ok, mensagem = adicionar_ao_painel(usuario_alvo_id, medico)
+        if ok:
+            adicionados += 1
+        else:
+            erros.append({"linha": i, "motivo": f"{medico['nome']}: {mensagem}"})
+
+    return {"adicionados": adicionados, "total": len(linhas), "erros": erros}
 
 
 RESULTADOS_VISITA = {

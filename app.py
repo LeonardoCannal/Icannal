@@ -49,6 +49,10 @@ from auth import (
     definir_sugestao_visitas,
     RESULTADOS_VISITA,
     buscar_compromisso_do_medico,
+    importar_base_propria,
+    buscar_base_propria,
+    contar_base_propria,
+    admin_importar_painel_usuario,
     data_valida,
 )
 import webbrowser
@@ -57,6 +61,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import sys
 import os
 import io
+import csv
 import secrets
 import time
 from datetime import datetime
@@ -563,6 +568,11 @@ def api_buscar():
     todos_medicos = []
     fontes_com_erro = []
 
+    # A base própria (médicos importados de planilha) não depende de
+    # internet nem de site nenhum — é só uma consulta no banco, então entra
+    # direto na lista, sem precisar do ThreadPoolExecutor.
+    todos_medicos.extend(buscar_base_propria(especialidades_selecionadas, cidade, uf, NOMES_ESPECIALIDADES))
+
     # Roda tudo em paralelo (até 12 buscas ao mesmo tempo) em vez de uma
     # atrás da outra — é isso que evita o erro de timeout quando várias
     # especialidades são selecionadas juntas.
@@ -732,6 +742,114 @@ def admin_definir_sugestao(user_id):
         sugestao = None
     ok = definir_sugestao_visitas(user_id, sugestao)
     return jsonify({"ok": ok})
+
+
+@app.route("/admin/base-propria")
+@admin_required
+def admin_base_propria():
+    especialidades_ordenadas = sorted(NOMES_ESPECIALIDADES.items(), key=lambda item: item[1])
+    return render_template(
+        "base_propria.html",
+        total_base=contar_base_propria(),
+        especialidades=especialidades_ordenadas,
+    )
+
+
+@app.route("/admin/base-propria/importar", methods=["POST"])
+@admin_required
+def admin_base_propria_importar():
+    arquivo = request.files.get("arquivo")
+    if not arquivo or not arquivo.filename:
+        return jsonify({"ok": False, "mensagem": "Selecione um arquivo CSV."}), 400
+    if not arquivo.filename.lower().endswith(".csv"):
+        return jsonify({"ok": False, "mensagem": "O arquivo precisa ser um .csv."}), 400
+
+    bruto = arquivo.read(10 * 1024 * 1024)  # limite de 10 MB
+    try:
+        texto = bruto.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            texto = bruto.decode("latin-1")
+        except UnicodeDecodeError:
+            return jsonify({"ok": False, "mensagem": "Não foi possível ler esse arquivo. Salve como CSV (UTF-8) e tente de novo."}), 400
+
+    try:
+        amostra = texto[:2000]
+        separador = ";" if amostra.count(";") > amostra.count(",") else ","
+        leitor = csv.DictReader(io.StringIO(texto), delimiter=separador)
+        leitor.fieldnames = [(nome or "").strip().lower() for nome in (leitor.fieldnames or [])]
+        colunas_obrigatorias = {"nome", "especialidade"}
+        if not colunas_obrigatorias.issubset(set(leitor.fieldnames)):
+            return jsonify({
+                "ok": False,
+                "mensagem": "O CSV precisa ter as colunas 'nome' e 'especialidade'. Colunas aceitas: nome, crm, especialidade, cidade, uf, endereco, telefone.",
+            }), 400
+        linhas = list(leitor)
+    except csv.Error:
+        return jsonify({"ok": False, "mensagem": "Não foi possível ler esse CSV. Confira o formato do arquivo."}), 400
+
+    if not linhas:
+        return jsonify({"ok": False, "mensagem": "O arquivo está vazio."}), 400
+
+    usuario = usuario_logado()
+    resultado = importar_base_propria(usuario["id"], linhas, set(ESPECIALIDADES.keys()))
+    return jsonify({"ok": True, **resultado})
+
+
+@app.route("/admin/usuarios/<int:user_id>/painel/adicionar", methods=["POST"])
+@admin_required
+def admin_painel_adicionar(user_id):
+    if not buscar_usuario_por_id(user_id):
+        return jsonify({"ok": False, "mensagem": "Usuário não encontrado."}), 404
+
+    medico = _corpo_json()
+    if not medico.get("nome"):
+        return jsonify({"ok": False, "mensagem": "Dados do médico incompletos."}), 400
+
+    ok, mensagem = adicionar_ao_painel(user_id, medico)
+    return jsonify({"ok": ok, "mensagem": mensagem})
+
+
+@app.route("/admin/usuarios/<int:user_id>/painel/importar", methods=["POST"])
+@admin_required
+def admin_painel_importar(user_id):
+    if not buscar_usuario_por_id(user_id):
+        return jsonify({"ok": False, "mensagem": "Usuário não encontrado."}), 404
+
+    arquivo = request.files.get("arquivo")
+    if not arquivo or not arquivo.filename:
+        return jsonify({"ok": False, "mensagem": "Selecione um arquivo CSV."}), 400
+    if not arquivo.filename.lower().endswith(".csv"):
+        return jsonify({"ok": False, "mensagem": "O arquivo precisa ser um .csv."}), 400
+
+    bruto = arquivo.read(10 * 1024 * 1024)  # limite de 10 MB
+    try:
+        texto = bruto.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            texto = bruto.decode("latin-1")
+        except UnicodeDecodeError:
+            return jsonify({"ok": False, "mensagem": "Não foi possível ler esse arquivo. Salve como CSV (UTF-8) e tente de novo."}), 400
+
+    try:
+        amostra = texto[:2000]
+        separador = ";" if amostra.count(";") > amostra.count(",") else ","
+        leitor = csv.DictReader(io.StringIO(texto), delimiter=separador)
+        leitor.fieldnames = [(nome or "").strip().lower() for nome in (leitor.fieldnames or [])]
+        if "nome" not in leitor.fieldnames:
+            return jsonify({
+                "ok": False,
+                "mensagem": "O CSV precisa ter uma coluna 'nome'. Colunas aceitas: nome, crm, especialidade, cidade, uf, endereco, telefone.",
+            }), 400
+        linhas = list(leitor)
+    except csv.Error:
+        return jsonify({"ok": False, "mensagem": "Não foi possível ler esse CSV. Confira o formato do arquivo."}), 400
+
+    if not linhas:
+        return jsonify({"ok": False, "mensagem": "O arquivo está vazio."}), 400
+
+    resultado = admin_importar_painel_usuario(user_id, linhas)
+    return jsonify({"ok": True, **resultado})
 
 
 @app.route("/sw.js")

@@ -78,6 +78,7 @@
       <div class="admin-nav">
         <a href="{{ url_for('admin') }}" class="admin-nav-link ativo">Usuários</a>
         <a href="{{ url_for('admin_dashboard') }}" class="admin-nav-link">Dashboard</a>
+        <a href="{{ url_for('admin_base_propria') }}" class="admin-nav-link">Base de médicos</a>
       </div>
 
       <div class="tabela-scroll">
@@ -93,6 +94,7 @@
             <th>Painel médico</th>
             <th></th>
             <th></th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -105,6 +107,9 @@
             <td>{{ usuario.ultimo_login }}</td>
             <td>{% if usuario.is_admin %}<span class="badge-admin">Admin</span>{% else %}-{% endif %}</td>
             <td>{{ usuario.total_painel }} médico(s)</td>
+            <td>
+              <button type="button" class="link-exportar btn-adicionar-medicos" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">+ Adicionar médicos</button>
+            </td>
             <td>
               {% if usuario.total_painel > 0 %}
               <button type="button" class="link-exportar btn-abrir-painel" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">Abrir painel médico</button>
@@ -218,6 +223,50 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="modal-overlay-adicionar">
+    <div class="modal-painel modal-adicionar-painel">
+      <div class="modal-cabecalho">
+        <h2 id="add-medicos-titulo">Adicionar médicos</h2>
+        <button type="button" id="add-medicos-fechar" class="modal-fechar" aria-label="Fechar">&times;</button>
+      </div>
+
+      <h3 class="modal-secao-titulo" style="margin-top:0;">Adicionar 1 médico</h3>
+      <div class="form-grid-2col">
+        <div class="campo"><label>Nome *</label><input type="text" id="add-med-nome"></div>
+        <div class="campo"><label>CRM</label><input type="text" id="add-med-crm"></div>
+        <div class="campo"><label>Especialidade</label><input type="text" id="add-med-especialidade"></div>
+        <div class="campo"><label>Cidade</label><input type="text" id="add-med-cidade"></div>
+        <div class="campo">
+          <label>UF</label>
+          <select id="add-med-uf">
+            <option value="">--</option>
+            <option>AC</option><option>AL</option><option>AP</option><option>AM</option>
+            <option>BA</option><option>CE</option><option>DF</option><option>ES</option>
+            <option>GO</option><option>MA</option><option>MT</option><option>MS</option>
+            <option>MG</option><option>PA</option><option>PB</option><option>PR</option>
+            <option>PE</option><option>PI</option><option>RJ</option><option>RN</option>
+            <option>RS</option><option>RO</option><option>RR</option><option>SC</option>
+            <option>SP</option><option>SE</option><option>TO</option>
+          </select>
+        </div>
+        <div class="campo"><label>Telefone</label><input type="text" id="add-med-telefone"></div>
+        <div class="campo campo-largura-total"><label>Endereço</label><input type="text" id="add-med-endereco"></div>
+      </div>
+      <button type="button" id="add-med-salvar" class="btn-cadastrar-manual">Adicionar ao painel</button>
+      <div id="add-med-resultado" class="base-resultado"></div>
+
+      <h3 class="modal-secao-titulo">Importar planilha (CSV)</h3>
+      <div class="base-instrucoes">
+        Colunas aceitas: <code>nome, crm, especialidade, cidade, uf, endereco, telefone</code>.
+        Só <strong>nome</strong> é obrigatória. Um médico que já está em outro painel não é
+        duplicado — a linha é reportada como erro.
+      </div>
+      <input type="file" id="add-csv-arquivo" accept=".csv" class="base-input">
+      <button type="button" id="add-csv-enviar" class="btn-cadastrar-manual">Importar planilha</button>
+      <div id="add-csv-resultado" class="base-resultado"></div>
+    </div>
+  </div>
+
   <div class="aviso-overlay" id="aviso-overlay-notif">
     <div class="aviso-card">
       <p class="aviso-texto-erro" id="aviso-texto-notif"></p>
@@ -305,6 +354,130 @@
       botao.addEventListener('click', () => {
         abrirPainelDoUsuario(botao.dataset.id, botao.dataset.nome);
       });
+    });
+
+    // ===== Adicionar médicos direto no painel de um usuário (admin) =====
+    const modalOverlayAdicionar = document.getElementById('modal-overlay-adicionar');
+    const addMedicosTitulo = document.getElementById('add-medicos-titulo');
+    const addMedicosFechar = document.getElementById('add-medicos-fechar');
+    const addMedNome = document.getElementById('add-med-nome');
+    const addMedCrm = document.getElementById('add-med-crm');
+    const addMedEspecialidade = document.getElementById('add-med-especialidade');
+    const addMedCidade = document.getElementById('add-med-cidade');
+    const addMedUf = document.getElementById('add-med-uf');
+    const addMedTelefone = document.getElementById('add-med-telefone');
+    const addMedEndereco = document.getElementById('add-med-endereco');
+    const addMedSalvarBtn = document.getElementById('add-med-salvar');
+    const addMedResultado = document.getElementById('add-med-resultado');
+    const addCsvArquivo = document.getElementById('add-csv-arquivo');
+    const addCsvEnviarBtn = document.getElementById('add-csv-enviar');
+    const addCsvResultado = document.getElementById('add-csv-resultado');
+    let usuarioAdicionarId = null;
+
+    function abrirModalAdicionar(id, nome){
+      usuarioAdicionarId = id;
+      addMedicosTitulo.textContent = `Adicionar médicos — ${nome}`;
+      [addMedNome, addMedCrm, addMedEspecialidade, addMedCidade, addMedTelefone, addMedEndereco].forEach(campo => campo.value = '');
+      addMedUf.value = '';
+      addMedResultado.innerHTML = '';
+      addCsvArquivo.value = '';
+      addCsvResultado.innerHTML = '';
+      modalOverlayAdicionar.classList.add('aberto');
+    }
+
+    document.querySelectorAll('.btn-adicionar-medicos').forEach(botao => {
+      botao.addEventListener('click', () => {
+        abrirModalAdicionar(botao.dataset.id, botao.dataset.nome);
+      });
+    });
+
+    addMedicosFechar.addEventListener('click', () => modalOverlayAdicionar.classList.remove('aberto'));
+    modalOverlayAdicionar.addEventListener('click', (e) => {
+      if(e.target === modalOverlayAdicionar) modalOverlayAdicionar.classList.remove('aberto');
+    });
+
+    addMedSalvarBtn.addEventListener('click', () => {
+      if(usuarioAdicionarId === null) return;
+      if(!addMedNome.value.trim()){
+        addMedResultado.innerHTML = '<span class="erro-linha">Informe ao menos o nome do médico.</span>';
+        return;
+      }
+      const medico = {
+        nome: addMedNome.value.trim(),
+        crm: addMedCrm.value.trim(),
+        especialidade: addMedEspecialidade.value.trim(),
+        cidade: addMedCidade.value.trim(),
+        uf: addMedUf.value,
+        telefone: addMedTelefone.value.trim(),
+        endereco: addMedEndereco.value.trim(),
+      };
+      addMedSalvarBtn.disabled = true;
+      addMedSalvarBtn.textContent = 'Adicionando...';
+      fetch(`/admin/usuarios/${usuarioAdicionarId}/painel/adicionar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(medico)
+      })
+        .then(res => res.json())
+        .then(resp => {
+          addMedSalvarBtn.disabled = false;
+          addMedSalvarBtn.textContent = 'Adicionar ao painel';
+          if(resp.ok){
+            addMedResultado.innerHTML = `<span class="ok">${resp.mensagem}</span>`;
+            [addMedNome, addMedCrm, addMedEspecialidade, addMedCidade, addMedTelefone, addMedEndereco].forEach(campo => campo.value = '');
+            addMedUf.value = '';
+          } else {
+            addMedResultado.innerHTML = `<span class="erro-linha">${resp.mensagem}</span>`;
+          }
+        })
+        .catch(() => {
+          addMedSalvarBtn.disabled = false;
+          addMedSalvarBtn.textContent = 'Adicionar ao painel';
+          addMedResultado.innerHTML = '<span class="erro-linha">Erro de conexão.</span>';
+        });
+    });
+
+    addCsvEnviarBtn.addEventListener('click', () => {
+      if(usuarioAdicionarId === null) return;
+      const arquivo = addCsvArquivo.files[0];
+      if(!arquivo){
+        addCsvResultado.innerHTML = '<span class="erro-linha">Escolha um arquivo .csv primeiro.</span>';
+        return;
+      }
+      const dados = new FormData();
+      dados.append('arquivo', arquivo);
+
+      addCsvEnviarBtn.disabled = true;
+      addCsvEnviarBtn.textContent = 'Importando...';
+      addCsvResultado.innerHTML = '';
+
+      fetch(`/admin/usuarios/${usuarioAdicionarId}/painel/importar`, { method: 'POST', body: dados })
+        .then(res => res.json())
+        .then(resp => {
+          addCsvEnviarBtn.disabled = false;
+          addCsvEnviarBtn.textContent = 'Importar planilha';
+
+          if(!resp.ok){
+            addCsvResultado.innerHTML = `<span class="erro-linha">${resp.mensagem || 'Não foi possível importar.'}</span>`;
+            return;
+          }
+
+          let html = `<span class="ok">${resp.adicionados} médico(s) adicionado(s)</span> de ${resp.total} linha(s) no arquivo.`;
+          if(resp.erros && resp.erros.length > 0){
+            html += `<br><br>${resp.erros.length} linha(s) com problema:<ul>`;
+            resp.erros.slice(0, 50).forEach(e => {
+              html += `<li class="erro-linha">Linha ${e.linha}: ${esc(e.motivo)}</li>`;
+            });
+            if(resp.erros.length > 50) html += `<li>... e mais ${resp.erros.length - 50}.</li>`;
+            html += '</ul>';
+          }
+          addCsvResultado.innerHTML = html;
+        })
+        .catch(() => {
+          addCsvEnviarBtn.disabled = false;
+          addCsvEnviarBtn.textContent = 'Importar planilha';
+          addCsvResultado.innerHTML = '<span class="erro-linha">Erro de conexão ao importar.</span>';
+        });
     });
 
     // ===== Dashboard individual do usuário (clique no nome) =====
