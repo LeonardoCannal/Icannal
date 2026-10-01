@@ -490,7 +490,7 @@
     margin-top:9px;
   }
 
-  .painel-btn-mover, .painel-btn-agendar, .painel-btn-maps, .painel-btn-cancelar{
+  .painel-btn-mover, .painel-btn-agendar, .painel-btn-maps, .painel-btn-cancelar, .painel-btn-whatsapp{
     background:transparent;
     border:1.5px solid var(--roxo);
     color:#5C7A22;
@@ -516,6 +516,10 @@
   .painel-btn-maps{ border-color:var(--borda); color:var(--texto-suave); }
   .painel-btn-maps:hover{ background:var(--texto); border-color:var(--texto); color:#fff; }
   .painel-btn-maps svg{ width:13px; height:13px; }
+
+  .painel-btn-whatsapp{ border-color:#25D366; color:#1C9950; }
+  .painel-btn-whatsapp:hover{ background:#25D366; border-color:#25D366; color:#fff; }
+  .painel-btn-whatsapp svg{ width:13px; height:13px; }
 
   /* Banner de inatividade */
   .banner-inatividade{
@@ -1593,6 +1597,17 @@
     window.open('https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(endereco), '_blank');
   }
 
+  // Limpa o telefone e devolve só os números, prontos pro link do WhatsApp
+  // (com o 55 do Brasil na frente). null se não tiver telefone de verdade —
+  // os valores "Não encontrado"/"Não disponível" não têm dígito nenhum,
+  // então caem fora sozinhos.
+  function numeroWhatsApp(telefone){
+    const digitos = String(telefone || '').replace(/\D/g, '');
+    if(digitos.length < 10) return null;
+    if(digitos.length <= 11) return '55' + digitos;
+    return digitos;
+  }
+
   function criarCardPainel(item, coluna){
     const div = document.createElement('div');
     div.className = 'painel-card';
@@ -1674,6 +1689,16 @@
       btnMaps.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 6-9 12-9 12S3 16 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Maps';
       btnMaps.addEventListener('click', () => abrirNoMaps(item));
       acoes.appendChild(btnMaps);
+    }
+
+    const numWhats = numeroWhatsApp(item.telefone);
+    if(numWhats){
+      const btnWhats = document.createElement('button');
+      btnWhats.type = 'button';
+      btnWhats.className = 'painel-btn-whatsapp';
+      btnWhats.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5.1-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3.1.8.8-3-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.2-.7.8-.8.9-.1.2-.3.2-.5.1-.2-.1-1-.4-1.9-1.2-.7-.6-1.2-1.4-1.3-1.6-.1-.2 0-.4.1-.5l.4-.4c.1-.1.2-.3.2-.4.1-.1 0-.3 0-.4 0-.1-.6-1.4-.8-1.9-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 1.9s.8 2.2.9 2.4c.1.2 1.6 2.5 4 3.4.5.2 1 .4 1.3.5.5.2 1 .1 1.4.1.4-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2-.1-.1-.2-.2-.4-.3Z"/></svg> WhatsApp';
+      btnWhats.addEventListener('click', () => window.open(`https://wa.me/${numWhats}`, '_blank'));
+      acoes.appendChild(btnWhats);
     }
 
     div.appendChild(acoes);

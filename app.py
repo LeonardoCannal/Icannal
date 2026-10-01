@@ -53,6 +53,9 @@ from auth import (
     buscar_base_propria,
     contar_base_propria,
     admin_importar_painel_usuario,
+    tornar_admin,
+    eh_admin_mestre,
+    remover_admin,
     data_valida,
 )
 import webbrowser
@@ -347,7 +350,7 @@ def admin():
         }
         for u in listar_usuarios_com_contagem_painel()
     ]
-    return render_template("admin.html", usuarios=usuarios)
+    return render_template("admin.html", usuarios=usuarios, eh_mestre=eh_admin_mestre(usuario_logado()))
 
 
 @app.route("/admin/exportar/<int:user_id>")
@@ -850,6 +853,33 @@ def admin_painel_importar(user_id):
 
     resultado = admin_importar_painel_usuario(user_id, linhas)
     return jsonify({"ok": True, **resultado})
+
+
+@app.route("/admin/usuarios/<int:user_id>/tornar-admin", methods=["POST"])
+@admin_required
+def admin_tornar_admin(user_id):
+    if not buscar_usuario_por_id(user_id):
+        return jsonify({"ok": False, "mensagem": "Usuário não encontrado."}), 404
+
+    ok = tornar_admin(user_id)
+    return jsonify({"ok": ok})
+
+
+@app.route("/admin/usuarios/<int:user_id>/remover-admin", methods=["POST"])
+@admin_required
+def admin_remover_admin(user_id):
+    usuario_atual = usuario_logado()
+    if not eh_admin_mestre(usuario_atual):
+        return jsonify({"ok": False, "mensagem": "Só o admin principal pode remover o acesso de outros admins."}), 403
+
+    alvo = buscar_usuario_por_id(user_id)
+    if not alvo:
+        return jsonify({"ok": False, "mensagem": "Usuário não encontrado."}), 404
+    if alvo["id"] == usuario_atual["id"]:
+        return jsonify({"ok": False, "mensagem": "Você não pode remover o próprio acesso de admin."}), 400
+
+    ok = remover_admin(user_id)
+    return jsonify({"ok": ok})
 
 
 @app.route("/sw.js")

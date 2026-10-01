@@ -414,6 +414,35 @@ def buscar_usuario_por_id(user_id: int):
         return cursor.fetchone()
 
 
+def tornar_admin(usuario_id: int) -> bool:
+    """Promove um usuário a admin. Só quem já é admin pode chamar isso
+    (a checagem fica na rota, com @admin_required)."""
+    valor = True if USANDO_POSTGRES else 1
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("UPDATE usuarios SET is_admin = ? WHERE id = ?"), (valor, usuario_id))
+        return cursor.rowcount > 0
+
+
+def eh_admin_mestre(usuario) -> bool:
+    """O(s) e-mail(is) em EMAILS_ADMIN são os admins "mestres" — os únicos
+    que podem tirar o admin de outra pessoa. Isso evita que qualquer admin
+    remova o acesso de outro admin (inclusive por engano)."""
+    if not usuario:
+        return False
+    return (usuario["email"] or "").strip().lower() in EMAILS_ADMIN
+
+
+def remover_admin(usuario_id: int) -> bool:
+    """Tira o admin de alguém. Quem chama isso já devia ter sido validado
+    como admin mestre antes (a checagem fica na rota)."""
+    valor = False if USANDO_POSTGRES else 0
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("UPDATE usuarios SET is_admin = ? WHERE id = ?"), (valor, usuario_id))
+        return cursor.rowcount > 0
+
+
 # Só esse(s) e-mail(is) recebem admin automaticamente ao se cadastrar.
 # Pra adicionar outro admin fixo depois, é só colocar o e-mail aqui.
 EMAILS_ADMIN = {"leonardo@grupocannal.com"}
