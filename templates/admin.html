@@ -105,7 +105,16 @@
             <td>{{ usuario.cpf }}</td>
             <td>{{ usuario.criado_em }}</td>
             <td>{{ usuario.ultimo_login }}</td>
-            <td>{% if usuario.is_admin %}<span class="badge-admin">Admin</span>{% else %}-{% endif %}</td>
+            <td>
+              {% if usuario.is_admin %}
+              <span class="badge-admin">Admin</span>
+              {% if eh_mestre and usuario.id != current_user.id %}
+              <button type="button" class="link-exportar btn-remover-admin" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">Remover admin</button>
+              {% endif %}
+              {% else %}
+              <button type="button" class="link-exportar btn-tornar-admin" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">Tornar admin</button>
+              {% endif %}
+            </td>
             <td>{{ usuario.total_painel }} médico(s)</td>
             <td>
               <button type="button" class="link-exportar btn-adicionar-medicos" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">+ Adicionar médicos</button>
@@ -349,6 +358,74 @@
           modalListaProspectados.innerHTML = '<div class="modal-vazio">Não foi possível carregar o painel.</div>';
         });
     }
+
+    function ligarBotaoTornarAdmin(botao){
+      botao.addEventListener('click', () => {
+        const nome = botao.dataset.nome;
+        if(!confirm(`Tornar ${nome} administrador? Essa pessoa passa a ter acesso total ao painel admin, incluindo os painéis de todos os usuários.`)){
+          return;
+        }
+        botao.disabled = true;
+        botao.textContent = 'Promovendo...';
+        fetch(`/admin/usuarios/${botao.dataset.id}/tornar-admin`, { method: 'POST' })
+          .then(res => res.json())
+          .then(resp => {
+            if(resp.ok){
+              const badge = document.createElement('span');
+              badge.className = 'badge-admin';
+              badge.textContent = 'Admin';
+              botao.replaceWith(badge);
+            } else {
+              botao.disabled = false;
+              botao.textContent = 'Tornar admin';
+              mostrarAvisoNotif(resp.mensagem || 'Não foi possível promover esse usuário.');
+            }
+          })
+          .catch(() => {
+            botao.disabled = false;
+            botao.textContent = 'Tornar admin';
+            mostrarAvisoNotif('Erro de conexão ao promover o usuário.');
+          });
+      });
+    }
+
+    document.querySelectorAll('.btn-tornar-admin').forEach(ligarBotaoTornarAdmin);
+
+    document.querySelectorAll('.btn-remover-admin').forEach(botao => {
+      botao.addEventListener('click', () => {
+        const nome = botao.dataset.nome;
+        if(!confirm(`Remover o acesso de admin de ${nome}? Essa pessoa deixa de ver os painéis de outros usuários na mesma hora.`)){
+          return;
+        }
+        botao.disabled = true;
+        botao.textContent = 'Removendo...';
+        fetch(`/admin/usuarios/${botao.dataset.id}/remover-admin`, { method: 'POST' })
+          .then(res => res.json())
+          .then(resp => {
+            if(resp.ok){
+              const celula = botao.closest('td');
+              celula.innerHTML = '';
+              const btnTornar = document.createElement('button');
+              btnTornar.type = 'button';
+              btnTornar.className = 'link-exportar btn-tornar-admin';
+              btnTornar.dataset.id = botao.dataset.id;
+              btnTornar.dataset.nome = nome;
+              btnTornar.textContent = 'Tornar admin';
+              celula.appendChild(btnTornar);
+              ligarBotaoTornarAdmin(btnTornar);
+            } else {
+              botao.disabled = false;
+              botao.textContent = 'Remover admin';
+              mostrarAvisoNotif(resp.mensagem || 'Não foi possível remover o acesso desse admin.');
+            }
+          })
+          .catch(() => {
+            botao.disabled = false;
+            botao.textContent = 'Remover admin';
+            mostrarAvisoNotif('Erro de conexão ao remover o admin.');
+          });
+      });
+    });
 
     document.querySelectorAll('.btn-abrir-painel').forEach(botao => {
       botao.addEventListener('click', () => {
