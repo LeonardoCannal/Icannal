@@ -210,6 +210,9 @@
       <h3 class="modal-secao-titulo">Próximos agendamentos</h3>
       <div class="modal-lista" id="dash-proximos-agendamentos"></div>
 
+      <h3 class="modal-secao-titulo">Médicos removidos por inatividade</h3>
+      <div class="modal-lista" id="dash-medicos-removidos"></div>
+
       <h3 class="modal-secao-titulo">Médicos na base por período</h3>
       <table class="tabela-periodos">
         <thead>
@@ -304,6 +307,9 @@
     const modalContadorVisitados = document.getElementById('modal-contador-visitados');
     const modalContadorRevisitar = document.getElementById('modal-contador-revisitar');
 
+    let painelAbertoUsuarioId = null;
+    let painelAbertoUsuarioNome = '';
+
     function criarCardModal(item, coluna){
       const div = document.createElement('div');
       div.className = 'modal-card';
@@ -315,6 +321,7 @@
         badge = `<span>📅 ${esc(dia)}/${esc(mes)} às ${esc(item.compromisso.horario)}</span>`;
       }
       div.innerHTML = `
+        <button type="button" class="modal-btn-remover-x" title="Remover do painel">&times;</button>
         <strong${classeNome}>${esc(item.nome)}</strong>
         <span>${esc(item.especialidade)}</span>
         <span>${esc(item.crm)}</span>
@@ -323,10 +330,26 @@
         <span>${esc(item.telefone)}</span>
         ${badge}
       `;
+      div.querySelector('.modal-btn-remover-x').addEventListener('click', () => {
+        if(painelAbertoUsuarioId === null) return;
+        if(!confirm(`Remover ${item.nome} do painel de ${painelAbertoUsuarioNome}? Essa ação não pode ser desfeita.`)) return;
+        fetch(`/admin/usuarios/${painelAbertoUsuarioId}/painel/${item.id}/remover`, { method: 'POST' })
+          .then(res => res.json())
+          .then(resp => {
+            if(resp.ok){
+              abrirPainelDoUsuario(painelAbertoUsuarioId, painelAbertoUsuarioNome);
+            } else {
+              mostrarAvisoNotif('Não foi possível remover esse médico agora.');
+            }
+          })
+          .catch(() => mostrarAvisoNotif('Erro de conexão ao remover o médico.'));
+      });
       return div;
     }
 
     function abrirPainelDoUsuario(id, nome){
+      painelAbertoUsuarioId = id;
+      painelAbertoUsuarioNome = nome;
       modalTitulo.textContent = `Painel médico — ${nome}`;
       [modalListaProspectados, modalListaAgendados, modalListaVisitados, modalListaRevisitar].forEach(el => el.innerHTML = '');
       modalListaProspectados.innerHTML = '<div class="modal-vazio">Carregando...</div>';
@@ -608,6 +631,23 @@
                 <div class="modal-card">
                   <strong>${esc(dia)}/${esc(mes)} às ${esc(a.horario)} — ${esc(a.medico_nome)}</strong>
                   <span>${esc(a.especialidade)}${local ? ' · ' + esc(local) : ''}</span>
+                </div>
+              `;
+            }).join('');
+          }
+
+          const listaRemovidos = document.getElementById('dash-medicos-removidos');
+          if(!dados.medicos_removidos || dados.medicos_removidos.length === 0){
+            listaRemovidos.innerHTML = '<div class="modal-vazio">Nenhum médico removido por inatividade.</div>';
+          } else {
+            listaRemovidos.innerHTML = dados.medicos_removidos.map(m => {
+              const dataFmt = (m.removido_em || '').slice(0, 10).split('-').reverse().join('/');
+              const local = [m.cidade, m.uf].filter(Boolean).join(' - ');
+              return `
+                <div class="modal-card">
+                  <strong>${esc(m.nome)}</strong>
+                  <span>${esc(m.especialidade || '')}${local ? ' · ' + esc(local) : ''}</span>
+                  <span>Removido em ${esc(dataFmt)} — ${esc(m.motivo)}</span>
                 </div>
               `;
             }).join('');
