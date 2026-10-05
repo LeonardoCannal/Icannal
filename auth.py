@@ -142,6 +142,20 @@ def inicializar_auth(app, sqlite_path):
                 importado_por INTEGER REFERENCES usuarios(id)
             )
         """
+        sql_removidos = """
+            CREATE TABLE IF NOT EXISTS medicos_removidos_inatividade (
+                id SERIAL PRIMARY KEY,
+                usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+                nome TEXT NOT NULL,
+                crm TEXT,
+                especialidade TEXT,
+                cidade TEXT,
+                uf TEXT,
+                motivo TEXT NOT NULL,
+                removido_em TEXT NOT NULL,
+                lida BOOLEAN NOT NULL DEFAULT FALSE
+            )
+        """
     else:
         sql_usuarios = """
             CREATE TABLE IF NOT EXISTS usuarios (
@@ -224,6 +238,20 @@ def inicializar_auth(app, sqlite_path):
                 importado_por INTEGER REFERENCES usuarios(id)
             )
         """
+        sql_removidos = """
+            CREATE TABLE IF NOT EXISTS medicos_removidos_inatividade (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+                nome TEXT NOT NULL,
+                crm TEXT,
+                especialidade TEXT,
+                cidade TEXT,
+                uf TEXT,
+                motivo TEXT NOT NULL,
+                removido_em TEXT NOT NULL,
+                lida INTEGER NOT NULL DEFAULT 0
+            )
+        """
 
     with _conexao() as conn:
         cursor = conn.cursor()
@@ -234,6 +262,7 @@ def inicializar_auth(app, sqlite_path):
         cursor.execute(sql_agenda)
         cursor.execute(sql_visitas)
         cursor.execute(sql_base_propria)
+        cursor.execute(sql_removidos)
 
     # Bancos criados antes dessa versão não têm essa coluna — adiciona sem
     # quebrar se ela já existir (mesmo problema que já pegou o "cpf" antes).
@@ -831,11 +860,14 @@ def mover_no_painel(usuario_id: int, entrada_id: int, novo_status: str, resultad
         return True
 
 
+DIAS_PARA_REVISITAR = 60  # dias sem visita pra um médico visitado cair em "Revisitar"
+
+
 def bucket_painel(painel_rows):
     """Agrupa os registros do painel em 4 colunas: prospectados, agendados,
     visitados e revisitar (visitados há 60 dias ou mais)."""
     agora = datetime.utcnow()
-    limite_revisitar = agora - timedelta(days=60)
+    limite_revisitar = agora - timedelta(days=DIAS_PARA_REVISITAR)
     prospectados, agendados, visitados, revisitar = [], [], [], []
 
     for m in painel_rows:
@@ -864,6 +896,158 @@ def listar_painel_usuario(usuario_id: int):
             _q("SELECT * FROM painel_medicos WHERE usuario_id = ? ORDER BY adicionado_em DESC"),
             (usuario_id,),
         )
+        return cursor.fetchall()
+
+
+# ---------------------------------------------------------------------------
+# Remover médico do painel — manual (botão "x") e automático (inatividade)
+# ---------------------------------------------------------------------------
+
+DIAS_PARADO_EM_REVISITAR_PARA_REMOVER = 30  # some dias DEPOIS de cair em Revisitar
+DIAS_PROSPECTADO_PARA_REMOVER = 90          # dias parado em Prospectados, sem agendar nem visitar
+
+
+def _excluir_medico_do_painel(cursor, entrada_id: int):
+    """Apaga um médico do painel por completo: o próprio registro e tudo que
+    aponta pra ele (agenda e histórico de visitas). Só o SQL — quem chama
+    decide se guarda algum registro antes (pro caso da exclusão automática)."""
+    cursor.execute(_q("DELETE FROM agenda_compromissos WHERE painel_medico_id = ?"), (entrada_id,))
+    cursor.execute(_q("DELETE FROM visitas_log WHERE painel_medico_id = ?"), (entrada_id,))
+    cursor.execute(_q("DELETE FROM painel_medicos WHERE id = ?"), (entrada_id,))
+
+
+def remover_medico_painel(usuario_id: int, entrada_id: int) -> bool:
+    """Remoção manual (o botão "x") — o usuário (ou o admin, em nome de um
+    usuário) tira um médico do painel de propósito. Não gera notificação:
+    isso é só pra remoção automática por inatividade."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _q("SELECT id FROM painel_medicos WHERE id = ? AND usuario_id = ?"),
+            (entrada_id, usuario_id),
+        )
+        if not cursor.fetchone():
+            return False
+        _excluir_medico_do_painel(cursor, entrada_id)
+        return True
+
+
+def limpar_medicos_inativos(usuario_id: int, agora_utc=None):
+    """Roda a limpeza por inatividade no painel de UM usuário:
+    - Prospectado há 90+ dias sem virar agendamento nem visita -> remove.
+    - Visitado, e já tomando pó em Revisitar por 30+ dias (ou seja, 90+ dias
+      desde a última visita) -> remove.
+    Cada remoção vira um registro em medicos_removidos_inatividade, que
+    também serve de notificação (começa como não lida) pro usuário ver.
+    Devolve quantos médicos foram removidos."""
+    agora = agora_utc or datetime.utcnow()
+    limite_prospectado = (agora - timedelta(days=DIAS_PROSPECTADO_PARA_REMOVER)).isoformat()
+    limite_revisitar_parado = (agora - timedelta(days=DIAS_PARA_REVISITAR + DIAS_PARADO_EM_REVISITAR_PARA_REMOVER)).isoformat()
+    agora_iso = agora.isoformat()
+    removidos = 0
+
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _q("""SELECT * FROM painel_medicos WHERE usuario_id = ?
+                  AND ((status = 'prospectado' AND adicionado_em < ?)
+                       OR (status = 'visitado' AND visitado_em < ?))"""),
+            (usuario_id, limite_prospectado, limite_revisitar_parado),
+        )
+        candidatos = cursor.fetchall()
+
+        for medico in candidatos:
+            motivo = (
+                f"{DIAS_PROSPECTADO_PARA_REMOVER} dias parado em Prospectados"
+                if medico["status"] == "prospectado"
+                else f"{DIAS_PARADO_EM_REVISITAR_PARA_REMOVER} dias parado em Revisitar"
+            )
+            cursor.execute(
+                _q("""INSERT INTO medicos_removidos_inatividade
+                      (usuario_id, nome, crm, especialidade, cidade, uf, motivo, removido_em, lida)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"""),
+                (
+                    usuario_id, medico["nome"], medico["crm"], medico["especialidade"],
+                    medico["cidade"], medico["uf"], motivo, agora_iso,
+                    False if USANDO_POSTGRES else 0,
+                ),
+            )
+            _excluir_medico_do_painel(cursor, medico["id"])
+            removidos += 1
+
+    return removidos
+
+
+def limpar_medicos_inativos_todos_usuarios(agora_utc=None) -> int:
+    """Mesma limpeza, varrendo todos os usuários de uma vez — chamada a
+    partir do dashboard geral, pra manter os dados em dia mesmo pra quem
+    não loga há um tempo."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM usuarios")
+        ids = [row["id"] for row in cursor.fetchall()]
+
+    total = 0
+    for usuario_id in ids:
+        total += limpar_medicos_inativos(usuario_id, agora_utc)
+    return total
+
+
+def listar_notificacoes_usuario(usuario_id: int, limite: int = 20):
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _q("""SELECT * FROM medicos_removidos_inatividade
+                  WHERE usuario_id = ? ORDER BY removido_em DESC LIMIT ?"""),
+            (usuario_id, limite),
+        )
+        return cursor.fetchall()
+
+
+def contar_notificacoes_nao_lidas(usuario_id: int) -> int:
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _q("SELECT COUNT(*) AS total FROM medicos_removidos_inatividade WHERE usuario_id = ? AND lida = ?"),
+            (usuario_id, False if USANDO_POSTGRES else 0),
+        )
+        return cursor.fetchone()["total"]
+
+
+def marcar_notificacoes_lidas(usuario_id: int):
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _q("UPDATE medicos_removidos_inatividade SET lida = ? WHERE usuario_id = ?"),
+            (True if USANDO_POSTGRES else 1, usuario_id),
+        )
+
+
+def listar_medicos_removidos_usuario(usuario_id: int, limite: int = 50):
+    """Pro dashboard individual: médicos removidos por inatividade desse
+    usuário, mais recentes primeiro."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _q("""SELECT * FROM medicos_removidos_inatividade
+                  WHERE usuario_id = ? ORDER BY removido_em DESC LIMIT ?"""),
+            (usuario_id, limite),
+        )
+        return cursor.fetchall()
+
+
+def listar_medicos_removidos_geral(limite: int = 50):
+    """Pro dashboard geral: médicos removidos por inatividade de todo mundo,
+    já com o nome de quem era o dono do painel."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""
+            SELECT r.*, u.nome AS usuario_nome
+            FROM medicos_removidos_inatividade r
+            JOIN usuarios u ON u.id = r.usuario_id
+            ORDER BY r.removido_em DESC
+            LIMIT ?
+        """), (limite,))
         return cursor.fetchall()
 
 
@@ -1217,6 +1401,15 @@ def chaves_no_painel_usuario(usuario_id: int) -> set:
         return {row["chave_medico"] for row in cursor.fetchall()}
 
 
+def chaves_no_painel_todos() -> set:
+    """Todas as chaves de médico que estão em QUALQUER painel, de QUALQUER
+    usuário — usada na busca pra esconder médico que já é de outra pessoa."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT chave_medico FROM painel_medicos")
+        return {row["chave_medico"] for row in cursor.fetchall()}
+
+
 def listar_usuarios_com_contagem_painel():
     """Pra tela de admin: cada usuário com quantos médicos tem no painel dele."""
     with _conexao() as conn:
@@ -1243,24 +1436,24 @@ _NAO_ATENDIDO = False if USANDO_POSTGRES else 0
 def registrar_solicitacao_senha(cpf: str):
     """Registra o pedido de redefinição de senha pra aparecer como
     notificação no painel admin. Tenta casar com um usuário existente
-    pelo CPF pra já trazer nome/e-mail junto."""
+    pelo CPF pra já trazer nome/e-mail junto. Devolve os dados registrados
+    (nome pode ser None, se o CPF não bater com ninguém), pra quem chamou
+    poder avisar o admin por fora (WhatsApp, por exemplo)."""
     cpf_limpo = limpar_cpf(cpf)
     usuario = buscar_usuario_por_cpf(cpf_limpo) if cpf_limpo else None
     agora = datetime.utcnow().isoformat()
+    nome = usuario["nome"] if usuario else None
+    email = usuario["email"] if usuario else None
 
     with _conexao() as conn:
         cursor = conn.cursor()
         cursor.execute(
             _q("""INSERT INTO solicitacoes_senha (cpf, nome, email, atendido, criado_em)
                   VALUES (?, ?, ?, ?, ?)"""),
-            (
-                cpf_limpo,
-                usuario["nome"] if usuario else None,
-                usuario["email"] if usuario else None,
-                _NAO_ATENDIDO,
-                agora,
-            ),
+            (cpf_limpo, nome, email, _NAO_ATENDIDO, agora),
         )
+
+    return {"cpf": cpf_limpo, "nome": nome, "email": email}
 
 
 def listar_solicitacoes_senha_pendentes():

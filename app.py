@@ -27,6 +27,7 @@ from auth import (
     mover_no_painel,
     listar_painel_usuario,
     chaves_no_painel_usuario,
+    chaves_no_painel_todos,
     registrar_solicitacao_senha,
     listar_solicitacoes_senha_pendentes,
     contar_solicitacoes_senha_pendentes,
@@ -56,8 +57,17 @@ from auth import (
     tornar_admin,
     eh_admin_mestre,
     remover_admin,
+    remover_medico_painel,
+    limpar_medicos_inativos,
+    limpar_medicos_inativos_todos_usuarios,
+    listar_notificacoes_usuario,
+    contar_notificacoes_nao_lidas,
+    marcar_notificacoes_lidas,
+    listar_medicos_removidos_usuario,
+    listar_medicos_removidos_geral,
     data_valida,
 )
+import requests
 import webbrowser
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -162,6 +172,27 @@ def _registrar_falha_login(chave):
 def _limpar_falhas_login(chave):
     with _TRAVA_LOGIN:
         _TENTATIVAS_LOGIN.pop(chave, None)
+
+
+# Notificação por WhatsApp (via CallMeBot) de pedidos de redefinição de senha.
+# Configurado pelas variáveis de ambiente WHATSAPP_TELEFONE e WHATSAPP_APIKEY —
+# se alguma faltar, a notificação é só pulada (nunca quebra o pedido de senha
+# em si, que é o que realmente importa pro usuário).
+def notificar_whatsapp_admin(mensagem: str):
+    telefone = os.environ.get("WHATSAPP_TELEFONE")
+    apikey = os.environ.get("WHATSAPP_APIKEY")
+    if not telefone or not apikey:
+        return
+
+    try:
+        requests.get(
+            "https://api.callmebot.com/whatsapp.php",
+            params={"phone": telefone, "text": mensagem, "apikey": apikey},
+            timeout=8,
+        )
+    except requests.RequestException:
+        pass  # notificação é um "extra" — nunca deve derrubar o pedido de senha
+
 
 inicializar_auth(app, caminho_dados_persistentes("cannal.db"))
 
@@ -330,7 +361,14 @@ def logout():
 def api_esqueci_senha():
     dados = _corpo_json()
     cpf = dados.get("cpf", "")
-    registrar_solicitacao_senha(cpf)
+    solicitacao = registrar_solicitacao_senha(cpf)
+
+    nome = solicitacao["nome"] or "CPF não cadastrado no sistema"
+    cpf_mostrado = formatar_cpf(solicitacao["cpf"]) if solicitacao["cpf"] else "(não informado)"
+    notificar_whatsapp_admin(
+        f"🔑 i.cannal — pedido de redefinição de senha\nNome: {nome}\nCPF: {cpf_mostrado}"
+    )
+
     return jsonify({"ok": True})
 
 
@@ -439,6 +477,7 @@ def admin_estatisticas_usuario(user_id):
 
     stats = estatisticas_usuario(user_id)
     stats["usuario"] = {"nome": usuario["nome"], "email": usuario["email"]}
+    stats["medicos_removidos"] = [dict(m) for m in listar_medicos_removidos_usuario(user_id)]
     return jsonify(stats)
 
 
@@ -493,13 +532,19 @@ def admin_notificacao_redefinir(solicitacao_id):
 @app.route("/admin/dashboard")
 @admin_required
 def admin_dashboard():
-    return render_template("dashboard.html", stats=estatisticas_dashboard())
+    limpar_medicos_inativos_todos_usuarios()  # mantém em dia mesmo quem não loga há um tempo
+    return render_template(
+        "dashboard.html",
+        stats=estatisticas_dashboard(),
+        medicos_removidos_geral=listar_medicos_removidos_geral(),
+    )
 
 
 @app.route("/")
 @login_required
 def index():
     usuario = usuario_logado()
+    limpar_medicos_inativos(usuario["id"])  # roda a cada visita — é barato e mantém o painel em dia
     dias_inativo = dias_sem_visitar(usuario["id"])
     visitas_amanha = contar_visitas_amanha(usuario["id"])
     return render_template(
@@ -510,6 +555,7 @@ def index():
         dias_inativo=dias_inativo,
         visitas_amanha=visitas_amanha,
         resultados_visita=RESULTADOS_VISITA,
+        notificacoes_nao_lidas=contar_notificacoes_nao_lidas(usuario["id"]),
     )
 
 
@@ -591,11 +637,20 @@ def api_buscar():
             except Exception as e:
                 fontes_com_erro.append(f"{rotulo}: {e}")
 
-    # Marca quais médicos já estão no painel do usuário logado, pra
-    # mostrar "Presente no painel médico" em vez do botão de adicionar.
-    chaves_do_painel = chaves_no_painel_usuario(usuario["id"])
+    # Médico que já está no painel do usuário logado: mostra "Presente no
+    # painel médico" em vez do botão de adicionar. Médico que já está no
+    # painel de OUTRO usuário: nem aparece — já tem alguém de olho nele.
+    chaves_meu_painel = chaves_no_painel_usuario(usuario["id"])
+    chaves_outros_paineis = chaves_no_painel_todos() - chaves_meu_painel
+
+    medicos_visiveis = []
     for medico in todos_medicos:
-        medico["no_painel"] = computar_chave_medico(medico) in chaves_do_painel
+        chave = computar_chave_medico(medico)
+        if chave in chaves_outros_paineis:
+            continue
+        medico["no_painel"] = chave in chaves_meu_painel
+        medicos_visiveis.append(medico)
+    todos_medicos = medicos_visiveis
 
     return jsonify({
         "especialidades": nomes_especialidades,
@@ -637,6 +692,30 @@ def api_painel_adicionar():
 
     ok, mensagem = adicionar_ao_painel(usuario["id"], medico)
     return jsonify({"ok": ok, "mensagem": mensagem})
+
+
+@app.route("/api/painel/<int:entrada_id>/remover", methods=["POST"])
+@login_required
+def api_painel_remover(entrada_id):
+    usuario = usuario_logado()
+    ok = remover_medico_painel(usuario["id"], entrada_id)
+    return jsonify({"ok": ok})
+
+
+@app.route("/api/notificacoes")
+@login_required
+def api_notificacoes():
+    usuario = usuario_logado()
+    notificacoes = listar_notificacoes_usuario(usuario["id"])
+    return jsonify({"notificacoes": [dict(n) for n in notificacoes]})
+
+
+@app.route("/api/notificacoes/marcar-lidas", methods=["POST"])
+@login_required
+def api_notificacoes_marcar_lidas():
+    usuario = usuario_logado()
+    marcar_notificacoes_lidas(usuario["id"])
+    return jsonify({"ok": True})
 
 
 @app.route("/api/painel/mover", methods=["POST"])
@@ -811,6 +890,16 @@ def admin_painel_adicionar(user_id):
 
     ok, mensagem = adicionar_ao_painel(user_id, medico)
     return jsonify({"ok": ok, "mensagem": mensagem})
+
+
+@app.route("/admin/usuarios/<int:user_id>/painel/<int:entrada_id>/remover", methods=["POST"])
+@admin_required
+def admin_painel_remover(user_id, entrada_id):
+    if not buscar_usuario_por_id(user_id):
+        return jsonify({"ok": False, "mensagem": "Usuário não encontrado."}), 404
+
+    ok = remover_medico_painel(user_id, entrada_id)
+    return jsonify({"ok": ok})
 
 
 @app.route("/admin/usuarios/<int:user_id>/painel/importar", methods=["POST"])

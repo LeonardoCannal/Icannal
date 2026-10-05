@@ -142,6 +142,33 @@
     </div>
 
     <div class="card-grafico">
+      <h3>Médicos removidos por inatividade</h3>
+      {% if medicos_removidos_geral %}
+      <div class="tabela-scroll">
+        <table class="tabela-admin">
+          <thead>
+            <tr><th>Removido em</th><th>Médico</th><th>Especialidade</th><th>Cidade</th><th>Motivo</th><th>Vendedor</th></tr>
+          </thead>
+          <tbody>
+            {% for m in medicos_removidos_geral %}
+            <tr>
+              <td>{{ m.removido_em[8:10] }}/{{ m.removido_em[5:7] }}/{{ m.removido_em[0:4] }}</td>
+              <td>{{ m.nome }}</td>
+              <td>{{ m.especialidade or '-' }}</td>
+              <td>{{ m.cidade }}{% if m.uf %} - {{ m.uf }}{% endif %}</td>
+              <td>{{ m.motivo }}</td>
+              <td>{{ m.usuario_nome }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="grafico-vazio">Nenhum médico removido por inatividade ainda.</div>
+      {% endif %}
+    </div>
+
+    <div class="card-grafico">
       <h3>Ranking de promotores este mês</h3>
       {% if stats.ranking and stats.ranking[0].total_visitas > 0 %}
       <div class="ranking-lista">

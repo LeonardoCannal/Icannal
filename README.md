@@ -227,6 +227,8 @@ ele não precisa mais dos outros arquivos do projeto pra funcionar.
 | `SECRET_KEY` | Chave fixa e secreta das sessões de login (obrigatória em produção; sem ela o login cai de forma intermitente). |
 | `DATABASE_URL` | Conexão com o banco (Supabase/Postgres). Sem ela, o sistema usa um arquivo SQLite local. |
 | `COOKIE_SEGURO=1` | Opcional. Com o site em HTTPS, faz o cookie de login só trafegar criptografado. Não use em teste por HTTP, senão o login não funciona. |
+| `WHATSAPP_TELEFONE` | Opcional. Número de WhatsApp (com código do país, só números — ex.: `5515996609680`) que recebe um aviso a cada pedido de "esqueci minha senha". Sem essa variável, o aviso simplesmente não é enviado (a notificação continua aparecendo normal no sino do painel admin). |
+| `WHATSAPP_APIKEY` | Opcional, usada junto com `WHATSAPP_TELEFONE`. A chave que o [CallMeBot](https://www.callmebot.com) devolve depois de você autorizar o bot no seu WhatsApp. |
 
 ## Segurança embutida
 
