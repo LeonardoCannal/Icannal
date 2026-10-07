@@ -1,7 +1,7 @@
 """
 scraper.py
 Faz a captação (scraping) de médicos em múltiplas fontes públicas:
-Doctoralia, Sechat, Ama-me, Kaya Doc e Cannaceia.
+Doctoralia, Sechat, APEPI, Ama-me, Kaya Doc e Cannaceia.
 
 IMPORTANTE — leia antes de usar:
 - Doctoralia e Sechat foram verificados com maior confiança (a estrutura
@@ -35,6 +35,68 @@ HEADERS = {
 }
 
 CAMPOS_PADRAO = ["nome", "crm", "cidade", "uf", "endereco", "telefone", "especialidade", "perfil_url", "fonte"]
+
+
+# Uma "sessão" HTTP compartilhada: reaproveita as conexões já abertas com cada
+# site (Doctoralia, Sechat...) em vez de abrir uma conexão nova criptografada
+# a cada página — principalmente quando abre vários perfis seguidos. Não
+# guarda cookies, igual antes (cada pedido é "limpo").
+from http.cookiejar import DefaultCookiePolicy
+from requests.adapters import HTTPAdapter
+import threading
+import time
+
+_HTTP = requests.Session()
+_HTTP.cookies.set_policy(DefaultCookiePolicy(allowed_domains=[]))
+_HTTP.mount("https://", HTTPAdapter(pool_connections=20, pool_maxsize=32, max_retries=0))
+_HTTP.mount("http://", HTTPAdapter(pool_connections=10, pool_maxsize=16, max_retries=0))
+
+
+def _get(url, **kwargs):
+    kwargs.setdefault("headers", HEADERS)
+    return _HTTP.get(url, **kwargs)
+
+
+class CacheTTL:
+    """Guarda resultados por um tempo (em memória, por processo do servidor)."""
+
+    def __init__(self, validade_seg: int, maximo: int):
+        self.validade = validade_seg
+        self.maximo = maximo
+        self._dados = {}
+        self._trava = threading.Lock()
+
+    def pegar(self, chave):
+        with self._trava:
+            item = self._dados.get(chave)
+            if not item:
+                return False, None
+            momento, valor = item
+            if time.time() - momento > self.validade:
+                self._dados.pop(chave, None)
+                return False, None
+            return True, valor
+
+    def guardar(self, chave, valor):
+        with self._trava:
+            if len(self._dados) >= self.maximo:
+                # tira os 10% mais antigos
+                antigos = sorted(self._dados.items(), key=lambda kv: kv[1][0])[: max(1, self.maximo // 10)]
+                for k, _ in antigos:
+                    self._dados.pop(k, None)
+            self._dados[chave] = (time.time(), valor)
+
+    def limpar(self):
+        with self._trava:
+            self._dados.clear()
+
+
+# Telefone de perfil do Doctoralia quase nunca muda: guarda por 24h. É a parte
+# mais pesada da busca (uma página por médico), então repetir uma busca
+# parecida fica muito mais rápido.
+_CACHE_TELEFONE_DOCTORALIA = CacheTTL(24 * 3600, 5000)
+# As fontes "genéricas" baixam sempre a mesma página, não importa a busca.
+_CACHE_PAGINAS_GENERICAS = CacheTTL(30 * 60, 20)
 
 
 def registro_vazio(**kwargs) -> dict:
@@ -163,17 +225,20 @@ def buscar_telefone_no_perfil(perfil_url: str):
     de verdade, precisamos visitar o perfil de cada médico encontrado.
     Retorna o número (como string) ou None se não achar.
     """
+    achou, guardado = _CACHE_TELEFONE_DOCTORALIA.pegar(perfil_url)
+    if achou:
+        return guardado
     try:
-        resposta = requests.get(perfil_url, headers=HEADERS, timeout=10)
+        resposta = _get(perfil_url, timeout=10)
         resposta.raise_for_status()
     except Exception:
-        return None
+        return None  # falha de rede não vai pro cache: tenta de novo na próxima
 
     soup = BeautifulSoup(resposta.text, "html.parser")
     tel_link = soup.find("a", href=lambda h: h and h.lower().startswith("tel:"))
-    if tel_link:
-        return tel_link["href"].split(":", 1)[1].strip()
-    return None
+    telefone = tel_link["href"].split(":", 1)[1].strip() if tel_link else None
+    _CACHE_TELEFONE_DOCTORALIA.guardar(perfil_url, telefone)
+    return telefone
 
 
 def buscar_medicos_doctoralia(especialidade_slug: str, especialidade_nome: str, cidade: str, uf: str = "") -> list:
@@ -181,7 +246,7 @@ def buscar_medicos_doctoralia(especialidade_slug: str, especialidade_nome: str, 
     cidade_slug = slugify(cidade)
     url = f"{DOCTORALIA_BASE_URL}/{especialidade_slug}/{cidade_slug}"
 
-    resposta = requests.get(url, headers=HEADERS, timeout=15)
+    resposta = _get(url, timeout=15)
     resposta.raise_for_status()
 
     soup = BeautifulSoup(resposta.text, "html.parser")
@@ -281,7 +346,7 @@ def buscar_medicos_sechat(especialidade_id: str, especialidade_nome: str, cidade
         return []
 
     url = f"{SECHAT_BASE_URL}?specialty={especialidade_id}"
-    resposta = requests.get(url, headers=HEADERS, timeout=15)
+    resposta = _get(url, timeout=15)
     resposta.raise_for_status()
 
     soup = BeautifulSoup(resposta.text, "html.parser")
@@ -384,13 +449,17 @@ FONTES_GENERICAS = {
 def buscar_medicos_fonte_generica(chave_fonte: str, especialidade_nome: str, cidade: str, uf: str = "") -> list:
     fonte = FONTES_GENERICAS[chave_fonte]
 
-    try:
-        resposta = requests.get(fonte["url"], headers=HEADERS, timeout=15)
-        resposta.raise_for_status()
-    except Exception:
-        return []
+    achou, html_pagina = _CACHE_PAGINAS_GENERICAS.pegar(chave_fonte)
+    if not achou:
+        try:
+            resposta = _get(fonte["url"], timeout=15)
+            resposta.raise_for_status()
+        except Exception:
+            return []
+        html_pagina = resposta.text
+        _CACHE_PAGINAS_GENERICAS.guardar(chave_fonte, html_pagina)
 
-    soup = BeautifulSoup(resposta.text, "html.parser")
+    soup = BeautifulSoup(html_pagina, "html.parser")
     cidade_norm = normalizar(cidade)
 
     medicos = []
@@ -434,4 +503,189 @@ def buscar_medicos_fonte_generica(chave_fonte: str, especialidade_nome: str, cid
             fonte=fonte["nome"],
         ))
 
+    return medicos
+
+
+# ---------------------------------------------------------------------------
+# APEPI (https://apepi.org/lista-saude-apepi/)
+# ---------------------------------------------------------------------------
+# A lista do site vem de uma API pública do próprio WordPress deles
+# (/wp-json/wp/v2/prescritores), que dá pra filtrar por estado. Cada item
+# traz nome, link do perfil e "etiquetas" com cidade, especialidade e
+# profissão. O CRM e o telefone só aparecem na página de perfil de cada
+# profissional, então essas páginas são abertas só pros médicos que
+# passaram no filtro (normalmente poucos).
+#
+# Observação sobre os dados deles: muitos cadastros estão com a cidade
+# preenchida com o nome do estado (ex.: "Minas Gerais") ou com a
+# especialidade "médico sem especialidade registrada". Esses ficam de fora,
+# porque não dá pra saber se batem com a busca.
+
+import html as _html
+
+APEPI_API = "https://apepi.org/wp-json/wp/v2"
+
+# Termos que a APEPI usa (no "slug" da especialidade) pra cada especialidade
+# do i.cannal. Comparação por palavra inteira dentro do slug, ex.: "ortopedia"
+# casa com "ortopedia-e-traumatologia".
+APEPI_TERMOS_ESPECIALIDADE = {
+    "neurologista": ["neurologia"],
+    "psiquiatra": ["psiquiatria"],
+    "neurologista-pediatrico": ["neuropediatria", "neurologia-pediatrica"],
+    "medico-clinico-geral": ["clinica-medica", "clinico-geral", "clinica-geral"],
+    "pediatra": ["pediatria"],
+    "medico-de-familia": ["medicina-de-familia"],
+    "especialista-em-dor": ["dor", "anestesiologia"],
+    "ortopedista-traumatologista": ["ortopedia", "traumatologia"],
+    "traumatologista": ["ortopedia", "traumatologia"],
+    "oncologista": ["oncologia"],
+    "geriatra": ["geriatria"],
+    "alergista": ["alergia", "alergologia", "imunologia"],
+    "cardiologista": ["cardiologia"],
+    "dermatologista": ["dermatologia"],
+    "endocrinologista": ["endocrinologia"],
+    "endocrinologista-pediatrico": ["endocrinologia-pediatrica"],
+    "especialista-em-medicina-fisica-e-reabilitacao": ["fisiatria", "medicina-fisica"],
+    "especialista-em-medicina-preventiva": ["medicina-preventiva"],
+    "gastroenterologista": ["gastroenterologia"],
+    "generalista": ["generalista", "clinica-geral", "clinico-geral"],
+    "ginecologista": ["ginecologia"],
+    "medico-acupunturista": ["acupuntura"],
+    "medico-do-esporte": ["medicina-esportiva", "medicina-do-esporte"],
+    "medico-do-sono": ["medicina-do-sono", "sono"],
+    "medico-do-trabalho": ["medicina-do-trabalho"],
+    "reumatologista": ["reumatologia"],
+}
+
+_APEPI_CACHE = {}          # uf -> (momento, lista de itens)
+_APEPI_CACHE_TTL = 15 * 60  # 15 minutos
+_APEPI_TRAVA = threading.Lock()
+
+
+def _apepi_etiqueta(classes: list, prefixo: str) -> list:
+    return [c[len(prefixo):] for c in classes if c.startswith(prefixo)]
+
+
+def _apepi_especialidade_bate(slugs_especialidade: list, termos: list) -> bool:
+    for slug in slugs_especialidade:
+        cercado = f"-{slug}-"
+        if any(f"-{termo}-" in cercado for termo in termos):
+            return True
+    return False
+
+
+def _apepi_listar_por_uf(uf: str) -> list:
+    """Todos os prescritores da APEPI de um estado (com cache curto, já que
+    uma busca com várias especialidades chamaria isso várias vezes)."""
+    uf = (uf or "").strip().lower()
+    with _APEPI_TRAVA:
+        guardado = _APEPI_CACHE.get(uf)
+        if guardado and time.time() - guardado[0] < _APEPI_CACHE_TTL:
+            return guardado[1]
+
+    params_base = {"per_page": 100, "_fields": "id,title,link,class_list"}
+    if uf:
+        resp = _get(f"{APEPI_API}/uf", params={"slug": uf, "_fields": "id"}, timeout=15)
+        resp.raise_for_status()
+        termos_uf = resp.json()
+        if not termos_uf:
+            return []
+        params_base["uf"] = termos_uf[0]["id"]
+
+    itens = []
+    for pagina in range(1, 11):  # no máximo 1.000 profissionais por estado
+        resp = _get(f"{APEPI_API}/prescritores", params={**params_base, "page": pagina}, timeout=15)
+        if resp.status_code == 400:  # o WordPress devolve 400 quando a página passa do fim
+            break
+        resp.raise_for_status()
+        lote = resp.json()
+        itens.extend(lote)
+        total_paginas = resp.headers.get("X-WP-TotalPages")
+        if len(lote) < 100 or (total_paginas and pagina >= int(total_paginas)):
+            break
+
+    with _APEPI_TRAVA:
+        _APEPI_CACHE[uf] = (time.time(), itens)
+    return itens
+
+
+RE_APEPI_REGISTRO = re.compile(r"\b(CRM|CRMV|CRO)\s*:?\s*([\d.]{3,12})\s*[-/ ]?\s*([A-Z]{2})?\b")
+RE_APEPI_TELEFONE = re.compile(r"(?<!\d)(\(?\d{2}\)?[\s-]?9?\d{4}[\s-]?\d{4})(?!\d)")
+
+
+def _apepi_detalhes_perfil(url: str) -> dict:
+    """Abre a página de perfil pra pegar CRM e telefone (os dois só existem lá)."""
+    try:
+        resp = _get(url, timeout=12)
+        resp.raise_for_status()
+    except Exception:
+        return {}
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    for lixo in soup(["script", "style", "header", "footer", "nav"]):
+        lixo.decompose()
+    texto = soup.get_text("\n")
+
+    detalhes = {}
+    m = RE_APEPI_REGISTRO.search(texto)
+    if m:
+        sigla, numero, uf_reg = m.groups()
+        numero = numero.replace(".", "")
+        detalhes["crm"] = f"{sigla} {uf_reg} {numero}" if uf_reg else f"{sigla} {numero}"
+
+    # Telefone: primeiro número de telefone que aparecer depois do registro
+    # (o rodapé, que tem o 0800 da APEPI, já foi removido acima).
+    inicio = m.end() if m else 0
+    t = RE_APEPI_TELEFONE.search(texto, inicio)
+    if t:
+        detalhes["telefone"] = t.group(1).strip()
+    return detalhes
+
+
+def buscar_medicos_apepi(especialidade_slug: str, especialidade_nome: str, cidade: str, uf: str = "") -> list:
+    termos = APEPI_TERMOS_ESPECIALIDADE.get(especialidade_slug)
+    if not termos:
+        return []
+
+    itens = _apepi_listar_por_uf(uf)
+    cidade_slug = slugify(cidade)
+
+    candidatos = []
+    for item in itens:
+        classes = item.get("class_list") or []
+        if "profissao-medico" not in classes:
+            continue  # a lista também tem dentistas e veterinários
+        if cidade_slug and cidade_slug not in _apepi_etiqueta(classes, "cidade-"):
+            continue
+        if not _apepi_especialidade_bate(_apepi_etiqueta(classes, "especialidade-"), termos):
+            continue
+        candidatos.append(item)
+
+    candidatos = candidatos[:40]  # limite de perfis abertos por busca
+    detalhes_por_link = {}
+    if candidatos:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futuros = {executor.submit(_apepi_detalhes_perfil, c["link"]): c["link"] for c in candidatos}
+            for futuro in as_completed(futuros):
+                try:
+                    detalhes_por_link[futuros[futuro]] = futuro.result()
+                except Exception:
+                    detalhes_por_link[futuros[futuro]] = {}
+
+    medicos = []
+    for c in candidatos:
+        detalhes = detalhes_por_link.get(c["link"], {})
+        nome = _html.unescape((c.get("title") or {}).get("rendered", "")).strip()
+        if not nome:
+            continue
+        medicos.append(registro_vazio(
+            nome=nome,
+            crm=detalhes.get("crm", "Não encontrado"),
+            cidade=cidade,
+            uf=(uf or "").upper() or "Não encontrado",
+            telefone=detalhes.get("telefone", "Não disponível"),
+            especialidade=especialidade_nome,
+            perfil_url=c["link"],
+            fonte="APEPI",
+        ))
     return medicos

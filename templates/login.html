@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>i.cannal · Entrar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 <meta name="theme-color" content="#171B22">
@@ -64,6 +66,14 @@
     <div class="aviso-card" id="esqueci-card-confirmacao" style="display:none;">
       <p class="aviso-texto-sucesso">Em breve nossa equipe técnica irá entrar em contato com você.</p>
       <button type="button" id="esqueci-btn-fechar" class="btn-auth">Entendi</button>
+    </div>
+  </div>
+
+  <div class="aviso-overlay" id="cadastro-sucesso-overlay">
+    <div class="aviso-card">
+      <p class="aviso-titulo">Obrigado por se cadastrar no i.cannal!</p>
+      <p class="aviso-texto-sucesso">Em breve nossa equipe entrará em contato com você para validar o seu cadastro.</p>
+      <button type="button" id="cadastro-sucesso-fechar" class="btn-auth">Entendi</button>
     </div>
   </div>
 
@@ -139,6 +149,16 @@
           esqueciBtnEnviar.disabled = false;
           esqueciBtnEnviar.textContent = 'Solicitar redefinição';
         });
+    });
+
+    // Pop-up de "cadastro enviado, aguardando aprovação" — aparece só quando
+    // a pessoa acabou de se cadastrar (vem com ?cadastro=sucesso na URL).
+    if(new URLSearchParams(location.search).get('cadastro') === 'sucesso'){
+      document.getElementById('cadastro-sucesso-overlay').classList.add('aberto');
+    }
+    document.getElementById('cadastro-sucesso-fechar').addEventListener('click', () => {
+      document.getElementById('cadastro-sucesso-overlay').classList.remove('aberto');
+      history.replaceState(null, '', location.pathname);
     });
   </script>
 <script>

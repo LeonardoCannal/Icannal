@@ -1,7 +1,13 @@
-from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, redirect, url_for
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, redirect, url_for, has_request_context
+from flask.sessions import SecureCookieSessionInterface
+from werkzeug.middleware.proxy_fix import ProxyFix
+from urllib.parse import urlparse
 from scraper import (
     buscar_medicos_doctoralia,
     buscar_medicos_sechat,
+    buscar_medicos_apepi,
+    CacheTTL,
+    normalizar,
     buscar_medicos_fonte_generica,
     FONTES_GENERICAS,
 )
@@ -37,7 +43,6 @@ from auth import (
     registrar_busca,
     estatisticas_dashboard,
     estatisticas_usuario,
-    progresso_sugestao_usuario,
     bucket_painel,
     listar_horarios_dia,
     agendar_medico,
@@ -47,7 +52,6 @@ from auth import (
     dias_sem_visitar,
     roteiro_do_dia,
     contar_visitas_amanha,
-    definir_sugestao_visitas,
     RESULTADOS_VISITA,
     buscar_compromisso_do_medico,
     importar_base_propria,
@@ -58,6 +62,9 @@ from auth import (
     eh_admin_mestre,
     remover_admin,
     remover_medico_painel,
+    listar_cadastros_pendentes,
+    contar_cadastros_pendentes,
+    aprovar_usuario,
     limpar_medicos_inativos,
     limpar_medicos_inativos_todos_usuarios,
     listar_notificacoes_usuario,
@@ -70,6 +77,7 @@ from auth import (
 import requests
 import webbrowser
 import threading
+import gzip
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import sys
 import os
@@ -121,6 +129,149 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("COOKIE_SEGURO") == "1"
+
+
+class _SessaoSegura(SecureCookieSessionInterface):
+    """Liga o "cookie só por HTTPS" sozinho quando o acesso é por HTTPS
+    (produção), sem quebrar testes locais por HTTP."""
+    def get_cookie_secure(self, app):
+        if app.config.get("SESSION_COOKIE_SECURE"):
+            return True
+        return has_request_context() and request.is_secure
+
+
+app.session_interface = _SessaoSegura()
+
+# Atrás do nginx (VPS) ou do proxy do Render, o Flask enxerga todo mundo como
+# vindo de 127.0.0.1 e por HTTP. Isso faz ele ler o IP real do visitante e
+# saber que o acesso foi por HTTPS (usado nos limites por IP e no cookie).
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+# Nenhum envio maior que isso (planilhas de até 10 MB passam folgado).
+app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
+
+
+@app.before_request
+def _bloquear_envio_de_outros_sites():
+    """Defesa extra contra um site malicioso tentar enviar ações (salvar,
+    apagar, aprovar...) em nome de quem está logado: ações só são aceitas
+    quando vêm das páginas do próprio i.cannal."""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return None
+    origem = request.headers.get("Origin") or request.headers.get("Referer")
+    if not origem or origem == "null":
+        return None
+    host_origem = urlparse(origem).netloc.lower()
+    if host_origem and host_origem != request.host.lower():
+        return jsonify({"ok": False, "erro": "Requisição recusada."}), 403
+    return None
+
+
+@app.after_request
+def _cabecalhos_de_seguranca(resposta):
+    h = resposta.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "DENY")
+    h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+    h.setdefault("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'")
+    if request.is_secure:
+        h.setdefault("Strict-Transport-Security", "max-age=31536000")
+    # Páginas e dados com informação de usuário: nenhum cache compartilhado
+    # (proxy, CDN) pode guardar; o navegador sempre confere se mudou.
+    if not request.path.startswith("/static/") and "Cache-Control" not in h:
+        h["Cache-Control"] = "private, no-cache"
+    return resposta
+
+
+# ---------------------------------------------------------------------------
+# Páginas mais leves
+# ---------------------------------------------------------------------------
+
+# CSS, ícones e manifest ganham um "?v=..." automático que muda quando o
+# arquivo muda. Assim o navegador pode guardar esses arquivos por 30 dias
+# sem medo: depois de uma atualização, o endereço muda e ele baixa de novo.
+_VERSOES_ESTATICOS = {}
+
+
+@app.url_defaults
+def _versao_dos_estaticos(endpoint, valores):
+    if endpoint != "static" or "filename" not in valores or "v" in valores:
+        return
+    nome = valores["filename"]
+    versao = _VERSOES_ESTATICOS.get(nome)
+    if versao is None:
+        try:
+            info = os.stat(os.path.join(app.static_folder, nome))
+            versao = format(int(info.st_mtime) ^ info.st_size, "x")
+        except OSError:
+            versao = ""
+        _VERSOES_ESTATICOS[nome] = versao
+    if versao:
+        valores["v"] = versao
+
+
+def _validade_estatico(nome_arquivo):
+    return 30 * 24 * 3600 if request.args.get("v") else None
+
+
+app.get_send_file_max_age = _validade_estatico
+
+_TIPOS_COMPRIMIVEIS = {"text/html", "text/css", "text/plain", "application/javascript",
+                       "application/json", "application/manifest+json", "image/svg+xml"}
+
+
+@app.after_request
+def _comprimir(resposta):
+    """Compacta (gzip) páginas, CSS e dados antes de enviar: a tela de Buscar,
+    por exemplo, cai de ~77 KB pra ~17 KB — carrega bem mais rápido no 4G."""
+    if (resposta.status_code != 200
+            or resposta.mimetype not in _TIPOS_COMPRIMIVEIS
+            or "gzip" not in request.headers.get("Accept-Encoding", "").lower()
+            or "Content-Encoding" in resposta.headers
+            or resposta.is_streamed and not resposta.direct_passthrough):
+        return resposta
+    resposta.direct_passthrough = False
+    dados = resposta.get_data()
+    if len(dados) < 1024:
+        return resposta
+    compactado = gzip.compress(dados, compresslevel=6)
+    resposta.set_data(compactado)
+    resposta.headers["Content-Encoding"] = "gzip"
+    resposta.headers["Content-Length"] = str(len(compactado))
+    resposta.vary.add("Accept-Encoding")
+    etag, fraco = resposta.get_etag()
+    if etag:
+        resposta.set_etag(etag + "-gz", weak=fraco)
+    return resposta
+
+
+# Limites por IP (ou por usuário) contra abuso: excesso de cadastros falsos,
+# pedidos de senha em massa (que também disparam WhatsApp) e buscas em
+# rajada (que poderiam fazer os sites de origem bloquearem o servidor).
+_LIMITES = {}
+_TRAVA_LIMITES = threading.Lock()
+
+
+def _passou_do_limite(nome: str, chave: str, maximo: int, janela_seg: int, registrar: bool = True) -> bool:
+    """Diz se já passou do limite na janela e (se registrar=True e ainda não
+    passou) conta mais uma tentativa."""
+    agora = time.time()
+    k = (nome, chave)
+    with _TRAVA_LIMITES:
+        recentes = [t for t in _LIMITES.get(k, []) if agora - t < janela_seg]
+        excedeu = len(recentes) >= maximo
+        if registrar and not excedeu:
+            recentes.append(agora)
+        _LIMITES[k] = recentes
+        if len(_LIMITES) > 20000:  # faxina pra memória não crescer sem fim
+            for velho in [kk for kk, v in _LIMITES.items() if not v or agora - v[-1] > 3600]:
+                _LIMITES.pop(velho, None)
+    return excedeu
+
+
+def _ip_visitante() -> str:
+    return request.remote_addr or "?"
 
 
 def _corpo_json():
@@ -239,15 +390,21 @@ def cadastro():
     nome_form = ""
     email_form = ""
     cpf_form = ""
+    telefone_form = ""
+
+    if request.method == "POST" and _passou_do_limite("cadastro", _ip_visitante(), 15, 600):
+        return render_template("cadastro.html", erro="Muitas tentativas de cadastro seguidas. Aguarde alguns minutos.",
+                               nome="", email="", cpf="", telefone=""), 429
 
     if request.method == "POST":
         nome_form = request.form.get("nome", "").strip()
         email_form = request.form.get("email", "").strip().lower()
         cpf_form = request.form.get("cpf", "").strip()
+        telefone_form = request.form.get("telefone", "").strip()
         senha = request.form.get("senha", "")
         confirmar = request.form.get("confirmar", "")
 
-        if not nome_form or not email_form or not cpf_form or not senha:
+        if not nome_form or not email_form or not cpf_form or not telefone_form or not senha:
             erro = "Preencha todos os campos."
         elif not cpf_valido(cpf_form):
             erro = "CPF inválido. Confira os números digitados."
@@ -262,15 +419,15 @@ def cadastro():
 
         if not erro:
             try:
-                user_id = criar_usuario(nome_form, email_form, cpf_form, senha)
+                criar_usuario(nome_form, email_form, cpf_form, senha, telefone=telefone_form)
             except ErroIntegridade:
                 erro = "Já existe uma conta cadastrada com esse e-mail ou CPF."
             else:
-                atualizar_ultimo_login(user_id)
-                fazer_login(user_id)
-                return redirect(url_for("index"))
+                # Sem login automático: o cadastro só funciona depois que um
+                # admin aprovar (veja a tela de aviso no próprio login.html).
+                return redirect(url_for("login", cadastro="sucesso"))
 
-    return render_template("cadastro.html", erro=erro, nome=nome_form, email=email_form, cpf=cpf_form)
+    return render_template("cadastro.html", erro=erro, nome=nome_form, email=email_form, cpf=cpf_form, telefone=telefone_form)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -284,7 +441,7 @@ def login():
         senha = request.form.get("senha", "")
         chave = _chave_login(cpf)
 
-        if _login_bloqueado(chave):
+        if _login_bloqueado(chave) or _passou_do_limite("login_ip", _ip_visitante(), 30, 600, registrar=False):
             erro = "Muitas tentativas de login. Aguarde alguns minutos e tente de novo."
             return render_template("login.html", erro=erro), 429
 
@@ -292,11 +449,15 @@ def login():
 
         if usuario and checar_senha(usuario, senha):
             _limpar_falhas_login(chave)
+            if not usuario["aprovado"]:
+                erro = "Seu cadastro ainda está sendo analisado pela nossa equipe. Assim que for aprovado, você já poderá entrar."
+                return render_template("login.html", erro=erro)
             atualizar_ultimo_login(usuario["id"])
             fazer_login(usuario["id"])
             return redirect(url_for("index"))
 
         _registrar_falha_login(chave)
+        _passou_do_limite("login_ip", _ip_visitante(), 30, 600)
         erro = "CPF ou senha incorretos."
 
     return render_template("login.html", erro=erro)
@@ -334,17 +495,12 @@ def perfil():
             usuario = buscar_usuario_por_id(usuario["id"])
             sucesso = "Senha atualizada com sucesso."
 
-    stats_pessoais = progresso_sugestao_usuario(usuario["id"])
-
     return render_template(
         "perfil.html",
         usuario=usuario,
         cpf_formatado=formatar_cpf(usuario["cpf"]),
         criado_em=formatar_data_br(usuario["criado_em"]),
         ultimo_login=formatar_data_br(usuario["ultimo_login"]),
-        sugestao_visitas_mes=stats_pessoais["sugestao_visitas_mes"],
-        progresso_sugestao_pct=stats_pessoais["progresso_sugestao_pct"],
-        visitados_mes_atual=stats_pessoais["visitados_mes_atual"],
         erro=erro,
         sucesso=sucesso,
     )
@@ -360,7 +516,14 @@ def logout():
 @app.route("/api/esqueci-senha", methods=["POST"])
 def api_esqueci_senha():
     dados = _corpo_json()
-    cpf = dados.get("cpf", "")
+    cpf = str(dados.get("cpf", ""))
+    # A resposta é sempre "ok" (não revela se o CPF existe). Pedido com CPF
+    # inválido, ou repetido demais, só não vira notificação/WhatsApp.
+    if not cpf_valido(cpf):
+        return jsonify({"ok": True})
+    if _passou_do_limite("senha_ip", _ip_visitante(), 5, 600) or \
+       _passou_do_limite("senha_cpf", "".join(ch for ch in cpf if ch.isdigit()), 2, 3600):
+        return jsonify({"ok": True})
     solicitacao = registrar_solicitacao_senha(cpf)
 
     nome = solicitacao["nome"] or "CPF não cadastrado no sistema"
@@ -485,8 +648,9 @@ def admin_estatisticas_usuario(user_id):
 @admin_required
 def admin_notificacoes():
     pendentes = listar_solicitacoes_senha_pendentes()
+    cadastros = listar_cadastros_pendentes()
     return jsonify({
-        "total": len(pendentes),
+        "total": len(pendentes) + len(cadastros),
         "solicitacoes": [
             {
                 "id": s["id"],
@@ -497,7 +661,27 @@ def admin_notificacoes():
             }
             for s in pendentes
         ],
+        "cadastros_pendentes": [
+            {
+                "id": c["id"],
+                "nome": c["nome"],
+                "email": c["email"],
+                "cpf": formatar_cpf(c["cpf"]),
+                "telefone": c["telefone"],
+                "criado_em": formatar_data_br(c["criado_em"]),
+            }
+            for c in cadastros
+        ],
     })
+
+
+@app.route("/admin/cadastros-pendentes/<int:usuario_id>/aprovar", methods=["POST"])
+@admin_required
+def admin_cadastro_aprovar(usuario_id):
+    if not buscar_usuario_por_id(usuario_id):
+        return jsonify({"ok": False, "mensagem": "Usuário não encontrado."}), 404
+    ok = aprovar_usuario(usuario_id)
+    return jsonify({"ok": ok})
 
 
 @app.route("/admin/notificacoes/<int:solicitacao_id>/atender", methods=["POST"])
@@ -563,8 +747,11 @@ def index():
 @login_required
 def api_buscar():
     especialidades_selecionadas = request.args.getlist("especialidade")
-    cidade = request.args.get("cidade", "")
-    uf = request.args.get("uf", "")
+    cidade = request.args.get("cidade", "")[:80]
+    uf = request.args.get("uf", "")[:2]
+
+    if _passou_do_limite("busca", str(usuario_logado()["id"]), 40, 300):
+        return jsonify({"erro": "Muitas buscas seguidas. Aguarde um minuto e tente de novo."}), 429
 
     if not especialidades_selecionadas:
         return jsonify({"erro": "Selecione ao menos uma especialidade."}), 400
@@ -607,6 +794,12 @@ def api_buscar():
                 (info["sechat"], nome_especialidade, cidade, uf),
             ))
 
+        tarefas.append((
+            f"APEPI ({nome_especialidade})",
+            buscar_medicos_apepi,
+            (slug, nome_especialidade, cidade, uf),
+        ))
+
     for chave_fonte, dados_fonte in FONTES_GENERICAS.items():
         tarefas.append((
             dados_fonte["nome"],
@@ -614,28 +807,37 @@ def api_buscar():
             (chave_fonte, rotulo_especialidades, cidade, uf),
         ))
 
-    todos_medicos = []
-    fontes_com_erro = []
+    # A base própria (médicos importados de planilha) é só uma consulta no
+    # banco — sempre ao vivo, pra uma importação nova aparecer na hora.
+    todos_medicos = buscar_base_propria(especialidades_selecionadas, cidade, uf, NOMES_ESPECIALIDADES)
 
-    # A base própria (médicos importados de planilha) não depende de
-    # internet nem de site nenhum — é só uma consulta no banco, então entra
-    # direto na lista, sem precisar do ThreadPoolExecutor.
-    todos_medicos.extend(buscar_base_propria(especialidades_selecionadas, cidade, uf, NOMES_ESPECIALIDADES))
+    # Mesma busca feita há pouco (por qualquer pessoa da equipe): reaproveita
+    # o que os sites devolveram em vez de consultar tudo de novo.
+    chave_cache = (tuple(sorted(especialidades_selecionadas)), normalizar_texto_busca(cidade), uf.strip().upper())
+    achou, guardado = _CACHE_BUSCAS.pegar(chave_cache)
+    if achou:
+        resultados_sites, fontes_com_erro = [dict(m) for m in guardado], []
+    else:
+        resultados_sites, fontes_com_erro = [], []
+        # Roda tudo em paralelo (até 12 buscas ao mesmo tempo) em vez de uma
+        # atrás da outra — é isso que evita o erro de timeout quando várias
+        # especialidades são selecionadas juntas.
+        with ThreadPoolExecutor(max_workers=12) as executor:
+            futuros = {
+                executor.submit(funcao, *args): rotulo
+                for rotulo, funcao, args in tarefas
+            }
+            for futuro in as_completed(futuros):
+                rotulo = futuros[futuro]
+                try:
+                    resultados_sites.extend(futuro.result())
+                except Exception as e:
+                    app.logger.warning("Fonte com erro na busca — %s: %s", rotulo, e)
+                    fontes_com_erro.append(f"{rotulo}: fonte indisponível no momento")
+        if not fontes_com_erro:  # só guarda resultado completo
+            _CACHE_BUSCAS.guardar(chave_cache, [dict(m) for m in resultados_sites])
 
-    # Roda tudo em paralelo (até 12 buscas ao mesmo tempo) em vez de uma
-    # atrás da outra — é isso que evita o erro de timeout quando várias
-    # especialidades são selecionadas juntas.
-    with ThreadPoolExecutor(max_workers=12) as executor:
-        futuros = {
-            executor.submit(funcao, *args): rotulo
-            for rotulo, funcao, args in tarefas
-        }
-        for futuro in as_completed(futuros):
-            rotulo = futuros[futuro]
-            try:
-                todos_medicos.extend(futuro.result())
-            except Exception as e:
-                fontes_com_erro.append(f"{rotulo}: {e}")
+    todos_medicos = _juntar_duplicados(todos_medicos + resultados_sites)
 
     # Médico que já está no painel do usuário logado: mostra "Presente no
     # painel médico" em vez do botão de adicionar. Médico que já está no
@@ -660,6 +862,36 @@ def api_buscar():
         "medicos": todos_medicos,
         "avisos": fontes_com_erro,
     })
+
+
+_CACHE_BUSCAS = CacheTTL(10 * 60, 300)  # buscas iguais em até 10 min
+
+
+def normalizar_texto_busca(texto: str) -> str:
+    return " ".join(normalizar(texto or "").split())
+
+
+def _juntar_duplicados(medicos: list) -> list:
+    """O mesmo médico (mesmo CRM) pode vir de mais de uma fonte — mostra uma
+    vez só, completando telefone/endereço que faltarem com o que a outra
+    fonte trouxe. Sem CRM, não junta (nome igual pode ser outra pessoa)."""
+    vazios = {"", "Não encontrado", "Não disponível", None}
+    por_chave = {}
+    saida = []
+    for m in medicos:
+        chave = computar_chave_medico(m)
+        if not chave.startswith("crm:"):
+            saida.append(m)
+            continue
+        if chave not in por_chave:
+            por_chave[chave] = m
+            saida.append(m)
+            continue
+        principal = por_chave[chave]
+        for campo in ("telefone", "endereco", "perfil_url"):
+            if principal.get(campo) in vazios and m.get(campo) not in vazios:
+                principal[campo] = m[campo]
+    return saida
 
 
 @app.route("/api/painel", methods=["GET"])
@@ -813,17 +1045,6 @@ def api_roteiro():
         return jsonify({"erro": "Informe uma data válida (AAAA-MM-DD)."}), 400
 
     return jsonify({"visitas": roteiro_do_dia(usuario["id"], data)})
-
-
-@app.route("/admin/usuarios/<int:user_id>/sugestao-visitas", methods=["POST"])
-@admin_required
-def admin_definir_sugestao(user_id):
-    dados = _corpo_json()
-    sugestao = dados.get("sugestao")
-    if sugestao == "" or sugestao is None:
-        sugestao = None
-    ok = definir_sugestao_visitas(user_id, sugestao)
-    return jsonify({"ok": ok})
 
 
 @app.route("/admin/base-propria")

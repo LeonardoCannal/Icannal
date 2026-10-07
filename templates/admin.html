@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>i.cannal · Painel Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 <meta name="theme-color" content="#171B22">
@@ -54,6 +56,8 @@
           <span class="notif-badge" id="notif-badge" style="display:none;">0</span>
         </button>
         <div class="notif-painel" id="notif-painel">
+          <div class="notif-cabecalho">Cadastros pendentes de aprovação</div>
+          <div class="notif-lista" id="notif-lista-cadastros"></div>
           <div class="notif-cabecalho">Solicitações de redefinição de senha</div>
           <div class="notif-lista" id="notif-lista"></div>
         </div>
@@ -192,18 +196,6 @@
           <span class="stat-label">Visitados este mês</span>
           <span class="stat-valor" id="dash-visitados-mes">0</span>
           <span class="stat-extra" id="dash-variacao-mes"></span>
-        </div>
-      </div>
-
-      <h3 class="modal-secao-titulo">Sugestão de visitas este mês</h3>
-      <div class="sugestao-bloco">
-        <div class="sugestao-editar">
-          <input type="number" id="dash-sugestao-input" class="sugestao-input" min="0" max="100000" placeholder="Sem sugestão definida">
-          <button type="button" id="dash-sugestao-salvar" class="sugestao-btn-salvar">Salvar sugestão</button>
-        </div>
-        <div class="sugestao-progresso-wrap" id="dash-sugestao-progresso-wrap" style="display:none;">
-          <div class="sugestao-progresso-barra"><div class="sugestao-progresso-preenchido" id="dash-sugestao-barra"></div></div>
-          <span class="sugestao-progresso-texto" id="dash-sugestao-texto"></span>
         </div>
       </div>
 
@@ -523,11 +515,11 @@
           addMedSalvarBtn.disabled = false;
           addMedSalvarBtn.textContent = 'Adicionar ao painel';
           if(resp.ok){
-            addMedResultado.innerHTML = `<span class="ok">${resp.mensagem}</span>`;
+            addMedResultado.innerHTML = `<span class="ok">${esc(resp.mensagem)}</span>`;
             [addMedNome, addMedCrm, addMedEspecialidade, addMedCidade, addMedTelefone, addMedEndereco].forEach(campo => campo.value = '');
             addMedUf.value = '';
           } else {
-            addMedResultado.innerHTML = `<span class="erro-linha">${resp.mensagem}</span>`;
+            addMedResultado.innerHTML = `<span class="erro-linha">${esc(resp.mensagem)}</span>`;
           }
         })
         .catch(() => {
@@ -558,7 +550,7 @@
           addCsvEnviarBtn.textContent = 'Importar planilha';
 
           if(!resp.ok){
-            addCsvResultado.innerHTML = `<span class="erro-linha">${resp.mensagem || 'Não foi possível importar.'}</span>`;
+            addCsvResultado.innerHTML = `<span class="erro-linha">${esc(resp.mensagem || 'Não foi possível importar.')}</span>`;
             return;
           }
 
@@ -584,11 +576,6 @@
     const modalOverlayDash = document.getElementById('modal-overlay-dash');
     const modalDashTitulo = document.getElementById('modal-dash-titulo');
     const modalDashFechar = document.getElementById('modal-dash-fechar');
-    const sugestaoInput = document.getElementById('dash-sugestao-input');
-    const sugestaoSalvarBtn = document.getElementById('dash-sugestao-salvar');
-    const sugestaoProgressoWrap = document.getElementById('dash-sugestao-progresso-wrap');
-    const sugestaoBarra = document.getElementById('dash-sugestao-barra');
-    const sugestaoTexto = document.getElementById('dash-sugestao-texto');
     let graficoEspecialidadesUsuario = null;
     let usuarioDashAtualId = null;
 
@@ -605,15 +592,6 @@
           document.getElementById('dash-total-visitados').textContent = dados.total_visitados;
           document.getElementById('dash-total-revisitar').textContent = dados.total_revisitar;
           document.getElementById('dash-visitados-mes').textContent = dados.visitados_mes_atual;
-
-          sugestaoInput.value = dados.sugestao_visitas_mes || '';
-          if(dados.sugestao_visitas_mes && dados.progresso_sugestao_pct !== null){
-            sugestaoProgressoWrap.style.display = 'flex';
-            sugestaoBarra.style.width = dados.progresso_sugestao_pct + '%';
-            sugestaoTexto.textContent = `${dados.visitados_mes_atual} de ${dados.sugestao_visitas_mes} visitas (${dados.progresso_sugestao_pct}%)`;
-          } else {
-            sugestaoProgressoWrap.style.display = 'none';
-          }
 
           const variacaoEl = document.getElementById('dash-variacao-mes');
           const seta = dados.variacao_visitados_pct >= 0 ? '↑' : '↓';
@@ -711,36 +689,6 @@
 
     modalDashFechar.addEventListener('click', () => modalOverlayDash.classList.remove('aberto'));
 
-    sugestaoSalvarBtn.addEventListener('click', () => {
-      if(usuarioDashAtualId === null) return;
-      const valor = sugestaoInput.value.trim();
-      if(valor !== '' && (isNaN(valor) || Number(valor) < 0)){
-        mostrarAvisoNotif('Informe um número válido pra sugestão.');
-        return;
-      }
-      sugestaoSalvarBtn.disabled = true;
-      sugestaoSalvarBtn.textContent = 'Salvando...';
-      fetch(`/admin/usuarios/${usuarioDashAtualId}/sugestao-visitas`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sugestao: valor === '' ? null : Number(valor) })
-      })
-        .then(res => res.json())
-        .then(resp => {
-          sugestaoSalvarBtn.disabled = false;
-          sugestaoSalvarBtn.textContent = 'Salvar sugestão';
-          if(resp.ok){
-            abrirDashboardUsuario(usuarioDashAtualId, modalDashTitulo.textContent.replace('Dashboard — ', ''));
-          } else {
-            mostrarAvisoNotif('Não foi possível salvar a sugestão.');
-          }
-        })
-        .catch(() => {
-          sugestaoSalvarBtn.disabled = false;
-          sugestaoSalvarBtn.textContent = 'Salvar sugestão';
-          mostrarAvisoNotif('Erro de conexão ao salvar a sugestão.');
-        });
-    });
     modalOverlayDash.addEventListener('click', (e) => {
       if(e.target === modalOverlayDash) modalOverlayDash.classList.remove('aberto');
     });
@@ -766,6 +714,24 @@
     const notifPainel = document.getElementById('notif-painel');
     const notifBadge = document.getElementById('notif-badge');
     const notifLista = document.getElementById('notif-lista');
+    const notifListaCadastros = document.getElementById('notif-lista-cadastros');
+
+    function criarItemCadastroPendente(c){
+      const div = document.createElement('div');
+      div.className = 'notif-item';
+      div.innerHTML = `
+        <div class="notif-item-info">
+          <strong>${esc(c.nome)}</strong>
+          <span>${esc(c.email)}</span>
+          <span>${esc(c.cpf)} · ${esc(c.telefone || 'sem telefone')}</span>
+          <span>${esc(c.criado_em)}</span>
+        </div>
+        <div class="notif-acoes">
+          <button type="button" class="notif-btn-aprovar" data-id="${c.id}">Aprovar cadastro</button>
+        </div>
+      `;
+      return div;
+    }
 
     function criarItemNotif(s){
       const div = document.createElement('div');
@@ -800,6 +766,35 @@
           } else {
             notifBadge.style.display = 'none';
           }
+
+          notifListaCadastros.innerHTML = '';
+          if(dados.cadastros_pendentes.length === 0){
+            notifListaCadastros.innerHTML = '<div class="notif-vazio">Nenhum cadastro esperando aprovação.</div>';
+          } else {
+            dados.cadastros_pendentes.forEach(c => notifListaCadastros.appendChild(criarItemCadastroPendente(c)));
+          }
+          notifListaCadastros.querySelectorAll('.notif-btn-aprovar').forEach(botao => {
+            botao.addEventListener('click', () => {
+              botao.disabled = true;
+              botao.textContent = 'Aprovando...';
+              fetch(`/admin/cadastros-pendentes/${botao.dataset.id}/aprovar`, { method: 'POST' })
+                .then(res => res.json())
+                .then(resp => {
+                  if(resp.ok){
+                    carregarNotificacoes();
+                  } else {
+                    botao.disabled = false;
+                    botao.textContent = 'Aprovar cadastro';
+                    mostrarAvisoNotif('Não foi possível aprovar esse cadastro.');
+                  }
+                })
+                .catch(() => {
+                  botao.disabled = false;
+                  botao.textContent = 'Aprovar cadastro';
+                  mostrarAvisoNotif('Erro de conexão ao aprovar.');
+                });
+            });
+          });
 
           notifLista.innerHTML = '';
           if(dados.solicitacoes.length === 0){
