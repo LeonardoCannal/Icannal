@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>i.cannal · Meu Perfil</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 <meta name="theme-color" content="#171B22">
@@ -76,26 +77,10 @@
 
   .card h2{ font-size:16px; font-weight:700; margin:0 0 18px; color:var(--roxo-escuro); }
 
-  .sugestao-progresso-wrap{ display:flex; align-items:center; gap:12px; }
 
-  .sugestao-progresso-barra{
-    flex:1;
-    height:10px;
-    background:var(--borda);
-    border-radius:999px;
-    overflow:hidden;
-  }
 
-  .sugestao-progresso-preenchido{
-    height:100%;
-    background:var(--roxo);
-    border-radius:999px;
-    transition:width .3s ease;
-  }
 
-  .sugestao-progresso-texto{ font-size:12.5px; font-weight:700; color:var(--texto-suave); white-space:nowrap; }
 
-  .sugestao-vazia{ font-size:13px; color:var(--texto-suave); line-height:1.6; margin:0; }
 
   .dados-lista{ display:flex; flex-direction:column; gap:15px; }
   .dados-item{ display:flex; flex-direction:column; gap:3px; }
@@ -188,6 +173,7 @@
   <nav>
     <a href="{{ url_for('index') }}" class="nav-link">Buscar</a>
     <a href="{{ url_for('index') }}#painel" class="nav-link">Painel Médico</a>
+    <a href="{{ url_for('agenda') }}" class="nav-link">Agenda</a>
     {% if current_user.is_admin %}
     <a href="{{ url_for('admin') }}" class="nav-link">Painel Admin</a>
     {% endif %}
@@ -227,18 +213,6 @@
         <span class="valor">{{ ultimo_login }}</span>
       </div>
     </div>
-  </div>
-
-  <div class="card">
-    <h2>Sugestão de visitas este mês</h2>
-    {% if sugestao_visitas_mes %}
-    <div class="sugestao-progresso-wrap">
-      <div class="sugestao-progresso-barra"><div class="sugestao-progresso-preenchido" style="width:{{ progresso_sugestao_pct }}%;"></div></div>
-      <span class="sugestao-progresso-texto">{{ visitados_mes_atual }} de {{ sugestao_visitas_mes }} visitas ({{ progresso_sugestao_pct }}%)</span>
-    </div>
-    {% else %}
-    <p class="sugestao-vazia">Sua equipe ainda não definiu uma sugestão de visitas pra você este mês.</p>
-    {% endif %}
   </div>
 
   <div class="card">

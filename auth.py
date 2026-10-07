@@ -32,11 +32,13 @@ PAINEL MÉDICO:
 import os
 import re
 import sqlite3
+import threading
+import time
 import unicodedata
 from contextlib import contextmanager
 from functools import wraps
 from datetime import datetime, timedelta
-from flask import session, redirect, url_for, render_template
+from flask import session, redirect, url_for, render_template, g, has_request_context
 from werkzeug.security import generate_password_hash, check_password_hash
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -45,6 +47,7 @@ USANDO_POSTGRES = bool(DATABASE_URL)
 if USANDO_POSTGRES:
     import psycopg2
     import psycopg2.extras
+    import psycopg2.pool
     ErroIntegridade = psycopg2.IntegrityError
 else:
     ErroIntegridade = sqlite3.IntegrityError
@@ -70,7 +73,9 @@ def inicializar_auth(app, sqlite_path):
                 senha_hash TEXT NOT NULL,
                 is_admin BOOLEAN NOT NULL DEFAULT FALSE,
                 criado_em TEXT NOT NULL,
-                ultimo_login TEXT
+                ultimo_login TEXT,
+                telefone TEXT,
+                aprovado BOOLEAN NOT NULL DEFAULT TRUE
             )
         """
         sql_painel = """
@@ -166,7 +171,9 @@ def inicializar_auth(app, sqlite_path):
                 senha_hash TEXT NOT NULL,
                 is_admin INTEGER NOT NULL DEFAULT 0,
                 criado_em TEXT NOT NULL,
-                ultimo_login TEXT
+                ultimo_login TEXT,
+                telefone TEXT,
+                aprovado INTEGER NOT NULL DEFAULT 1
             )
         """
         sql_painel = """
@@ -264,26 +271,42 @@ def inicializar_auth(app, sqlite_path):
         cursor.execute(sql_base_propria)
         cursor.execute(sql_removidos)
 
+    # Índices: deixam rápidas as consultas que o sistema faz o tempo todo
+    # (painel de cada usuário, histórico de visitas, dashboards, buscas na
+    # base própria). "IF NOT EXISTS": rodar de novo não faz nada.
+    for nome, tabela, colunas in [
+        ("idx_painel_usuario", "painel_medicos", "usuario_id, status"),
+        ("idx_painel_chave", "painel_medicos", "chave_medico"),
+        ("idx_visitas_usuario_data", "visitas_log", "usuario_id, visitado_em"),
+        ("idx_visitas_data", "visitas_log", "visitado_em"),
+        ("idx_visitas_painel", "visitas_log", "painel_medico_id"),
+        ("idx_agenda_painel", "agenda_compromissos", "painel_medico_id"),
+        ("idx_agenda_data", "agenda_compromissos", "data"),
+        ("idx_buscas_usuario_data", "buscas_log", "usuario_id, criado_em"),
+        ("idx_buscas_data", "buscas_log", "criado_em"),
+        ("idx_base_propria_busca", "medicos_base_propria", "especialidade, cidade_norm"),
+        ("idx_removidos_usuario", "medicos_removidos_inatividade", "usuario_id, removido_em"),
+        ("idx_senha_atendido", "solicitacoes_senha", "atendido"),
+    ]:
+        _criar_indice_se_faltar(nome, tabela, colunas)
+
     # Bancos criados antes dessa versão não têm essa coluna — adiciona sem
     # quebrar se ela já existir (mesmo problema que já pegou o "cpf" antes).
     _adicionar_coluna_se_faltar("painel_medicos", "visitado_em", "TEXT")
     _adicionar_coluna_se_faltar("painel_medicos", "observacoes", "TEXT")
     _adicionar_coluna_se_faltar("painel_medicos", "resultado_visita", "TEXT")
     _adicionar_coluna_se_faltar("visitas_log", "resultado", "TEXT")
-    _adicionar_coluna_se_faltar("usuarios", "sugestao_visitas_mes", "INTEGER")
+    _adicionar_coluna_se_faltar("usuarios", "telefone", "TEXT")
+    # DEFAULT verdadeiro é de propósito: ninguém que já tinha conta fica
+    # bloqueado quando essa coluna é criada — só cadastro NOVO nasce
+    # precisando de aprovação (veja criar_usuario). O tipo precisa bater
+    # com o da tabela criada do zero (BOOLEAN no Postgres, INTEGER no SQLite).
+    _adicionar_coluna_se_faltar(
+        "usuarios", "aprovado",
+        "BOOLEAN NOT NULL DEFAULT TRUE" if USANDO_POSTGRES else "INTEGER NOT NULL DEFAULT 1",
+    )
 
-    # Renomeia "meta" pra "sugestão": em produção pra PJ não pode existir a
-    # palavra "meta" associada a visitas (poderia ser usada como indício de
-    # vínculo empregatício). Copia o que já estava salvo e apaga a coluna antiga.
-    with _conexao() as conn:
-        cursor = conn.cursor()
-        try:
-            cursor.execute("""
-                UPDATE usuarios SET sugestao_visitas_mes = meta_visitas_mes
-                WHERE meta_visitas_mes IS NOT NULL AND sugestao_visitas_mes IS NULL
-            """)
-        except Exception:
-            pass  # banco novo, "meta_visitas_mes" nunca existiu
+    # Coluna antiga, de antes da troca de nome — não é mais usada.
     _remover_coluna_se_existir("usuarios", "meta_visitas_mes")
 
     # Médicos já marcados como visitados antes dessas colunas existirem ficam
@@ -310,17 +333,25 @@ def inicializar_auth(app, sqlite_path):
 
 def _get_conn_bruta():
     if USANDO_POSTGRES:
-        kwargs = {}
-        if "sslmode" not in DATABASE_URL:
-            kwargs["sslmode"] = "require"  # exigido pelo Postgres gerenciado do Render/Supabase
-        return psycopg2.connect(
-            DATABASE_URL,
-            cursor_factory=psycopg2.extras.RealDictCursor,
-            **kwargs,
-        )
-    conn = sqlite3.connect(_SQLITE_PATH)
+        return psycopg2.connect(DATABASE_URL, **_kwargs_postgres())
+    conn = sqlite3.connect(_SQLITE_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _criar_indice_se_faltar(nome: str, tabela: str, colunas: str):
+    """Cria um índice em conexão própria — se der qualquer erro (ex.: falta
+    de permissão no banco), segue sem ele: índice só acelera, nunca é
+    obrigatório pro sistema funcionar."""
+    conn = _get_conn_bruta()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS {nome} ON {tabela} ({colunas})")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        conn.close()
 
 
 def _adicionar_coluna_se_faltar(tabela: str, coluna: str, tipo_sql: str):
@@ -359,18 +390,122 @@ def _remover_coluna_se_existir(tabela: str, coluna: str):
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Pool de conexões (só Postgres)
+# ---------------------------------------------------------------------------
+# Abrir uma conexão nova com o Supabase custa um "aperto de mão" criptografado
+# a cada vez — e uma página como a de Buscar abre várias. Com o pool, cada
+# processo do servidor mantém algumas conexões abertas e reaproveita.
+# Pra desligar (voltar ao jeito antigo, uma conexão por consulta), defina
+# DB_POOL=0 no arquivo de configuração do servidor.
+POOL_ATIVO = USANDO_POSTGRES and os.environ.get("DB_POOL", "1") != "0"
+POOL_MAX_CONEXOES = int(os.environ.get("DB_POOL_MAX", "4"))
+POOL_TESTAR_APOS_SEG = 30  # conexão parada há mais que isso é testada antes de usar
+
+_pool = None
+_pool_pid = None
+_pool_trava = threading.Lock()
+_ultimo_uso = {}  # id(conn) -> momento em que foi devolvida ao pool
+
+
+def _kwargs_postgres():
+    kwargs = {"cursor_factory": psycopg2.extras.RealDictCursor}
+    if "sslmode" not in DATABASE_URL:
+        kwargs["sslmode"] = "require"  # exigido pelo Postgres gerenciado do Render/Supabase
+    return kwargs
+
+
+def _obter_pool():
+    """Um pool por processo: o gunicorn cria processos separados, e uma
+    conexão nunca pode ser compartilhada entre processos."""
+    global _pool, _pool_pid
+    pid = os.getpid()
+    if _pool is None or _pool_pid != pid:
+        with _pool_trava:
+            if _pool is None or _pool_pid != pid:
+                _pool = psycopg2.pool.ThreadedConnectionPool(0, POOL_MAX_CONEXOES, DATABASE_URL, **_kwargs_postgres())
+                _pool_pid = pid
+                _ultimo_uso.clear()
+    return _pool
+
+
+def _conexao_esta_viva(conn) -> bool:
+    if conn.closed:
+        return False
+    parada_desde = _ultimo_uso.get(id(conn))
+    if parada_desde is not None and time.time() - parada_desde < POOL_TESTAR_APOS_SEG:
+        return True
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.close()
+        conn.rollback()
+        return True
+    except Exception:
+        return False
+
+
+def _pegar_conexao():
+    """Devolve (conexão, veio_do_pool)."""
+    if not POOL_ATIVO:
+        return _get_conn_bruta(), False
+    pool = _obter_pool()
+    for _ in range(2):
+        try:
+            conn = pool.getconn()
+        except psycopg2.pool.PoolError:
+            # Pool cheio (muita coisa ao mesmo tempo): usa uma conexão avulsa
+            # em vez de esperar — nunca trava a página.
+            return _get_conn_bruta(), False
+        if _conexao_esta_viva(conn):
+            return conn, True
+        try:
+            pool.putconn(conn, close=True)  # morreu (o Supabase fecha conexões paradas): descarta
+        except Exception:
+            pass
+    return _get_conn_bruta(), False
+
+
+def _devolver_conexao(conn, veio_do_pool: bool, quebrada: bool = False):
+    if not veio_do_pool:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return
+    pool = _obter_pool()
+    fechar = quebrada or conn.closed
+    try:
+        pool.putconn(conn, close=fechar)
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return
+    if fechar:
+        _ultimo_uso.pop(id(conn), None)
+    else:
+        _ultimo_uso[id(conn)] = time.time()
+
+
 @contextmanager
 def _conexao():
-    """Abre uma conexão, garante commit/rollback certo e sempre fecha no final."""
-    conn = _get_conn_bruta()
+    """Pega uma conexão (do pool, no Postgres), garante commit/rollback certo
+    e sempre devolve/fecha no final."""
+    conn, veio_do_pool = _pegar_conexao()
+    quebrada = False
     try:
         yield conn
         conn.commit()
     except Exception:
-        conn.rollback()
+        try:
+            conn.rollback()
+        except Exception:
+            quebrada = True
         raise
     finally:
-        conn.close()
+        _devolver_conexao(conn, veio_do_pool, quebrada)
 
 
 def _q(sql: str) -> str:
@@ -453,6 +588,37 @@ def tornar_admin(usuario_id: int) -> bool:
         return cursor.rowcount > 0
 
 
+def listar_cadastros_pendentes():
+    """Usuários que se cadastraram e ainda esperam um admin aprovar —
+    mais recentes primeiro."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""
+            SELECT id, nome, email, cpf, telefone, criado_em
+            FROM usuarios WHERE aprovado = ?
+            ORDER BY criado_em DESC
+        """), (False if USANDO_POSTGRES else 0,))
+        return cursor.fetchall()
+
+
+def contar_cadastros_pendentes() -> int:
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _q("SELECT COUNT(*) AS total FROM usuarios WHERE aprovado = ?"),
+            (False if USANDO_POSTGRES else 0,),
+        )
+        return cursor.fetchone()["total"]
+
+
+def aprovar_usuario(usuario_id: int) -> bool:
+    valor = True if USANDO_POSTGRES else 1
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("UPDATE usuarios SET aprovado = ? WHERE id = ?"), (valor, usuario_id))
+        return cursor.rowcount > 0
+
+
 def eh_admin_mestre(usuario) -> bool:
     """O(s) e-mail(is) em EMAILS_ADMIN são os admins "mestres" — os únicos
     que podem tirar o admin de outra pessoa. Isso evita que qualquer admin
@@ -477,8 +643,12 @@ def remover_admin(usuario_id: int) -> bool:
 EMAILS_ADMIN = {"leonardo@grupocannal.com"}
 
 
-def criar_usuario(nome: str, email: str, cpf: str, senha: str) -> int:
+def criar_usuario(nome: str, email: str, cpf: str, senha: str, telefone: str = None) -> int:
     is_admin = email.strip().lower() in EMAILS_ADMIN
+    # Admin (os e-mails fixos de EMAILS_ADMIN) não precisa de aprovação —
+    # senão ninguém conseguiria aprovar ninguém na primeira vez. Todo mundo
+    # mais nasce precisando que um admin valide o cadastro.
+    aprovado = is_admin
     cpf_limpo = limpar_cpf(cpf)
     senha_hash = generate_password_hash(senha)
     agora = datetime.utcnow().isoformat()
@@ -487,16 +657,16 @@ def criar_usuario(nome: str, email: str, cpf: str, senha: str) -> int:
         cursor = conn.cursor()
         if USANDO_POSTGRES:
             cursor.execute(
-                """INSERT INTO usuarios (nome, email, cpf, senha_hash, is_admin, criado_em)
-                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
-                (nome, email, cpf_limpo, senha_hash, is_admin, agora),
+                """INSERT INTO usuarios (nome, email, cpf, senha_hash, is_admin, criado_em, telefone, aprovado)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                (nome, email, cpf_limpo, senha_hash, is_admin, agora, telefone, aprovado),
             )
             return cursor.fetchone()["id"]
         else:
             cursor.execute(
-                """INSERT INTO usuarios (nome, email, cpf, senha_hash, is_admin, criado_em)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (nome, email, cpf_limpo, senha_hash, int(is_admin), agora),
+                """INSERT INTO usuarios (nome, email, cpf, senha_hash, is_admin, criado_em, telefone, aprovado)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (nome, email, cpf_limpo, senha_hash, int(is_admin), agora, telefone, int(aprovado)),
             )
             return cursor.lastrowid
 
@@ -520,20 +690,37 @@ def listar_usuarios():
 
 
 def usuario_logado():
-    """Retorna a linha do usuário logado (via sessão) ou None."""
+    """Retorna a linha do usuário logado (via sessão) ou None. Fica guardado
+    durante a requisição: a mesma página consulta isso várias vezes (decorador
+    de login, menu, a própria rota) e não precisa ir ao banco em todas."""
     user_id = session.get("user_id")
     if not user_id:
         return None
-    return buscar_usuario_por_id(user_id)
+    if has_request_context():
+        guardado = g.get("_usuario_logado")
+        if guardado is not None and guardado["id"] == user_id:
+            return guardado
+    usuario = buscar_usuario_por_id(user_id)
+    if has_request_context():
+        g._usuario_logado = usuario
+    return usuario
+
+
+def _esquecer_usuario_da_requisicao():
+    if has_request_context():
+        g.pop("_usuario_logado", None)
 
 
 def fazer_login(user_id: int):
+    session.clear()  # sessão nova a cada login (evita reaproveitar uma sessão antiga)
     session["user_id"] = user_id
     session.permanent = True
+    _esquecer_usuario_da_requisicao()
 
 
 def fazer_logout():
-    session.pop("user_id", None)
+    session.clear()
+    _esquecer_usuario_da_requisicao()
 
 
 def login_required(f):
@@ -1350,29 +1537,8 @@ def contar_visitas_amanha(usuario_id: int, agora_utc=None) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Metas mensais e ranking entre promotores
+# Ranking entre promotores
 # ---------------------------------------------------------------------------
-
-def definir_sugestao_visitas(usuario_id: int, sugestao) -> bool:
-    """Define (ou remove, se sugestao for None) a sugestão de quantas visitas
-    fazer no mês, pra um usuário. Só o admin chama isso. Chamada de
-    "sugestão", não "meta": pra prestadores PJ, a palavra "meta" pode ser
-    usada como indício de vínculo empregatício."""
-    if sugestao is not None:
-        try:
-            sugestao = int(sugestao)
-        except (TypeError, ValueError):
-            return False
-        if sugestao < 0 or sugestao > 100000:
-            return False
-    with _conexao() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            _q("UPDATE usuarios SET sugestao_visitas_mes = ? WHERE id = ?"),
-            (sugestao, usuario_id),
-        )
-        return cursor.rowcount > 0
-
 
 def ranking_visitas_mes(agora_utc=None, limite: int = 10):
     """Quem mais visitou médicos este mês — pro ranking do dashboard geral."""
@@ -1688,36 +1854,6 @@ def estatisticas_dashboard():
     }
 
 
-def progresso_sugestao_usuario(usuario_id: int, agora_utc=None):
-    """Versão leve de estatisticas_usuario() — só a sugestão de visitas e o
-    progresso do mês, pra mostrar em Meu Perfil sem rodar as consultas
-    pesadas do dashboard completo (tabela por período, especialidades etc.)."""
-    agora = agora_utc or datetime.utcnow()
-    inicio_mes_atual_str = _inicio_do_mes(agora).isoformat()
-
-    with _conexao() as conn:
-        cursor = conn.cursor()
-        cursor.execute(_q("SELECT sugestao_visitas_mes FROM usuarios WHERE id = ?"), (usuario_id,))
-        linha = cursor.fetchone()
-        sugestao_visitas_mes = linha["sugestao_visitas_mes"] if linha else None
-
-        cursor.execute(
-            _q("SELECT COUNT(*) AS total FROM visitas_log WHERE usuario_id = ? AND visitado_em >= ?"),
-            (usuario_id, inicio_mes_atual_str),
-        )
-        visitados_mes_atual = cursor.fetchone()["total"]
-
-    progresso_sugestao_pct = None
-    if sugestao_visitas_mes:
-        progresso_sugestao_pct = round(min(100, visitados_mes_atual / sugestao_visitas_mes * 100))
-
-    return {
-        "sugestao_visitas_mes": sugestao_visitas_mes,
-        "progresso_sugestao_pct": progresso_sugestao_pct,
-        "visitados_mes_atual": visitados_mes_atual,
-    }
-
-
 def estatisticas_usuario(usuario_id: int):
     """Mesma ideia do estatisticas_dashboard(), mas só com os números de UM
     usuário — pro admin abrir o dashboard individual clicando no nome dele."""
@@ -1751,10 +1887,6 @@ def estatisticas_usuario(usuario_id: int):
                 (usuario_id, desde_str),
             )
             return {"prospectados": prospectados, "visitados": visitados}
-
-        cursor.execute(_q("SELECT sugestao_visitas_mes FROM usuarios WHERE id = ?"), (usuario_id,))
-        linha_sugestao = cursor.fetchone()
-        sugestao_visitas_mes = linha_sugestao["sugestao_visitas_mes"] if linha_sugestao else None
 
         tabela_periodos = [
             {"label": "Hoje", **linha_periodo(hoje_ts)},
@@ -1821,10 +1953,6 @@ def estatisticas_usuario(usuario_id: int):
         """), (usuario_id, inicio_mes_atual_str))
         resultados_mes = {r["resultado"]: r["total"] for r in cursor.fetchall()}
 
-    progresso_sugestao_pct = None
-    if sugestao_visitas_mes:
-        progresso_sugestao_pct = round(min(100, visitados_mes_atual / sugestao_visitas_mes * 100))
-
     return {
         "total_prospectados": total_prospectados,
         "total_agendados": total_agendados,
@@ -1839,7 +1967,5 @@ def estatisticas_usuario(usuario_id: int):
         "buscas_30d": buscas_30d,
         "top_especialidades": top_especialidades,
         "proximos_agendamentos": proximos_agendamentos,
-        "sugestao_visitas_mes": sugestao_visitas_mes,
-        "progresso_sugestao_pct": progresso_sugestao_pct,
         "resultados_mes": resultados_mes,
     }

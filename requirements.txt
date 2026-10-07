@@ -1,6 +1,8 @@
-flask
-requests
-beautifulsoup4
-gunicorn
-openpyxl
-psycopg2-binary
+# Versões travadas na mesma "família" que roda no servidor hoje: recebe
+# correções de segurança, mas nunca um salto de versão que quebre o sistema.
+flask>=3.1,<4
+requests>=2.32,<3
+beautifulsoup4>=4.12,<5
+gunicorn>=23,<27
+openpyxl>=3.1,<4
+psycopg2-binary>=2.9.9,<3
