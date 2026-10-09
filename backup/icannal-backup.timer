@@ -1,0 +1,10 @@
+[Unit]
+Description=Roda o backup do i.cannal todo dia às 3h (horário de Brasília)
+
+[Timer]
+OnCalendar=*-*-* 06:00:00 UTC
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

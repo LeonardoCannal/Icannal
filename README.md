@@ -232,6 +232,10 @@ ele não precisa mais dos outros arquivos do projeto pra funcionar.
 | `WHATSAPP_TELEFONE` | Opcional. Número de WhatsApp (com código do país, só números — ex.: `5515996609680`) que recebe um aviso a cada pedido de "esqueci minha senha". Sem essa variável, o aviso simplesmente não é enviado (a notificação continua aparecendo normal no sino do painel admin). |
 | `WHATSAPP_APIKEY` | Opcional, usada junto com `WHATSAPP_TELEFONE`. A chave que o [CallMeBot](https://www.callmebot.com) devolve depois de você autorizar o bot no seu WhatsApp. |
 
+## Backup do banco
+
+Backup automático diário (3h), com 14 dias de cópias e aviso no WhatsApp se falhar. Instalação, como baixar uma cópia e como restaurar: veja `backup/LEIA-ME.md`.
+
 ## Segurança embutida
 
 - Depois de 8 tentativas de login erradas seguidas no mesmo CPF, o login espera 10 minutos.

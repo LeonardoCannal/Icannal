@@ -60,6 +60,7 @@ from auth import (
     admin_importar_painel_usuario,
     tornar_admin,
     eh_admin_mestre,
+    excluir_usuario,
     remover_admin,
     remover_medico_painel,
     listar_cadastros_pendentes,
@@ -347,6 +348,10 @@ def notificar_whatsapp_admin(mensagem: str):
 
 inicializar_auth(app, caminho_dados_persistentes("cannal.db"))
 
+# Senhas novas (cadastro, troca e redefinição) precisam ter pelo menos isso.
+# Quem já tem conta com senha menor continua entrando normalmente.
+SENHA_MINIMA = 8
+
 MAX_ESPECIALIDADES_POR_BUSCA = 3
 
 ESPECIALIDADES = {
@@ -410,8 +415,8 @@ def cadastro():
             erro = "CPF inválido. Confira os números digitados."
         elif senha != confirmar:
             erro = "As senhas não coincidem."
-        elif len(senha) < 6:
-            erro = "A senha precisa ter pelo menos 6 caracteres."
+        elif len(senha) < SENHA_MINIMA:
+            erro = f"A senha precisa ter pelo menos {SENHA_MINIMA} caracteres."
         elif buscar_usuario_por_email(email_form):
             erro = "Já existe uma conta cadastrada com esse e-mail."
         elif buscar_usuario_por_cpf(cpf_form):
@@ -486,8 +491,8 @@ def perfil():
 
         if not checar_senha(usuario, senha_atual):
             erro = "Senha atual incorreta."
-        elif len(nova_senha) < 6:
-            erro = "A nova senha precisa ter pelo menos 6 caracteres."
+        elif len(nova_senha) < SENHA_MINIMA:
+            erro = f"A nova senha precisa ter pelo menos {SENHA_MINIMA} caracteres."
         elif nova_senha != confirmar_senha:
             erro = "As senhas novas não coincidem."
         else:
@@ -547,6 +552,7 @@ def admin():
             "criado_em": formatar_data_br(u["criado_em"]),
             "ultimo_login": formatar_data_br(u["ultimo_login"]),
             "is_admin": bool(u["is_admin"]),
+            "eh_mestre": eh_admin_mestre(u),
             "total_painel": u["total_painel"],
         }
         for u in listar_usuarios_com_contagem_painel()
@@ -697,8 +703,8 @@ def admin_notificacao_redefinir(solicitacao_id):
     dados = _corpo_json()
     nova_senha = dados.get("senha", "")
 
-    if len(nova_senha) < 6:
-        return jsonify({"ok": False, "mensagem": "A senha precisa ter pelo menos 6 caracteres."}), 400
+    if len(nova_senha) < SENHA_MINIMA:
+        return jsonify({"ok": False, "mensagem": f"A senha precisa ter pelo menos {SENHA_MINIMA} caracteres."}), 400
 
     solicitacao = buscar_solicitacao_senha_por_id(solicitacao_id)
     if not solicitacao:
@@ -1189,6 +1195,24 @@ def admin_remover_admin(user_id):
         return jsonify({"ok": False, "mensagem": "Você não pode remover o próprio acesso de admin."}), 400
 
     ok = remover_admin(user_id)
+    return jsonify({"ok": ok})
+
+
+@app.route("/admin/usuarios/<int:user_id>/excluir", methods=["POST"])
+@admin_required
+def admin_excluir_usuario(user_id):
+    usuario_atual = usuario_logado()
+    alvo = buscar_usuario_por_id(user_id)
+    if not alvo:
+        return jsonify({"ok": False, "mensagem": "Usuário não encontrado."}), 404
+    if alvo["id"] == usuario_atual["id"]:
+        return jsonify({"ok": False, "mensagem": "Você não pode excluir a sua própria conta."}), 400
+    if eh_admin_mestre(alvo):
+        return jsonify({"ok": False, "mensagem": "A conta do admin principal não pode ser excluída."}), 403
+    if alvo["is_admin"] and not eh_admin_mestre(usuario_atual):
+        return jsonify({"ok": False, "mensagem": "Só o admin principal pode excluir a conta de outro admin."}), 403
+
+    ok = excluir_usuario(user_id)
     return jsonify({"ok": ok})
 
 

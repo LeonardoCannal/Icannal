@@ -104,7 +104,14 @@
         <tbody>
           {% for usuario in usuarios %}
           <tr>
-            <td><button type="button" class="link-nome-usuario" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">{{ usuario.nome }}</button></td>
+            <td>
+              <div class="celula-nome-usuario">
+                <button type="button" class="link-nome-usuario" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">{{ usuario.nome }}</button>
+                {% if usuario.id != current_user.id and not usuario.eh_mestre and (not usuario.is_admin or eh_mestre) %}
+                <button type="button" class="btn-excluir-usuario" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}" title="Excluir conta" aria-label="Excluir conta de {{ usuario.nome }}">&times;</button>
+                {% endif %}
+              </div>
+            </td>
             <td>{{ usuario.email }}</td>
             <td>{{ usuario.cpf }}</td>
             <td>{{ usuario.criado_em }}</td>
@@ -681,6 +688,31 @@
         });
     }
 
+    document.querySelectorAll('.btn-excluir-usuario').forEach(botao => {
+      botao.addEventListener('click', () => {
+        const nome = botao.dataset.nome;
+        const msg = `Excluir a conta de ${nome}?\n\n` +
+          `Isso apaga a conta e tudo que é dela: painel médico, agenda, histórico de visitas e de buscas. ` +
+          `Os médicos do painel voltam a aparecer nas buscas pra equipe.\n\nEssa ação não pode ser desfeita.`;
+        if(!confirm(msg)) return;
+        botao.disabled = true;
+        fetch(`/admin/usuarios/${botao.dataset.id}/excluir`, { method: 'POST' })
+          .then(res => res.json())
+          .then(resp => {
+            if(resp.ok){
+              botao.closest('tr').remove();
+            } else {
+              botao.disabled = false;
+              mostrarAvisoNotif(resp.mensagem || 'Não foi possível excluir essa conta.');
+            }
+          })
+          .catch(() => {
+            botao.disabled = false;
+            mostrarAvisoNotif('Erro de conexão ao excluir a conta.');
+          });
+      });
+    });
+
     document.querySelectorAll('.link-nome-usuario').forEach(botao => {
       botao.addEventListener('click', () => {
         abrirDashboardUsuario(botao.dataset.id, botao.dataset.nome);
@@ -749,7 +781,7 @@
         </div>
         ${temConta ? `
         <div class="notif-redefinir" id="notif-redefinir-${s.id}" style="display:none;">
-          <input type="password" class="notif-nova-senha" id="notif-senha-${s.id}" placeholder="Nova senha (mín. 6 caracteres)">
+          <input type="password" class="notif-nova-senha" id="notif-senha-${s.id}" placeholder="Nova senha (mín. 8 caracteres)">
           <button type="button" class="notif-btn-confirmar-senha" data-id="${s.id}">Confirmar nova senha</button>
         </div>` : ''}
       `;
@@ -824,8 +856,8 @@
               const inputSenha = document.getElementById(`notif-senha-${id}`);
               const senha = inputSenha.value;
 
-              if(senha.length < 6){
-                mostrarAvisoNotif('A senha precisa ter pelo menos 6 caracteres.');
+              if(senha.length < 8){
+                mostrarAvisoNotif('A senha precisa ter pelo menos 8 caracteres.');
                 return;
               }
 
