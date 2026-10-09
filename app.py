@@ -326,24 +326,45 @@ def _limpar_falhas_login(chave):
         _TENTATIVAS_LOGIN.pop(chave, None)
 
 
-# Notificação por WhatsApp (via CallMeBot) de pedidos de redefinição de senha.
-# Configurado pelas variáveis de ambiente WHATSAPP_TELEFONE e WHATSAPP_APIKEY —
-# se alguma faltar, a notificação é só pulada (nunca quebra o pedido de senha
-# em si, que é o que realmente importa pro usuário).
-def notificar_whatsapp_admin(mensagem: str):
+# Aviso pro admin (via CallMeBot) de pedidos de redefinição de senha.
+# Dois canais, cada um ligado só se a configuração dele existir:
+#   - Telegram: TELEGRAM_USUARIO (ex.: @seunome) — basta ter mandado /start
+#     pro @CallMeBot_txtbot no Telegram.
+#   - WhatsApp: WHATSAPP_TELEFONE + WHATSAPP_APIKEY.
+# Se nenhum estiver configurado, o aviso é só pulado. O envio roda em segundo
+# plano: o pedido de senha responde na hora, mesmo se o CallMeBot estiver lento.
+def _enviar_avisos_admin(mensagem: str):
+    usuario_tg = (os.environ.get("TELEGRAM_USUARIO") or "").strip()
+    if usuario_tg:
+        if not usuario_tg.startswith("@"):
+            usuario_tg = "@" + usuario_tg
+        try:
+            requests.get(
+                "https://api.callmebot.com/text.php",
+                params={"user": usuario_tg, "text": mensagem},
+                timeout=10,
+            )
+        except requests.RequestException:
+            pass
+
     telefone = os.environ.get("WHATSAPP_TELEFONE")
     apikey = os.environ.get("WHATSAPP_APIKEY")
-    if not telefone or not apikey:
-        return
+    if telefone and apikey:
+        try:
+            requests.get(
+                "https://api.callmebot.com/whatsapp.php",
+                params={"phone": telefone, "text": mensagem, "apikey": apikey},
+                timeout=10,
+            )
+        except requests.RequestException:
+            pass  # aviso é um "extra" — nunca deve derrubar o pedido de senha
 
-    try:
-        requests.get(
-            "https://api.callmebot.com/whatsapp.php",
-            params={"phone": telefone, "text": mensagem, "apikey": apikey},
-            timeout=8,
-        )
-    except requests.RequestException:
-        pass  # notificação é um "extra" — nunca deve derrubar o pedido de senha
+
+def notificar_admin(mensagem: str):
+    if not (os.environ.get("TELEGRAM_USUARIO")
+            or (os.environ.get("WHATSAPP_TELEFONE") and os.environ.get("WHATSAPP_APIKEY"))):
+        return
+    threading.Thread(target=_enviar_avisos_admin, args=(mensagem,), daemon=True).start()
 
 
 inicializar_auth(app, caminho_dados_persistentes("cannal.db"))
@@ -533,7 +554,7 @@ def api_esqueci_senha():
 
     nome = solicitacao["nome"] or "CPF não cadastrado no sistema"
     cpf_mostrado = formatar_cpf(solicitacao["cpf"]) if solicitacao["cpf"] else "(não informado)"
-    notificar_whatsapp_admin(
+    notificar_admin(
         f"🔑 i.cannal — pedido de redefinição de senha\nNome: {nome}\nCPF: {cpf_mostrado}"
     )
 

@@ -6,8 +6,8 @@
 # - Salva uma cópia completa e compactada em /var/backups/icannal.
 # - Confere se a cópia ficou inteira antes de considerar que deu certo.
 # - Mantém os últimos 14 dias e apaga os mais antigos sozinho.
-# - Se falhar, avisa no WhatsApp (se WHATSAPP_TELEFONE/APIKEY estiverem
-#   configurados) e o erro aparece em: journalctl -u icannal-backup
+# - Se falhar, avisa no Telegram (TELEGRAM_USUARIO) e/ou WhatsApp (se
+#   WHATSAPP_TELEFONE/APIKEY) — o erro também aparece em: journalctl -u icannal-backup
 #
 # Só LÊ o banco. Nunca altera nem apaga nada no Supabase.
 # ---------------------------------------------------------------------------
@@ -31,14 +31,22 @@ ler_var() {
 
 avisar_falha() {
   local motivo="$1"
-  local tel apikey
+  local tel apikey tg texto
   tel="$(ler_var WHATSAPP_TELEFONE)"
   apikey="$(ler_var WHATSAPP_APIKEY)"
+  tg="$(ler_var TELEGRAM_USUARIO)"
+  texto="⚠️ i.cannal — o backup diário do banco FALHOU ($(date '+%d/%m %H:%M')). Motivo: $motivo"
   echo "BACKUP FALHOU: $motivo" >&2
+  if [ -n "$tg" ]; then
+    case "$tg" in @*) ;; *) tg="@$tg" ;; esac
+    curl -s --max-time 15 -G "https://api.callmebot.com/text.php" \
+      --data-urlencode "user=$tg" \
+      --data-urlencode "text=$texto" >/dev/null || true
+  fi
   if [ -n "$tel" ] && [ -n "$apikey" ]; then
     curl -s --max-time 15 -G "https://api.callmebot.com/whatsapp.php" \
       --data-urlencode "phone=$tel" \
-      --data-urlencode "text=⚠️ i.cannal — o backup diário do banco FALHOU ($(date '+%d/%m %H:%M')). Motivo: $motivo" \
+      --data-urlencode "text=$texto" \
       --data-urlencode "apikey=$apikey" >/dev/null || true
   fi
 }

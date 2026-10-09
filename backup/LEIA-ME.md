@@ -3,7 +3,7 @@
 Todo dia às 3h (horário de Brasília), o servidor tira uma cópia completa do
 banco do Supabase e guarda em `/var/backups/icannal`. Ficam os últimos
 14 dias; os mais antigos são apagados sozinhos. Se algum dia falhar, chega
-um aviso no WhatsApp (se o CallMeBot estiver configurado).
+um aviso no Telegram ou WhatsApp (se o CallMeBot estiver configurado).
 
 O backup só **lê** o banco. Ele nunca altera nem apaga nada no Supabase.
 
@@ -119,4 +119,5 @@ trocar a `DATABASE_URL` do `/etc/cannal.env` pro endereço novo.
 | Variável | Pra quê |
 |---|---|
 | `BACKUP_DATABASE_URL` | Usar um endereço de banco diferente só pro backup. Normalmente não precisa: o script usa a `DATABASE_URL` e, se ela for do Supabase na porta 6543, troca sozinho pra 5432 (a 6543 não serve pra backup). |
+| `TELEGRAM_USUARIO` | O mesmo do aviso de "esqueci a senha" (ex.: `@seunome`). Com ele, uma falha no backup chega no seu Telegram. |
 | `WHATSAPP_TELEFONE` / `WHATSAPP_APIKEY` | As mesmas do aviso de "esqueci a senha". Com elas, uma falha no backup chega no seu WhatsApp. |
