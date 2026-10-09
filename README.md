@@ -231,6 +231,7 @@ ele não precisa mais dos outros arquivos do projeto pra funcionar.
 | `DB_POOL_MAX` | Opcional (padrão 4). Quantas conexões com o banco cada processo do servidor mantém abertas. |
 | `WHATSAPP_TELEFONE` | Opcional. Número de WhatsApp (com código do país, só números — ex.: `5515996609680`) que recebe um aviso a cada pedido de "esqueci minha senha". Sem essa variável, o aviso simplesmente não é enviado (a notificação continua aparecendo normal no sino do painel admin). |
 | `WHATSAPP_APIKEY` | Opcional, usada junto com `WHATSAPP_TELEFONE`. A chave que o [CallMeBot](https://www.callmebot.com) devolve depois de você autorizar o bot no seu WhatsApp. |
+| `TELEGRAM_USUARIO` | Opcional. Seu nome de usuário do Telegram (ex.: `@seunome`) para receber os mesmos avisos pelo Telegram (pedidos de senha e falha no backup). Antes, mande `/start` para o `@CallMeBot_txtbot` no Telegram. Não precisa de chave. |
 
 ## Backup do banco
 
