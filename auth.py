@@ -1576,6 +1576,44 @@ def chaves_no_painel_todos() -> set:
         return {row["chave_medico"] for row in cursor.fetchall()}
 
 
+def _tabela_existe(cursor, tabela: str) -> bool:
+    if USANDO_POSTGRES:
+        cursor.execute("SELECT to_regclass(%s) AS t", (f"public.{tabela}",))
+        return cursor.fetchone()["t"] is not None
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (tabela,))
+    return cursor.fetchone() is not None
+
+
+def excluir_usuario(usuario_id: int) -> bool:
+    """Exclui a conta de um usuário e tudo que é dele: painel médico
+    (os médicos voltam a aparecer nas buscas pra equipe), agenda, histórico
+    de visitas e de buscas, notificações e pedidos de senha. Registros que
+    ele criou e que são da empresa (médicos da base própria) continuam, só
+    deixam de apontar pra ele. Tudo numa transação só: ou apaga tudo, ou nada."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("SELECT id, cpf FROM usuarios WHERE id = ?"), (usuario_id,))
+        usuario = cursor.fetchone()
+        if not usuario:
+            return False
+
+        cursor.execute(_q("DELETE FROM agenda_compromissos WHERE usuario_id = ?"), (usuario_id,))
+        cursor.execute(_q("DELETE FROM visitas_log WHERE usuario_id = ?"), (usuario_id,))
+        # agenda/visitas ligadas aos médicos do painel dele (garantia extra)
+        cursor.execute(_q("DELETE FROM agenda_compromissos WHERE painel_medico_id IN (SELECT id FROM painel_medicos WHERE usuario_id = ?)"), (usuario_id,))
+        cursor.execute(_q("DELETE FROM visitas_log WHERE painel_medico_id IN (SELECT id FROM painel_medicos WHERE usuario_id = ?)"), (usuario_id,))
+        cursor.execute(_q("DELETE FROM painel_medicos WHERE usuario_id = ?"), (usuario_id,))
+        cursor.execute(_q("DELETE FROM buscas_log WHERE usuario_id = ?"), (usuario_id,))
+        cursor.execute(_q("DELETE FROM medicos_removidos_inatividade WHERE usuario_id = ?"), (usuario_id,))
+        cursor.execute(_q("DELETE FROM solicitacoes_senha WHERE cpf = ?"), (usuario["cpf"],))
+        cursor.execute(_q("UPDATE medicos_base_propria SET importado_por = NULL WHERE importado_por = ?"), (usuario_id,))
+        # tabela da antiga aba Portfólio: pode existir em bancos mais velhos
+        if _tabela_existe(cursor, "produtos_portfolio"):
+            cursor.execute(_q("UPDATE produtos_portfolio SET criado_por = NULL WHERE criado_por = ?"), (usuario_id,))
+        cursor.execute(_q("DELETE FROM usuarios WHERE id = ?"), (usuario_id,))
+        return True
+
+
 def listar_usuarios_com_contagem_painel():
     """Pra tela de admin: cada usuário com quantos médicos tem no painel dele."""
     with _conexao() as conn:

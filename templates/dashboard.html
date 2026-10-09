@@ -376,7 +376,7 @@
         </div>
         ${temConta ? `
         <div class="notif-redefinir" id="notif-redefinir-${s.id}" style="display:none;">
-          <input type="password" class="notif-nova-senha" id="notif-senha-${s.id}" placeholder="Nova senha (mín. 6 caracteres)">
+          <input type="password" class="notif-nova-senha" id="notif-senha-${s.id}" placeholder="Nova senha (mín. 8 caracteres)">
           <button type="button" class="notif-btn-confirmar-senha" data-id="${s.id}">Confirmar nova senha</button>
         </div>` : ''}
       `;
@@ -422,8 +422,8 @@
               const inputSenha = document.getElementById(`notif-senha-${id}`);
               const senha = inputSenha.value;
 
-              if(senha.length < 6){
-                mostrarAvisoNotif('A senha precisa ter pelo menos 6 caracteres.');
+              if(senha.length < 8){
+                mostrarAvisoNotif('A senha precisa ter pelo menos 8 caracteres.');
                 return;
               }
 

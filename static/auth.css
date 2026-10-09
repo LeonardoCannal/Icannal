@@ -748,6 +748,31 @@ table.tabela-admin tbody tr:hover{ background: var(--fundo); }
 
 .btn-cadastrar-manual:hover{ background: var(--verde-escuro); transform: translateY(-1px); }
 
+.celula-nome-usuario{ display: flex; align-items: center; gap: 6px; }
+
+.btn-excluir-usuario{
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--cinza);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: .55;
+  transition: background .15s ease, color .15s ease, opacity .15s ease;
+}
+tr:hover .btn-excluir-usuario{ opacity: 1; }
+.btn-excluir-usuario:hover, .btn-excluir-usuario:focus-visible{ background: #FBEAEA; color: #C13B3B; opacity: 1; }
+.btn-excluir-usuario:disabled{ opacity: .3; cursor: default; }
+
 .link-nome-usuario{
   background: none;
   border: none;

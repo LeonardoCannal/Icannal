@@ -1,0 +1,10 @@
+[Unit]
+Description=Backup diário do banco do i.cannal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Nice=10
+ExecStart=/bin/bash /home/cannal/cannal/backup/backup_banco.sh
