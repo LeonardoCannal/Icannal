@@ -29,14 +29,13 @@ ler_var() {
   printf '%s' "$valor"
 }
 
-avisar_falha() {
-  local motivo="$1"
-  local tel apikey tg texto
+# Manda uma mensagem pro Telegram e/ou WhatsApp do admin (o que estiver
+# configurado em /etc/cannal.env).
+avisar() {
+  local texto="$1" tel apikey tg
   tel="$(ler_var WHATSAPP_TELEFONE)"
   apikey="$(ler_var WHATSAPP_APIKEY)"
   tg="$(ler_var TELEGRAM_USUARIO)"
-  texto="⚠️ i.cannal — o backup diário do banco FALHOU ($(date '+%d/%m %H:%M')). Motivo: $motivo"
-  echo "BACKUP FALHOU: $motivo" >&2
   if [ -n "$tg" ]; then
     case "$tg" in @*) ;; *) tg="@$tg" ;; esac
     curl -s --max-time 15 -G "https://api.callmebot.com/text.php" \
@@ -49,6 +48,12 @@ avisar_falha() {
       --data-urlencode "text=$texto" \
       --data-urlencode "apikey=$apikey" >/dev/null || true
   fi
+}
+
+avisar_falha() {
+  local motivo="$1"
+  echo "BACKUP FALHOU: $motivo" >&2
+  avisar "⚠️ i.cannal — o backup diário do banco FALHOU ($(date '+%d/%m %H:%M')). Motivo: $motivo"
 }
 
 TEMP=""
@@ -113,4 +118,10 @@ if [ "$TOTAL" -gt 3 ]; then
   find "$PASTA" -maxdepth 1 -name 'icannal-*.sql.gz' -mtime +"$DIAS" -delete
 fi
 
-echo "Backup OK: $FINAL ($(du -h "$FINAL" | cut -f1), $TABELAS tabelas). Cópias guardadas: $(find "$PASTA" -maxdepth 1 -name 'icannal-*.sql.gz' | wc -l)"
+RESUMO="$(du -h "$FINAL" | cut -f1), $TABELAS tabelas. Cópias guardadas: $(find "$PASTA" -maxdepth 1 -name 'icannal-*.sql.gz' | wc -l)"
+echo "Backup OK: $FINAL ($RESUMO)"
+
+# Domingo: um "está tudo bem" semanal, pra você saber que o backup segue vivo.
+if [ "$(date +%u)" = 7 ]; then
+  avisar "✅ i.cannal — resumo semanal: o backup diário do banco está funcionando. Último: $RESUMO."
+fi

@@ -231,7 +231,13 @@ ele não precisa mais dos outros arquivos do projeto pra funcionar.
 | `DB_POOL_MAX` | Opcional (padrão 4). Quantas conexões com o banco cada processo do servidor mantém abertas. |
 | `WHATSAPP_TELEFONE` | Opcional. Número de WhatsApp (com código do país, só números — ex.: `5515996609680`) que recebe um aviso a cada pedido de "esqueci minha senha". Sem essa variável, o aviso simplesmente não é enviado (a notificação continua aparecendo normal no sino do painel admin). |
 | `WHATSAPP_APIKEY` | Opcional, usada junto com `WHATSAPP_TELEFONE`. A chave que o [CallMeBot](https://www.callmebot.com) devolve depois de você autorizar o bot no seu WhatsApp. |
-| `TELEGRAM_USUARIO` | Opcional. Seu nome de usuário do Telegram (ex.: `@seunome`) para receber os mesmos avisos pelo Telegram (pedidos de senha e falha no backup). Antes, mande `/start` para o `@CallMeBot_txtbot` no Telegram. Não precisa de chave. |
+| `TELEGRAM_USUARIO` | Opcional. Seu nome de usuário do Telegram (ex.: `@seunome`) para receber os avisos importantes do site: novo cadastro aguardando aprovação, pedido de senha, ações de outros admins (aprovar, dar acesso de admin, excluir conta), muitas senhas erradas, fonte de busca fora do ar, erro no site, falha no backup e (com o monitor) site/banco fora do ar. Antes, mande `/start` para o `@CallMeBot_txtbot` no Telegram. Não precisa de chave. |
+
+## Monitor (site fora do ar, disco, certificado)
+
+Um verificador roda no servidor a cada 5 minutos e avisa no Telegram se o
+site ou o banco pararem de responder. Instalação em
+[`monitor/LEIA-ME.md`](monitor/LEIA-ME.md).
 
 ## Backup do banco
 

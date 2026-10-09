@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, redirect, url_for, has_request_context
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, redirect, url_for, has_request_context, got_request_exception
 from flask.sessions import SecureCookieSessionInterface
 from werkzeug.middleware.proxy_fix import ProxyFix
 from urllib.parse import urlparse
@@ -16,6 +16,8 @@ from auth import (
     criar_usuario,
     buscar_usuario_por_email,
     buscar_usuario_por_cpf,
+    EMAILS_ADMIN,
+    banco_respondendo,
     buscar_usuario_por_id,
     cpf_valido,
     formatar_cpf,
@@ -75,6 +77,7 @@ from auth import (
     listar_medicos_removidos_geral,
     data_valida,
 )
+import re
 import requests
 import webbrowser
 import threading
@@ -326,6 +329,26 @@ def _limpar_falhas_login(chave):
         _TENTATIVAS_LOGIN.pop(chave, None)
 
 
+def _avisar_login_bloqueado(chave_cpf, cpf_travado):
+    ip = _ip_visitante()
+    if cpf_travado:
+        usuario = buscar_usuario_por_cpf(chave_cpf) if chave_cpf else None
+        conta = f"da conta de {usuario['nome']}" if usuario else "de um CPF não cadastrado"
+        notificar_admin(
+            f"🔒 i.cannal — muitas senhas erradas {conta}. O login dela ficou "
+            f"bloqueado por 10 minutos.\nIP: {ip}\n"
+            "Se for a própria pessoa, ela pode usar \"Esqueci minha senha\".",
+            chave=f"login_cpf:{chave_cpf}", intervalo_seg=3600,
+        )
+    else:
+        notificar_admin(
+            f"🔒 i.cannal — muitas tentativas de login erradas vindas do mesmo "
+            f"endereço (IP {ip}), em várias contas. Ele foi bloqueado por 10 minutos. "
+            "Pode ser alguém tentando adivinhar senhas.",
+            chave=f"login_ip:{ip}", intervalo_seg=3600,
+        )
+
+
 # Aviso pro admin (via CallMeBot) de pedidos de redefinição de senha.
 # Dois canais, cada um ligado só se a configuração dele existir:
 #   - Telegram: TELEGRAM_USUARIO (ex.: @seunome) — basta ter mandado /start
@@ -360,11 +383,76 @@ def _enviar_avisos_admin(mensagem: str):
             pass  # aviso é um "extra" — nunca deve derrubar o pedido de senha
 
 
-def notificar_admin(mensagem: str):
+_ULTIMO_AVISO = {}
+_TRAVA_AVISOS = threading.Lock()
+
+
+def notificar_admin(mensagem: str, chave: str = None, intervalo_seg: int = 0):
+    """Manda um aviso pro Telegram/WhatsApp do admin.
+
+    `chave` + `intervalo_seg` evitam enxurrada: o mesmo tipo de aviso (mesma
+    chave) só sai de novo depois desse intervalo."""
     if not (os.environ.get("TELEGRAM_USUARIO")
             or (os.environ.get("WHATSAPP_TELEFONE") and os.environ.get("WHATSAPP_APIKEY"))):
         return
+    if chave and intervalo_seg:
+        agora = time.time()
+        with _TRAVA_AVISOS:
+            if agora - _ULTIMO_AVISO.get(chave, 0) < intervalo_seg:
+                return
+            if len(_ULTIMO_AVISO) > 2000:
+                _ULTIMO_AVISO.clear()
+            _ULTIMO_AVISO[chave] = agora
     threading.Thread(target=_enviar_avisos_admin, args=(mensagem,), daemon=True).start()
+
+
+def _avisar_acao_de_outro_admin(mensagem: str):
+    """Ações de admin (aprovar, dar acesso de admin, excluir conta): avisa só
+    quando quem fez foi OUTRO admin — o admin principal não precisa ser
+    avisado do que ele mesmo acabou de fazer."""
+    if not eh_admin_mestre(usuario_logado()):
+        notificar_admin(mensagem)
+
+
+# Fonte de busca (Doctoralia, Sechat, APEPI...) com problema: uma falha
+# isolada é normal (o site demorou, caiu por um segundo). Só avisa quando a
+# mesma fonte falha 3 vezes em 20 minutos, e no máximo 1 aviso a cada 6 horas.
+_FALHAS_FONTE = {}
+
+
+def _registrar_falha_fonte(rotulo: str, erro: Exception):
+    fonte = rotulo.split(" (")[0]
+    agora = time.time()
+    with _TRAVA_AVISOS:
+        recentes = [t for t in _FALHAS_FONTE.get(fonte, []) if agora - t < 1200] + [agora]
+        _FALHAS_FONTE[fonte] = recentes
+    if len(recentes) >= 3:
+        notificar_admin(
+            f"🔍 i.cannal — a fonte {fonte} está falhando nas buscas "
+            f"({len(recentes)} erros nos últimos 20 min). As buscas continuam "
+            f"funcionando com as outras fontes.\nErro: {type(erro).__name__}",
+            chave=f"fonte:{fonte}", intervalo_seg=6 * 3600,
+        )
+
+
+# Erro inesperado no site (o usuário vê "Internal Server Error"). Avisa no
+# máximo 1 vez por hora para cada tipo de erro em cada página.
+
+
+def _avisar_erro_no_site(sender, exception, **extra):
+    try:
+        caminho = request.path if has_request_context() else "?"
+    except Exception:
+        caminho = "?"
+    tipo = type(exception).__name__
+    detalhe = re.sub(r"postgres(ql)?://\S+", "[endereço do banco]", str(exception))[:200]
+    notificar_admin(
+        f"🚨 i.cannal — erro no site\nPágina: {caminho}\nErro: {tipo}: {detalhe}",
+        chave=f"erro:{caminho}:{tipo}", intervalo_seg=3600,
+    )
+
+
+got_request_exception.connect(_avisar_erro_no_site, app)
 
 
 inicializar_auth(app, caminho_dados_persistentes("cannal.db"))
@@ -449,6 +537,12 @@ def cadastro():
             except ErroIntegridade:
                 erro = "Já existe uma conta cadastrada com esse e-mail ou CPF."
             else:
+                if email_form not in EMAILS_ADMIN:
+                    notificar_admin(
+                        "🆕 i.cannal — novo cadastro aguardando aprovação\n"
+                        f"Nome: {nome_form}\nE-mail: {email_form}\nTelefone: {telefone_form}\n"
+                        "Aprove em: https://icannal.com.br/admin (no sininho)"
+                    )
                 # Sem login automático: o cadastro só funciona depois que um
                 # admin aprovar (veja a tela de aviso no próprio login.html).
                 return redirect(url_for("login", cadastro="sucesso"))
@@ -467,7 +561,10 @@ def login():
         senha = request.form.get("senha", "")
         chave = _chave_login(cpf)
 
-        if _login_bloqueado(chave) or _passou_do_limite("login_ip", _ip_visitante(), 30, 600, registrar=False):
+        cpf_travado = _login_bloqueado(chave)
+        ip_travado = _passou_do_limite("login_ip", _ip_visitante(), 30, 600, registrar=False)
+        if cpf_travado or ip_travado:
+            _avisar_login_bloqueado(chave, cpf_travado)
             erro = "Muitas tentativas de login. Aguarde alguns minutos e tente de novo."
             return render_template("login.html", erro=erro), 429
 
@@ -708,6 +805,10 @@ def admin_cadastro_aprovar(usuario_id):
     if not buscar_usuario_por_id(usuario_id):
         return jsonify({"ok": False, "mensagem": "Usuário não encontrado."}), 404
     ok = aprovar_usuario(usuario_id)
+    if ok:
+        alvo = buscar_usuario_por_id(usuario_id)
+        _avisar_acao_de_outro_admin(f"✅ i.cannal — cadastro de {alvo['nome'] if alvo else usuario_id} "
+                                    f"aprovado por {usuario_logado()['nome']}.")
     return jsonify({"ok": ok})
 
 
@@ -860,6 +961,7 @@ def api_buscar():
                     resultados_sites.extend(futuro.result())
                 except Exception as e:
                     app.logger.warning("Fonte com erro na busca — %s: %s", rotulo, e)
+                    _registrar_falha_fonte(rotulo, e)
                     fontes_com_erro.append(f"{rotulo}: fonte indisponível no momento")
         if not fontes_com_erro:  # só guarda resultado completo
             _CACHE_BUSCAS.guardar(chave_cache, [dict(m) for m in resultados_sites])
@@ -1199,6 +1301,10 @@ def admin_tornar_admin(user_id):
         return jsonify({"ok": False, "mensagem": "Usuário não encontrado."}), 404
 
     ok = tornar_admin(user_id)
+    if ok:
+        alvo = buscar_usuario_por_id(user_id)
+        _avisar_acao_de_outro_admin(f"⭐ i.cannal — {alvo['nome']} agora é ADMIN "
+                                    f"(feito por {usuario_logado()['nome']}).")
     return jsonify({"ok": ok})
 
 
@@ -1234,6 +1340,9 @@ def admin_excluir_usuario(user_id):
         return jsonify({"ok": False, "mensagem": "Só o admin principal pode excluir a conta de outro admin."}), 403
 
     ok = excluir_usuario(user_id)
+    if ok:
+        _avisar_acao_de_outro_admin(f"🗑️ i.cannal — a conta de {alvo['nome']} ({alvo['email']}) foi "
+                                    f"EXCLUÍDA por {usuario_atual['nome']}.")
     return jsonify({"ok": ok})
 
 
@@ -1246,6 +1355,17 @@ def service_worker():
     resposta.headers["Service-Worker-Allowed"] = "/"
     resposta.headers["Cache-Control"] = "no-cache"
     return resposta
+
+
+@app.route("/saude")
+def saude():
+    # Usado pelo monitor do servidor (monitor/LEIA-ME.md) pra saber se o site
+    # e o banco estão de pé. Não mostra nenhum dado.
+    if _passou_do_limite("saude", _ip_visitante(), 30, 60):
+        return "devagar", 429
+    if not banco_respondendo():
+        return "banco fora", 503
+    return "ok", 200
 
 
 @app.route("/offline")
