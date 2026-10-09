@@ -671,6 +671,18 @@ def criar_usuario(nome: str, email: str, cpf: str, senha: str, telefone: str = N
             return cursor.lastrowid
 
 
+def banco_respondendo() -> bool:
+    """Teste rápido de saúde: o banco responde a uma consulta simples?"""
+    try:
+        with _conexao() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+        return True
+    except Exception:
+        return False
+
+
 def checar_senha(usuario_row, senha: str) -> bool:
     return check_password_hash(usuario_row["senha_hash"], senha)
 

@@ -1,0 +1,9 @@
+[Unit]
+Description=Monitor do i.cannal (site, banco, disco e certificado)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/bin/bash /home/cannal/cannal/monitor/monitor_site.sh
