@@ -156,6 +156,11 @@
     .hero p{ font-size:13px; }
     .card{ padding:18px; }
   }
+  .btn-sair-celular{
+    display:none; margin:18px 0 0; padding:13px; text-align:center; border-radius:12px;
+    border:1.5px solid #E2C4C4; color:#B23B3B; background:#fff; font-weight:600; font-size:14px; text-decoration:none;
+  }
+  @media (max-width: 640px){ .btn-sair-celular{ display:block; } }
 </style>
 </head>
 <body>
@@ -258,6 +263,8 @@
       <button type="submit" class="btn-salvar">Salvar nova senha</button>
     </form>
   </div>
+
+  <a href="{{ url_for('logout') }}" class="btn-sair-celular">Sair da conta</a>
 </main>
 
 <script>
@@ -281,5 +288,6 @@
     });
   }
 </script>
+{% with aba_mobile='perfil' %}{% include '_barra_mobile.html' %}{% endwith %}
 </body>
 </html>

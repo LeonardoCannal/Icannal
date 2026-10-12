@@ -17,7 +17,9 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
 <style>
   .base-grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap: 24px; align-items: start; }
-  @media (max-width: 860px){ .base-grid{ grid-template-columns: 1fr; } }
+  @media (max-width: 860px){ .base-grid{ grid-template-columns: minmax(0, 1fr); } }
+  .base-grid > *{ min-width: 0; }
+  .base-instrucoes code{ overflow-wrap: anywhere; }
 
   .base-instrucoes{ font-size: 13px; color: var(--cinza); line-height: 1.7; }
   .base-instrucoes code{ background: var(--claro); padding: 1px 6px; border-radius: 6px; font-size: 12px; }

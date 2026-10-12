@@ -104,7 +104,7 @@
         <tbody>
           {% for usuario in usuarios %}
           <tr>
-            <td>
+            <td class="c-nome">
               <div class="celula-nome-usuario">
                 <button type="button" class="link-nome-usuario" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">{{ usuario.nome }}</button>
                 {% if usuario.id != current_user.id and not usuario.eh_mestre and (not usuario.is_admin or eh_mestre) %}
@@ -112,11 +112,11 @@
                 {% endif %}
               </div>
             </td>
-            <td>{{ usuario.email }}</td>
-            <td>{{ usuario.cpf }}</td>
-            <td>{{ usuario.criado_em }}</td>
-            <td>{{ usuario.ultimo_login }}</td>
-            <td>
+            <td data-rotulo="E-mail">{{ usuario.email }}</td>
+            <td data-rotulo="CPF">{{ usuario.cpf }}</td>
+            <td data-rotulo="Cadastrado em">{{ usuario.criado_em }}</td>
+            <td data-rotulo="Último login">{{ usuario.ultimo_login }}</td>
+            <td class="c-acao">
               {% if usuario.is_admin %}
               <span class="badge-admin">Admin</span>
               {% if eh_mestre and usuario.id != current_user.id %}
@@ -126,16 +126,16 @@
               <button type="button" class="link-exportar btn-tornar-admin" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">Tornar admin</button>
               {% endif %}
             </td>
-            <td>{{ usuario.total_painel }} médico(s)</td>
-            <td>
+            <td data-rotulo="Painel médico">{{ usuario.total_painel }} médico(s)</td>
+            <td class="c-acao">
               <button type="button" class="link-exportar btn-adicionar-medicos" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">+ Adicionar médicos</button>
             </td>
-            <td>
+            <td class="c-acao{{ ' c-vazio' if usuario.total_painel == 0 }}">
               {% if usuario.total_painel > 0 %}
               <button type="button" class="link-exportar btn-abrir-painel" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">Abrir painel médico</button>
               {% else %}-{% endif %}
             </td>
-            <td>
+            <td class="c-acao{{ ' c-vazio' if usuario.total_painel == 0 }}">
               {% if usuario.total_painel > 0 %}
               <a href="{{ url_for('admin_exportar_painel', user_id=usuario.id) }}" class="link-exportar">Exportar</a>
               {% else %}-{% endif %}
