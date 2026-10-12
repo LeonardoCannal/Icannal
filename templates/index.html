@@ -405,6 +405,8 @@
   table.tabela-medicos th, table.tabela-medicos td{ text-align:left; padding:13px 15px; font-size:13px; border-bottom:1px solid var(--borda); white-space:nowrap; }
   table.tabela-medicos th{ background:var(--marinho-profundo); color:#fff; font-family:'Montserrat',sans-serif; font-weight:600; }
   table.tabela-medicos tr:last-child td{ border-bottom:none; }
+  .so-celular{ display:none; }
+  .link-tel{ color:inherit; text-decoration:none; }
   table.tabela-medicos tbody tr{ transition:background .12s ease; }
   table.tabela-medicos tbody tr:hover{ background:var(--fundo); }
 
@@ -980,6 +982,14 @@
     }
   }
 
+  /* Tablet: o menu desce pra uma segunda linha em vez de esticar a página */
+  @media (min-width: 641px) and (max-width: 900px){
+    header{ flex-wrap: wrap; gap: 12px; padding: 16px 24px; }
+    .header-direita{ width: 100%; min-width: 0; }
+    nav{ flex: 1; min-width: 0; flex-wrap: wrap; justify-content: center; border-radius: 18px; }
+    nav button, .nav-link{ padding: 8px 14px; }
+  }
+
   @media (max-width: 640px){
     header{
       padding: 14px 16px;
@@ -988,6 +998,10 @@
     }
 
     .logo-completo{ height: 30px; }
+
+    /* Sino no celular: a lista abre centralizada na tela, sem vazar pro lado */
+    .notif-painel{ position: fixed; top: 64px; left: 12px; right: 12px; width: auto; max-height: 70vh; }
+    header{ z-index: 20; }
 
     nav{
       gap: 2px;
@@ -1058,10 +1072,24 @@
       align-items: stretch;
     }
 
-    table.tabela-medicos th, table.tabela-medicos td{
-      padding: 10px 12px;
-      font-size: 12.5px;
+    /* Resultados da busca: no celular, cada médico vira um cartão (em vez
+       de uma tabela larga que escondia CRM, endereço e telefone de lado). */
+    .tabela-scroll{ overflow: visible; }
+    table.tabela-medicos, table.tabela-medicos tbody{ display: block; background: none; border: none; border-radius: 0; overflow: visible; }
+    table.tabela-medicos thead{ display: none; }
+    table.tabela-medicos tr{
+      display: flex; flex-direction: column; gap: 3px;
+      background: var(--fundo-card); border: 1px solid var(--borda); border-radius: 14px;
+      padding: 14px 16px; margin-bottom: 10px;
     }
+    table.tabela-medicos tbody tr:hover{ background: var(--fundo-card); }
+    table.tabela-medicos td{ display: block; padding: 0; border: none; white-space: normal; font-size: 13px; color: var(--texto-suave); overflow-wrap: anywhere; }
+    table.tabela-medicos td.c-nome{ font-size: 15px; font-weight: 700; color: var(--texto); margin-bottom: 3px; }
+    table.tabela-medicos td[data-rotulo]::before{ content: attr(data-rotulo) ": "; font-weight: 600; color: var(--texto); }
+    table.tabela-medicos td.c-uf{ display: none; }
+    table.tabela-medicos td.c-acao{ order: 9; margin-top: 10px; }
+    table.tabela-medicos td.c-acao .btn-add-painel, table.tabela-medicos td.c-acao .badge-no-painel{ width: 100%; text-align: center; padding: 10px 14px; font-size: 13px; display: block; box-sizing: border-box; }
+    .so-celular{ display: inline; }
 
     .chips{
       gap: 6px;
@@ -1577,20 +1605,25 @@
       return;
     }
 
-    let linhas = dados.medicos.map((m, indice) => `
+    let linhas = dados.medicos.map((m, indice) => {
+      const digitos = String(m.telefone || '').replace(/\D/g, '');
+      const telefone = digitos.length >= 8
+        ? `<a class="link-tel" href="tel:${digitos}">${esc(m.telefone)}</a>`
+        : esc(m.telefone);
+      return `
       <tr>
-        <td>${m.no_painel
+        <td class="c-acao">${m.no_painel
           ? '<span class="badge-no-painel">Presente no painel médico</span>'
           : `<button class="btn-add-painel" data-indice="${indice}">Adicionar ao painel</button>`}</td>
-        <td>${esc(m.nome)}</td>
-        <td>${esc(m.crm)}</td>
-        <td>${esc(m.especialidade)}</td>
-        <td>${esc(m.cidade)}</td>
-        <td>${esc(m.uf || '-')}</td>
-        <td>${esc(m.endereco)}</td>
-        <td>${esc(m.telefone)}</td>
-      </tr>
-    `).join('');
+        <td class="c-nome">${esc(m.nome)}</td>
+        <td class="c-info" data-rotulo="CRM">${esc(m.crm)}</td>
+        <td class="c-info" data-rotulo="Especialidade">${esc(m.especialidade)}</td>
+        <td class="c-info" data-rotulo="Cidade">${esc(m.cidade)}<span class="so-celular">${m.uf ? ' - ' + esc(m.uf) : ''}</span></td>
+        <td class="c-uf">${esc(m.uf || '-')}</td>
+        <td class="c-info" data-rotulo="Endereço">${esc(m.endereco)}</td>
+        <td class="c-info" data-rotulo="Telefone">${telefone}</td>
+      </tr>`;
+        }).join('');
 
     resultadosConteudo.innerHTML = avisoHtml + `
       <div class="tabela-scroll">
@@ -2256,5 +2289,6 @@
     });
   }
 </script>
+{% with aba_mobile='buscar' %}{% include '_barra_mobile.html' %}{% endwith %}
 </body>
 </html>

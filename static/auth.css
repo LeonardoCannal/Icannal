@@ -1082,10 +1082,27 @@ table.tabela-admin th, table.tabela-admin td{
   .admin-main h1{ font-size: 19px; }
   .admin-main p{ font-size: 13px; margin-bottom: 18px; }
 
-  table.tabela-admin th, table.tabela-admin td{
-    padding: 10px 12px;
-    font-size: 12.5px;
+  /* Lista de usuários: no celular, cada pessoa vira um cartão (a tabela
+     larga escondia CPF, login e os botões de ação de lado). */
+  .tabela-scroll{ overflow: visible; }
+  table.tabela-admin{ min-width: 0; }
+  table.tabela-admin, table.tabela-admin tbody{ display: block; border: none; background: none; }
+  table.tabela-admin thead{ display: none; }
+  table.tabela-admin tr{
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+    border: 1px solid var(--claro); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px;
+    background: var(--branco);
   }
+  table.tabela-admin tbody tr:hover{ background: var(--branco); }
+  table.tabela-admin td{ display: block; padding: 0; border: none; white-space: normal; font-size: 12.5px; color: var(--cinza); overflow-wrap: anywhere; }
+  table.tabela-admin td[data-rotulo]{ flex: 1 1 100%; }
+  table.tabela-admin td[data-rotulo]::before{ content: attr(data-rotulo) ": "; font-weight: 600; color: var(--escuro); }
+  table.tabela-admin td.c-nome{ flex: 1 1 100%; margin-bottom: 4px; }
+  table.tabela-admin td.c-nome .link-nome-usuario{ font-size: 15px; }
+  table.tabela-admin td.c-nome .celula-nome-usuario{ justify-content: space-between; }
+  table.tabela-admin td.c-nome .btn-excluir-usuario{ opacity: 1; }
+  table.tabela-admin td.c-acao{ margin-top: 8px; order: 5; }
+  table.tabela-admin td.c-vazio{ display: none; }
 
   .modal-overlay{ padding: 14px; }
 
