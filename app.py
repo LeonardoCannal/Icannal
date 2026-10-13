@@ -488,6 +488,8 @@ ESPECIALIDADES = {
     "medico-do-esporte": {"nome": "Médico do Esporte", "doctoralia": "medico-do-esporte", "sechat": "kqs3bhoscy5nnf3vdb3vxn1w"},
     "medico-do-sono": {"nome": "Médico do Sono", "doctoralia": "medico-do-sono", "sechat": None},
     "medico-do-trabalho": {"nome": "Médico do Trabalho", "doctoralia": "medico-do-trabalho", "sechat": "evc6v5o06an5xtefc9339ay9"},
+    "nutricionista": {"nome": "Nutricionista", "doctoralia": "nutricionista", "sechat": None},
+    "nutrologo": {"nome": "Nutrólogo", "doctoralia": "nutrologo", "sechat": "g3ugrfoqk6f4t42chx5ppoe9"},
     "traumatologista": {"nome": "Traumatologista", "doctoralia": "ortopedista-traumatologista", "sechat": "wc5z54hdmebdmv8n783876nk"},
     "reumatologista": {"nome": "Reumatologista", "doctoralia": "reumatologista", "sechat": "qeiljtcgscrqrwp7wy8jr3cp"},
 }
@@ -691,7 +693,7 @@ def admin_exportar_painel(user_id):
     ws = wb.active
     ws.title = "Painel Médico"
 
-    colunas = ["Nome", "CRM", "Especialidade", "Cidade", "UF", "Endereço", "Telefone", "Status", "Adicionado em"]
+    colunas = ["Nome", "CRM/CRN", "Especialidade", "Cidade", "UF", "Endereço", "Telefone", "Status", "Adicionado em"]
     ws.append(colunas)
 
     cabecalho_fonte = Font(bold=True, color="FFFFFF")
