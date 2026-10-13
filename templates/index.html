@@ -1292,7 +1292,7 @@
       <input type="text" id="cad-nome" placeholder="Nome do médico">
     </div>
     <div class="campo">
-      <label for="cad-crm">CRM</label>
+      <label for="cad-crm">CRM/CRN</label>
       <input type="text" id="cad-crm" placeholder="Ex: CRM SP 123456">
     </div>
     <div class="campo">
@@ -1616,7 +1616,7 @@
           ? '<span class="badge-no-painel">Presente no painel médico</span>'
           : `<button class="btn-add-painel" data-indice="${indice}">Adicionar ao painel</button>`}</td>
         <td class="c-nome">${esc(m.nome)}</td>
-        <td class="c-info" data-rotulo="CRM">${esc(m.crm)}</td>
+        <td class="c-info" data-rotulo="CRM/CRN">${esc(m.crm)}</td>
         <td class="c-info" data-rotulo="Especialidade">${esc(m.especialidade)}</td>
         <td class="c-info" data-rotulo="Cidade">${esc(m.cidade)}<span class="so-celular">${m.uf ? ' - ' + esc(m.uf) : ''}</span></td>
         <td class="c-uf">${esc(m.uf || '-')}</td>
@@ -1629,7 +1629,7 @@
       <div class="tabela-scroll">
         <table class="tabela-medicos">
           <thead>
-            <tr><th>Painel</th><th>Nome</th><th>CRM</th><th>Especialidade</th><th>Cidade</th><th>UF</th><th>Endereço</th><th>Telefone</th></tr>
+            <tr><th>Painel</th><th>Nome</th><th>CRM/CRN</th><th>Especialidade</th><th>Cidade</th><th>UF</th><th>Endereço</th><th>Telefone</th></tr>
           </thead>
           <tbody>${linhas}</tbody>
         </table>

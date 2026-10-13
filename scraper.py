@@ -158,6 +158,28 @@ def extrair_crm(texto: str) -> str:
     return "Não encontrado"
 
 
+# Nutricionista não tem CRM: o registro é no CRN (Conselho Regional de
+# Nutricionistas), que é numerado por região em vez de UF. No Doctoralia
+# aparece de vários jeitos: "CRN3 76893/P", "CRN 3/76829", "CRN-3 32789".
+RE_CRN_REGIONAL = re.compile(r"\bCRN[\s\-]*(\d{1,2})\s*[/\-\s]\s*(\d{3,7})", re.IGNORECASE)
+RE_CRN_SIMPLES = re.compile(r"\bCRN[\s:\-]*(\d{3,7})\b", re.IGNORECASE)
+
+
+def extrair_crn(texto: str) -> str:
+    match = RE_CRN_REGIONAL.search(texto)
+    if match:
+        regiao, numero = match.groups()
+        return f"CRN-{int(regiao)} {numero}"
+    match = RE_CRN_SIMPLES.search(texto)
+    if match:
+        return f"CRN {match.group(1)}"
+    return "Não encontrado"
+
+
+# Especialidades do Doctoralia que não são médicos e usam outro registro.
+ESPECIALIDADES_COM_CRN = {"nutricionista"}
+
+
 def extrair_telefone(texto: str) -> str:
     match = RE_TELEFONE.search(texto)
     return match.group(1).strip() if match else "Não encontrado"
@@ -282,7 +304,10 @@ def buscar_medicos_doctoralia(especialidade_slug: str, especialidade_nome: str, 
         card = link.find_parent(["li", "article"]) or link.find_parent("div")
         texto_card = card.get_text(" ", strip=True) if card else nome
 
-        crm = extrair_crm(texto_card)
+        if especialidade_slug in ESPECIALIDADES_COM_CRN:
+            crm = extrair_crn(texto_card)
+        else:
+            crm = extrair_crm(texto_card)
         if crm == "Não encontrado":
             continue
 
@@ -554,6 +579,7 @@ APEPI_TERMOS_ESPECIALIDADE = {
     "medico-do-esporte": ["medicina-esportiva", "medicina-do-esporte"],
     "medico-do-sono": ["medicina-do-sono", "sono"],
     "medico-do-trabalho": ["medicina-do-trabalho"],
+    "nutrologo": ["nutrologia"],
     "reumatologista": ["reumatologia"],
 }
 
