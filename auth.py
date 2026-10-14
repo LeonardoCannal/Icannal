@@ -270,6 +270,15 @@ def inicializar_auth(app, sqlite_path):
         cursor.execute(sql_visitas)
         cursor.execute(sql_base_propria)
         cursor.execute(sql_removidos)
+        # Traduções de artigos (Google Cloud Translation): cada texto é
+        # traduzido uma vez só e reaproveitado por todo mundo.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS traducoes (
+                chave TEXT PRIMARY KEY,
+                traducao TEXT NOT NULL,
+                criado_em TEXT NOT NULL
+            )
+        """)
 
     # Índices: deixam rápidas as consultas que o sistema faz o tempo todo
     # (painel de cada usuário, histórico de visitas, dashboards, buscas na
@@ -2019,3 +2028,30 @@ def estatisticas_usuario(usuario_id: int):
         "proximos_agendamentos": proximos_agendamentos,
         "resultados_mes": resultados_mes,
     }
+
+
+# ---------------------------------------------------------------------------
+# Traduções guardadas (artigos científicos)
+# ---------------------------------------------------------------------------
+
+def buscar_traducoes(chaves: list) -> dict:
+    if not chaves:
+        return {}
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        marcadores = ",".join(["?"] * len(chaves))
+        cursor.execute(_q(f"SELECT chave, traducao FROM traducoes WHERE chave IN ({marcadores})"), tuple(chaves))
+        return {linha["chave"]: linha["traducao"] for linha in cursor.fetchall()}
+
+
+def guardar_traducoes(novas: dict):
+    if not novas:
+        return
+    agora = datetime.utcnow().isoformat()
+    sql = ("INSERT INTO traducoes (chave, traducao, criado_em) VALUES (?, ?, ?) ON CONFLICT (chave) DO NOTHING"
+           if USANDO_POSTGRES else
+           "INSERT OR IGNORE INTO traducoes (chave, traducao, criado_em) VALUES (?, ?, ?)")
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        for chave, traducao in novas.items():
+            cursor.execute(_q(sql), (chave, traducao, agora))

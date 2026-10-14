@@ -232,6 +232,8 @@ ele não precisa mais dos outros arquivos do projeto pra funcionar.
 | `WHATSAPP_TELEFONE` | Opcional. Número de WhatsApp (com código do país, só números — ex.: `5515996609680`) que recebe um aviso a cada pedido de "esqueci minha senha". Sem essa variável, o aviso simplesmente não é enviado (a notificação continua aparecendo normal no sino do painel admin). |
 | `WHATSAPP_APIKEY` | Opcional, usada junto com `WHATSAPP_TELEFONE`. A chave que o [CallMeBot](https://www.callmebot.com) devolve depois de você autorizar o bot no seu WhatsApp. |
 | `TELEGRAM_USUARIO` | Opcional. Seu nome de usuário do Telegram (ex.: `@seunome`) para receber os avisos importantes do site: novo cadastro aguardando aprovação, pedido de senha, ações de outros admins (aprovar, dar acesso de admin, excluir conta), muitas senhas erradas, fonte de busca fora do ar, erro no site, falha no backup e (com o monitor) site/banco fora do ar. Antes, mande `/start` para o `@CallMeBot_txtbot` no Telegram. Não precisa de chave. |
+| `TRADUTOR_URL` | Opcional. Endereço do tradutor LibreTranslate instalado no próprio servidor (normalmente `http://127.0.0.1:5000`). Com ele, a página **Artigos científicos** mostra os títulos do PubMed em português e traduz o resumo quando o consultor clica em "Ler resumo em português". Grátis, sem conta e sem cota. Cada texto é traduzido uma vez só e fica guardado no banco (tabela `traducoes`). Instalação em [`tradutor/LEIA-ME.md`](tradutor/LEIA-ME.md). |
+| `GOOGLE_TRANSLATE_KEY` | Opcional e **não usado hoje**: alternativa paga ao tradutor local (Google Cloud Translation). Só vale se `TRADUTOR_URL` não estiver configurado. |
 
 ## Monitor (site fora do ar, disco, certificado)
 
