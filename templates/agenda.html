@@ -221,6 +221,7 @@
     <a href="{{ url_for('index') }}">Buscar</a>
     <a href="{{ url_for('index') }}#painel">Painel Médico</a>
     <a href="{{ url_for('agenda') }}" class="ativo">Agenda</a>
+    <a href="{{ url_for('artigos') }}">Artigos</a>
     {% if current_user.is_admin %}
     <a href="{{ url_for('admin') }}">Painel Admin</a>
     {% endif %}

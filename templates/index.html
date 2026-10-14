@@ -1144,6 +1144,7 @@
       <button id="tab-buscar" class="ativo">Buscar</button>
       <button id="tab-painel">Painel Médico</button>
       <a href="{{ url_for('agenda') }}" class="nav-link">Agenda</a>
+      <a href="{{ url_for('artigos') }}" class="nav-link">Artigos</a>
       {% if current_user.is_admin %}
       <a href="{{ url_for('admin') }}" class="nav-link">Painel Admin</a>
       {% endif %}
