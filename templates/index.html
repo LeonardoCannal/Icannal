@@ -6,9 +6,9 @@
 <title>i.cannal · Mapeie o mercado de prescritores</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-<meta name="theme-color" content="#171B22">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1116,8 +1116,10 @@
     .logo-completo{ height: 26px; }
   }
 </style>
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
 </head>
-<body>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
 
 <header>
   <div class="brand">
@@ -1130,6 +1132,7 @@
     </svg>
   </div>
   <div class="header-direita">
+    {% include '_botao_tema.html' %}
     <div class="notif-wrapper">
       <button type="button" id="btn-notif" class="btn-notif" aria-label="Notificações">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -1190,7 +1193,7 @@
           </button>
           <div class="filtro-painel" id="filtro-painel">
             <div class="filtro-painel-topo">
-              <input type="text" id="filtro-busca-especialidade" class="filtro-busca-input" placeholder="Pesquisar especialidade...">
+              <input type="text" id="filtro-busca-especialidade" class="filtro-busca-input" placeholder="Pesquisar especialidade…">
               <button type="button" id="btn-fechar-filtro" class="filtro-fechar" aria-label="Fechar">&times;</button>
             </div>
             {% for slug, nome in especialidades.items() %}
@@ -1358,7 +1361,7 @@
       <h2 id="obs-titulo">Observações</h2>
       <button type="button" id="obs-fechar" class="modal-fechar" aria-label="Fechar">&times;</button>
     </div>
-    <textarea id="obs-texto" class="obs-textarea" rows="7" placeholder="Anote aqui informações e observações sobre esse médico..."></textarea>
+    <textarea id="obs-texto" class="obs-textarea" rows="7" placeholder="Anote aqui informações e observações sobre esse médico…"></textarea>
     <button type="button" id="obs-salvar" class="btn-buscar" style="margin-top:14px;">Salvar observações</button>
   </div>
 </div>
@@ -1647,7 +1650,7 @@
 
   function adicionarAoPainel(medico, botao){
     botao.disabled = true;
-    botao.textContent = 'Adicionando...';
+    botao.textContent = 'Adicionando…';
 
     fetch('/api/painel/adicionar', {
       method: 'POST',
@@ -1694,10 +1697,10 @@
     const uf = selectUf.value;
 
     btnBuscar.disabled = true;
-    btnBuscar.textContent = 'Buscando médicos...';
+    btnBuscar.textContent = 'Buscando médicos…';
     blocoResultados.style.display = 'block';
     resultadosTitulo.textContent = '';
-    resultadosConteudo.innerHTML = '<div class="estado-vazio">Captando dados, aguarde...</div>';
+    resultadosConteudo.innerHTML = '<div class="estado-vazio">Captando dados, aguarde…</div>';
 
     const params = new URLSearchParams();
     slugsSelecionados.forEach(slug => params.append('especialidade', slug));
@@ -1776,15 +1779,15 @@
     }
 
     div.innerHTML = `
-      <button type="button" class="painel-btn-remover-x" title="Remover do painel" data-id="${item.id}" data-nome="${esc(item.nome)}">&times;</button>
+      <button type="button" class="painel-btn-remover-x" title="Remover do painel" aria-label="Remover ${esc(item.nome)} do painel" data-id="${item.id}" data-nome="${esc(item.nome)}">&times;</button>
       <div class="painel-card-topo">
         <strong${classeNome}>${esc(item.nome)}</strong>
         <div class="painel-card-icones">
-          <button type="button" class="painel-icone-btn btn-editar-obs" title="Observações" data-id="${item.id}">
+          <button type="button" class="painel-icone-btn btn-editar-obs" title="Observações" aria-label="Observações" data-id="${item.id}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           </button>
           ${temObs ? `
-          <button type="button" class="painel-icone-btn tem-observacao btn-ver-obs" title="Ver observações" data-id="${item.id}">
+          <button type="button" class="painel-icone-btn tem-observacao btn-ver-obs" title="Ver observações" aria-label="Ver observações" data-id="${item.id}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h4"/></svg>
           </button>` : ''}
         </div>
@@ -1879,7 +1882,7 @@
   }
 
   function carregarPainel(){
-    listaProspectados.innerHTML = '<div class="vazio">Carregando...</div>';
+    listaProspectados.innerHTML = '<div class="vazio">Carregando…</div>';
     listaAgendados.innerHTML = '';
     listaVisitados.innerHTML = '';
     listaRevisitar.innerHTML = '';
@@ -2033,7 +2036,7 @@
 
     const [ano, mes, dia] = dataStr.split('-');
     horariosTitulo.textContent = `Horários de ${dia}/${mes}/${ano}`;
-    horariosGrade.innerHTML = '<div class="vazio">Carregando...</div>';
+    horariosGrade.innerHTML = '<div class="vazio">Carregando…</div>';
 
     fetch(`/api/agenda/dia?data=${dataStr}`)
       .then(res => res.json())
@@ -2108,7 +2111,7 @@
   obsSalvarBtn.addEventListener('click', () => {
     if(obsEntradaId === null) return;
     obsSalvarBtn.disabled = true;
-    obsSalvarBtn.textContent = 'Salvando...';
+    obsSalvarBtn.textContent = 'Salvando…';
     fetch(`/api/painel/${obsEntradaId}/observacoes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2181,7 +2184,7 @@
     };
 
     btnSalvarCadastro.disabled = true;
-    btnSalvarCadastro.textContent = 'Adicionando...';
+    btnSalvarCadastro.textContent = 'Adicionando…';
 
     fetch('/api/painel/adicionar', {
       method: 'POST',

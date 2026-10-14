@@ -1,0 +1,44 @@
+{# Tema claro/escuro. Fica logo depois do <body>: aplica o tema ANTES da página
+   aparecer (sem "piscar" branco no modo escuro). Escolha salva no aparelho;
+   quem nunca escolheu segue o tema do próprio celular/computador. #}
+<script>
+(function(){
+  var CHAVE = 'icannal-tema', tema = null;
+  try { tema = localStorage.getItem(CHAVE); } catch (e) {}
+  if (tema !== 'claro' && tema !== 'escuro') {
+    tema = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'escuro' : 'claro';
+  }
+  function aplicar(escuro){
+    document.body.classList.toggle('escuro', escuro);
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', escuro ? '#0E1116' : '#FFFFFF');
+    var botoes = document.querySelectorAll('.btn-tema');
+    for (var i = 0; i < botoes.length; i++) {
+      botoes[i].setAttribute('aria-pressed', escuro ? 'true' : 'false');
+      botoes[i].setAttribute('aria-label', escuro ? 'Mudar para o tema claro' : 'Mudar para o tema escuro');
+      botoes[i].setAttribute('title', escuro ? 'Tema claro' : 'Tema escuro');
+    }
+  }
+  aplicar(tema === 'escuro');
+  document.addEventListener('DOMContentLoaded', function(){ aplicar(document.body.classList.contains('escuro')); });
+  // Troca com um círculo que se abre a partir do botão (onde o navegador
+  // permite); nos outros, troca na hora. Quem pediu "menos movimento" no
+  // aparelho também troca na hora.
+  window.icannalTrocarTema = function(botao){
+    var escuro = !document.body.classList.contains('escuro');
+    try { localStorage.setItem(CHAVE, escuro ? 'escuro' : 'claro'); } catch (e) {}
+    var calmo = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!document.startViewTransition || calmo) { aplicar(escuro); return; }
+    var r = (botao && botao.getBoundingClientRect) ? botao.getBoundingClientRect() : { left: innerWidth - 40, top: 20, width: 0, height: 0 };
+    var x = r.left + r.width / 2, y = r.top + r.height / 2;
+    var raio = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    var t = document.startViewTransition(function(){ aplicar(escuro); });
+    t.ready.then(function(){
+      document.documentElement.animate(
+        { clipPath: ['circle(0px at ' + x + 'px ' + y + 'px)', 'circle(' + raio + 'px at ' + x + 'px ' + y + 'px)'] },
+        { duration: 700, easing: 'cubic-bezier(.65,0,.35,1)', pseudoElement: '::view-transition-new(root)' }
+      );
+    }).catch(function(){});
+  };
+})();
+</script>

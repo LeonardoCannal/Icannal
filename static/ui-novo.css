@@ -1,0 +1,758 @@
+/* ==========================================================================
+   i.cannal — visual novo "claro e limpo"
+   Camada por cima do estilo antigo: só vale nas páginas com <body class="ui-novo">.
+   Pra voltar ao visual antigo numa página, basta tirar essa classe.
+   Base: fundo branco, superfícies cinza-quente, linhas finas, botões 8px,
+   cartões 12px, muito respiro. Cores da marca: verde e azul-marinho.
+   ========================================================================== */
+
+body.ui-novo{
+  --verde: #88AD36;          /* destaques, ícones, foco */
+  --verde-acao: #5C7A22;     /* botões principais (texto branco legível) */
+  --verde-acao-hover: #4B6519;
+  --verde-suave: #EEF4E1;
+  --verde-texto: #3F5416;
+  --marinho: #171B22;
+  --tinta: #10141B;          /* texto principal */
+  --ardosia: #464C58;        /* texto secundário */
+  --pedra: #6C727E;          /* rótulos, placeholders */
+  --tela: #FFFFFF;
+  --superficie: #F3F6EE;
+  --linha: #DDE1D5;
+  --linha-forte: #C2C8B8;
+  --alerta-fundo: #FFF6E5;
+  --alerta-texto: #8A5A00;
+  --sombra-1: 0 1px 2px rgba(16,24,40,.07);
+  --sombra-2: 0 1px 2px rgba(16,24,40,.06), 0 6px 16px rgba(30,45,10,.08);
+  --sombra-3: 0 1px 2px rgba(16,24,40,.08), 0 20px 48px -10px rgba(30,45,10,.22);
+
+  /* variáveis antigas apontando pras novas (o resto do CSS antigo herda) */
+  --roxo: var(--verde);
+  --roxo-suave: var(--verde-suave);
+  --roxo-escuro: var(--tinta);
+  --fundo: var(--superficie);
+  --fundo-card: var(--tela);
+  --texto: var(--tinta);
+  --texto-suave: var(--ardosia);
+  --borda: var(--linha);
+
+  /* gradiente verde suave (claro): brilho no alto à direita e embaixo à esquerda */
+  background:
+    radial-gradient(1100px 560px at 88% -12%, rgba(136,173,54,.24), transparent 62%),
+    radial-gradient(900px 620px at -8% 108%, rgba(136,173,54,.14), transparent 60%),
+    var(--superficie);
+  background-attachment: fixed;
+  min-height: 100vh;
+  color: var(--tinta);
+  font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+body.ui-novo::before{ display: none; }   /* sem marca-d'água: fundo limpo */
+
+body.ui-novo h1, body.ui-novo h2, body.ui-novo h3{ font-family: 'Montserrat', sans-serif; letter-spacing: -0.02em; }
+body.ui-novo button, body.ui-novo input, body.ui-novo select, body.ui-novo textarea{ font-family: inherit; }
+
+/* foco visível pra quem navega no teclado */
+body.ui-novo :focus-visible{ outline: 2px solid var(--verde); outline-offset: 2px; }
+body.ui-novo button, body.ui-novo a, body.ui-novo input, body.ui-novo select{ touch-action: manipulation; }
+body.ui-novo h1, body.ui-novo h2{ text-wrap: balance; }
+body.ui-novo .painel-contador, body.ui-novo .notif-badge, body.ui-novo .resultados-titulo{ font-variant-numeric: tabular-nums; }
+body.ui-novo .modal-painel, body.ui-novo .filtro-painel, body.ui-novo .notif-painel{ overscroll-behavior: contain; }
+
+/* --------------------------------------------------------------- Topo --- */
+body.ui-novo header{
+  background: rgba(255,255,255,.72);
+  backdrop-filter: saturate(1.4) blur(10px);
+  -webkit-backdrop-filter: saturate(1.4) blur(10px);
+  color: var(--tinta);
+  border-bottom: 1px solid var(--linha);
+  padding: 12px 32px;
+  position: sticky; top: 0; z-index: 40;
+}
+body.ui-novo .logo-completo{ height: 28px; }
+
+body.ui-novo nav{ background: transparent; padding: 0; gap: 2px; }
+body.ui-novo nav button, body.ui-novo .nav-link{
+  color: var(--ardosia); font-size: 14px; font-weight: 500;
+  padding: 8px 14px; border-radius: 8px;
+  transition: background .15s ease, color .15s ease;
+}
+body.ui-novo nav button:hover, body.ui-novo .nav-link:hover{ background: var(--superficie); color: var(--tinta); }
+body.ui-novo nav button.ativo{ background: var(--verde-suave); color: var(--verde-texto); font-weight: 600; }
+
+body.ui-novo .btn-notif{ color: var(--ardosia); background: transparent; border-radius: 8px; }
+body.ui-novo .btn-notif:hover{ background: var(--superficie); color: var(--tinta); }
+body.ui-novo .notif-painel{ border: 1px solid var(--linha); border-radius: 12px; box-shadow: var(--sombra-3); }
+
+body.ui-novo .sub-header{ display: none; }   /* a faixa verde sai: o título da tela já diz o que é */
+
+body.ui-novo main{ max-width: 1120px; padding: 40px 24px 96px; }
+
+/* ------------------------------------------------- Título das telas ------ */
+body.ui-novo .hero{
+  background: transparent; border-radius: 0; padding: 8px 0 28px; margin: 0; overflow: visible;
+}
+body.ui-novo .hero::before{ display: none; }
+body.ui-novo .hero h1{ color: var(--tinta); font-size: 34px; font-weight: 700; line-height: 1.15; max-width: 24ch; margin-bottom: 10px; }
+body.ui-novo .hero p{ color: var(--ardosia); font-size: 16px; line-height: 1.6; max-width: 60ch; }
+body.ui-novo .hero-eyebrow{
+  color: var(--verde-texto); background: var(--verde-suave);
+  padding: 5px 12px 5px 10px; border-radius: 999px; font-size: 12.5px; margin-bottom: 16px;
+}
+body.ui-novo .hero-eyebrow .ponto-live{ background: var(--verde); }
+
+/* -------------------------------------------------------- Avisos --------- */
+body.ui-novo .banner-lembrete, body.ui-novo .banner-inatividade{
+  border-radius: 12px; border: 1px solid var(--linha); background: var(--tela);
+  box-shadow: var(--sombra-1); margin: 0 0 20px; position: relative; z-index: 1;
+}
+body.ui-novo .banner-lembrete{ border-left: 3px solid var(--verde); color: var(--tinta); }
+body.ui-novo .banner-lembrete a{ color: var(--verde-acao); }
+body.ui-novo .banner-inatividade{ border-left: 3px solid #E0A526; }
+body.ui-novo .aviso-fonte{ background: var(--alerta-fundo); color: var(--alerta-texto); border: 1px solid #F1DDB0; border-radius: 10px; }
+
+/* ----------------------------------------------- Cartão de busca --------- */
+body.ui-novo .card-busca{
+  background: var(--tela); border: 1px solid var(--linha); border-radius: 16px;
+  padding: 28px; box-shadow: var(--sombra-2);
+}
+body.ui-novo .campo label{ font-size: 13px; font-weight: 600; color: var(--tinta); margin-bottom: 8px; }
+body.ui-novo .campo input:not([type=checkbox]):not([type=radio]), body.ui-novo .campo select, body.ui-novo .filtro-btn, body.ui-novo .obs-textarea{
+  background: var(--tela); border: 1px solid var(--linha-forte); border-radius: 8px;
+  min-height: 46px; padding: 11px 14px; font-size: 15px; color: var(--tinta);
+  box-shadow: var(--sombra-1);
+}
+body.ui-novo .campo input::placeholder{ color: var(--pedra); }
+body.ui-novo .campo input:not([type=checkbox]):focus, body.ui-novo .campo select:focus, body.ui-novo .obs-textarea:focus{
+  border-color: var(--verde); background: var(--tela); box-shadow: 0 0 0 3px rgba(136,173,54,.22);
+}
+body.ui-novo .filtro-btn:hover{ border-color: var(--verde); background: var(--tela); }
+body.ui-novo .filtro-seta{ color: var(--ardosia); }
+body.ui-novo .aviso-limite, body.ui-novo .aviso{ color: var(--pedra); font-size: 12.5px; }
+
+body.ui-novo .filtro-painel{ border: 1px solid var(--linha); border-radius: 12px; box-shadow: var(--sombra-3); }
+body.ui-novo .filtro-busca-input{ background: var(--superficie); border: 1px solid var(--linha); border-radius: 8px; }
+body.ui-novo .campo label.filtro-opcao{ display: flex; align-items: center; gap: 12px; margin: 0; padding: 11px 12px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--tinta); }
+body.ui-novo .filtro-opcao:hover{ background: var(--superficie); }
+body.ui-novo .filtro-opcao input{ accent-color: var(--verde-acao); width: 17px; height: 17px; margin: 0; flex-shrink: 0; }
+body.ui-novo .filtro-btn-pesquisar{ background: var(--verde-acao); border-radius: 8px; }
+body.ui-novo .filtro-btn-pesquisar:hover{ background: var(--verde-acao-hover); }
+
+body.ui-novo .chip-selecionada{ background: var(--verde-suave); color: var(--verde-texto); font-weight: 600; border-radius: 999px; }
+body.ui-novo .chip-remover{ color: var(--verde-texto); }
+
+/* Botão principal */
+body.ui-novo .btn-buscar, body.ui-novo .btn-cadastrar-manual{
+  background: var(--verde-acao); color: #fff; border: none; border-radius: 10px;
+  font-weight: 600; font-size: 15px; letter-spacing: 0; min-height: 48px;
+  box-shadow: 0 1px 2px rgba(16,24,40,.08), inset 0 1px 0 rgba(255,255,255,.12);
+  transition: background .15s ease, transform .1s ease;
+}
+body.ui-novo .btn-buscar:hover, body.ui-novo .btn-cadastrar-manual:hover{ background: var(--verde-acao-hover); transform: none; }
+body.ui-novo .btn-buscar:active, body.ui-novo .btn-cadastrar-manual:active{ transform: translateY(1px); }
+
+/* Buscas recentes */
+body.ui-novo .recentes-titulo{ color: var(--pedra); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+body.ui-novo .chip{ background: var(--tela); border: 1px solid var(--linha); color: var(--ardosia); border-radius: 999px; font-weight: 500; }
+body.ui-novo .chip:hover{ border-color: var(--verde); color: var(--tinta); background: var(--tela); }
+
+/* ------------------------------------------------------ Resultados ------- */
+body.ui-novo .resultados-titulo{ font-size: 15px; font-weight: 600; color: var(--tinta); }
+body.ui-novo table.tabela-medicos{ border: 1px solid var(--linha); border-radius: 12px; background: var(--tela); box-shadow: var(--sombra-1); }
+body.ui-novo table.tabela-medicos th{
+  background: var(--superficie); color: var(--ardosia); font-family: inherit;
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+  border-bottom: 1px solid var(--linha);
+}
+body.ui-novo table.tabela-medicos td{ font-size: 13.5px; color: var(--tinta); border-bottom: 1px solid var(--linha); }
+body.ui-novo table.tabela-medicos td.c-nome{ font-weight: 600; }
+/* No computador: a tabela cabe na largura (endereço quebra linha em vez de cortar) */
+@media (min-width: 641px){
+  body.ui-novo .tabela-scroll{ overflow-x: auto; border-radius: 12px; }
+  body.ui-novo table.tabela-medicos td{ white-space: normal; vertical-align: top; line-height: 1.45; padding: 14px 12px; }
+  body.ui-novo table.tabela-medicos th{ padding: 11px 12px; }
+  body.ui-novo table.tabela-medicos td.c-acao, body.ui-novo table.tabela-medicos td.c-uf{ white-space: nowrap; }
+  body.ui-novo table.tabela-medicos td.c-nome{ min-width: 130px; }
+  body.ui-novo table.tabela-medicos td[data-rotulo="Endereço"]{ min-width: 180px; }
+  body.ui-novo table.tabela-medicos td[data-rotulo="CRM/CRN"], body.ui-novo table.tabela-medicos td[data-rotulo="Cidade"]{ white-space: nowrap; }
+  body.ui-novo table.tabela-medicos td[data-rotulo="Endereço"]{ color: var(--ardosia); font-size: 13px; }
+  body.ui-novo table.tabela-medicos td[data-rotulo="Telefone"]{ white-space: nowrap; }
+  /* Cidade e UF numa coluna só ("Sorocaba - SP") */
+  body.ui-novo table.tabela-medicos .so-celular{ display: inline; }
+  body.ui-novo table.tabela-medicos td.c-uf, body.ui-novo table.tabela-medicos th:nth-child(6){ display: none; }
+}
+body.ui-novo table.tabela-medicos tbody tr:hover{ background: #FBFBFA; }
+body.ui-novo .btn-add-painel{
+  background: var(--tela); border: 1px solid var(--linha-forte); color: var(--tinta);
+  border-radius: 8px; font-size: 12.5px; font-weight: 600; padding: 7px 12px;
+}
+body.ui-novo .btn-add-painel:hover{ background: var(--verde-acao); border-color: var(--verde-acao); color: #fff; }
+body.ui-novo .badge-no-painel{ background: var(--verde-suave); color: var(--verde-texto); border-radius: 999px; }
+
+/* ---------------------------------------------------------- Painel ------- */
+body.ui-novo .painel-colunas{ gap: 14px; }
+body.ui-novo .painel-coluna{
+  background: var(--superficie); border: 1px solid var(--linha); border-radius: 14px;
+  padding: 12px; box-shadow: none;
+}
+body.ui-novo .painel-coluna-revisitar{ background: #FFFBF2; border-color: #F1DDB0; box-shadow: none; }
+body.ui-novo .painel-coluna-titulo{ font-family: inherit; font-size: 13px; font-weight: 600; color: var(--tinta); padding: 4px 4px 0; text-transform: none; }
+body.ui-novo .painel-contador{ background: var(--tela); color: var(--ardosia); border: 1px solid var(--linha); font-weight: 600; }
+body.ui-novo .painel-coluna-revisitar .painel-contador{ background: #FBEFD6; color: #8A5A00; border-color: #F1DDB0; }
+body.ui-novo .painel-lista{ gap: 8px; }
+body.ui-novo .painel-card{
+  background: var(--tela); border: 1px solid var(--linha); border-radius: 10px;
+  padding: 14px; box-shadow: var(--sombra-1);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+body.ui-novo .painel-card:hover{ background: var(--tela); border-color: var(--linha-forte); box-shadow: var(--sombra-2); }
+body.ui-novo .painel-card strong{ font-size: 14px; font-weight: 600; color: var(--tinta); }
+body.ui-novo .painel-card span{ color: var(--ardosia); font-size: 12.5px; line-height: 1.5; }
+body.ui-novo .painel-icone-btn{ border-radius: 6px; color: var(--pedra); }
+body.ui-novo .painel-icone-btn:hover{ background: var(--superficie); color: var(--tinta); }
+
+body.ui-novo .painel-btn-mover, body.ui-novo .painel-btn-agendar, body.ui-novo .painel-btn-maps,
+body.ui-novo .painel-btn-cancelar, body.ui-novo .painel-btn-whatsapp{
+  border-radius: 8px; font-size: 12.5px; font-weight: 600; padding: 7px 11px;
+  background: var(--tela); border: 1px solid var(--linha-forte); color: var(--tinta);
+}
+body.ui-novo .painel-btn-agendar, body.ui-novo .painel-btn-mover{ background: var(--marinho); border-color: var(--marinho); color: #fff; }
+body.ui-novo .painel-btn-agendar:hover, body.ui-novo .painel-btn-mover:hover{ background: #2A303B; border-color: #2A303B; color: #fff; }
+body.ui-novo .painel-btn-maps:hover{ background: var(--superficie); }
+body.ui-novo .painel-btn-whatsapp{ color: #157A3E; border-color: #BFE3CB; }
+body.ui-novo .painel-btn-whatsapp:hover{ background: #EFFAF3; }
+body.ui-novo .painel-btn-cancelar{ color: #B42318; border-color: #F2C9C4; }
+body.ui-novo .painel-btn-cancelar:hover{ background: #FEF3F2; }
+body.ui-novo .painel-badge-agenda{ background: var(--verde-suave); color: var(--verde-texto); border-radius: 6px; }
+
+/* ----------------------------------------------- Janelas (modais) ------- */
+body.ui-novo .modal-overlay, body.ui-novo .aviso-overlay{ background: rgba(16,24,40,.45); backdrop-filter: blur(2px); }
+body.ui-novo .modal-painel, body.ui-novo .aviso-card, body.ui-novo .cadastro-card{
+  border-radius: 16px; border: 1px solid var(--linha); box-shadow: var(--sombra-3);
+}
+body.ui-novo .aviso-btn-fechar{ background: var(--verde-acao); border-radius: 8px; }
+
+/* ------------------------------------------------- Celular -------------- */
+@media (max-width: 640px){
+  body.ui-novo header{ padding: 10px 16px; }
+  body.ui-novo .logo-completo{ height: 24px; }
+  body.ui-novo main{ padding: 24px 16px 40px; }
+  body.ui-novo .hero{ padding: 4px 0 20px; }
+  body.ui-novo .hero h1{ font-size: 25px; }
+  body.ui-novo .hero p{ font-size: 14.5px; }
+  body.ui-novo .card-busca{ padding: 18px; border-radius: 14px; }
+  body.ui-novo table.tabela-medicos tr{ border: 1px solid var(--linha); border-radius: 12px; box-shadow: var(--sombra-1); background: var(--tela); }
+  body.ui-novo table.tabela-medicos td{ border-bottom: none; color: var(--ardosia); }
+  body.ui-novo table.tabela-medicos td.c-nome{ color: var(--tinta); }
+
+  /* barra de baixo clara, combinando com o resto */
+  body.ui-novo nav.barra-mobile{ background: rgba(255,255,255,.96); border-top: 1px solid var(--linha); box-shadow: 0 -4px 16px rgba(16,24,40,.06); backdrop-filter: blur(10px); }
+  body.ui-novo nav.barra-mobile a{ color: var(--pedra); font-family: inherit; font-weight: 500; }
+  body.ui-novo nav.barra-mobile a.ativo{ color: var(--verde-texto); font-weight: 600; }
+  body.ui-novo nav.barra-mobile a.ativo svg{ background: var(--verde-suave); }
+}
+
+
+/* ------------------------------------------------ Botão sol/lua ------- */
+body.ui-novo .btn-tema{
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 38px; height: 38px; padding: 0; border-radius: 10px; cursor: pointer;
+  background: transparent; border: 1px solid var(--linha); color: var(--ardosia);
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+body.ui-novo .btn-tema:hover{ background: var(--superficie); color: var(--tinta); border-color: var(--linha-forte); }
+body.ui-novo .btn-tema svg{ width: 19px; height: 19px; transition: transform .35s ease, opacity .2s ease; }
+body.ui-novo .btn-tema .icone-sol{ display: none; }
+body.ui-novo.escuro .btn-tema .icone-lua{ display: none; }
+body.ui-novo.escuro .btn-tema .icone-sol{ display: block; color: #F5C451; }
+body.ui-novo .btn-tema:active svg{ transform: rotate(-30deg) scale(.9); }
+body.ui-novo .tema-flutuante{ position: fixed; top: 14px; right: 14px; z-index: 60; }
+body.ui-novo .tema-flutuante .btn-tema{ background: var(--tela); box-shadow: var(--sombra-2); }
+
+/* topo das páginas com menu de links (Agenda, Perfil, Artigos) */
+body.ui-novo .header-direita{ display: flex; align-items: center; gap: 12px; }
+body.ui-novo header nav a{
+  color: var(--ardosia); font-size: 14px; font-weight: 500; text-decoration: none;
+  padding: 8px 14px; border-radius: 8px; transition: background .15s ease, color .15s ease;
+}
+body.ui-novo header nav a:hover{ background: var(--superficie); color: var(--tinta); }
+body.ui-novo header nav a.ativo, body.ui-novo .nav-link.ativo{ background: var(--verde-suave); color: var(--verde-texto); font-weight: 600; }
+@media (max-width: 640px){
+  body.ui-novo header{ flex-wrap: nowrap; }
+  body.ui-novo .header-direita{ width: auto; gap: 8px; }
+  body.ui-novo .btn-tema{ width: 36px; height: 36px; }
+}
+
+/* ==========================================================================
+   OUTRAS TELAS (Login, Cadastro, Agenda, Artigos, Perfil, Admin, Dashboard,
+   Base de médicos). Tudo por variáveis: vale pro claro e pro escuro.
+   ========================================================================== */
+body.ui-novo{
+  --elevada: #FFFFFF;            /* janelas e menus por cima da página */
+  --logo-texto: #171B22;
+  /* variáveis do estilo antigo das telas de login/admin */
+  --escuro: var(--tinta);
+  --cinza: var(--ardosia);
+  --claro: var(--linha);
+  --branco: var(--tela);
+}
+body.ui-novo.escuro{ --elevada: #1A1F27; --logo-texto: #FFFFFF; }
+body.ui-novo svg[aria-label="i.cannal"] tspan:last-child{ fill: var(--logo-texto); }
+body.ui-novo svg[aria-label="i.cannal"] tspan:first-child{ fill: var(--verde); }
+
+/* Topo das telas de admin (igual ao topo do resto do sistema) */
+body.ui-novo .admin-header{
+  background: rgba(255,255,255,.72); backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px);
+  color: var(--ardosia); border-bottom: 1px solid var(--linha); padding: 12px 32px;
+  position: sticky; top: 0; z-index: 40;
+}
+body.ui-novo.escuro .admin-header{ background: rgba(14,17,22,.82); }
+body.ui-novo .admin-header a{ color: var(--ardosia); font-weight: 500; text-decoration: none; padding: 6px 4px; border-radius: 6px; }
+body.ui-novo .admin-header a:hover{ color: var(--tinta); }
+body.ui-novo .logo-admin{ height: 28px; }
+body.ui-novo .admin-header .btn-notif{ color: var(--ardosia); }
+
+/* Faixa de título: sai o bloco escuro, fica o título limpo */
+body.ui-novo .hero-secao{ background: transparent; color: var(--tinta); padding: 40px 24px 20px; }
+body.ui-novo .hero-secao::before, body.ui-novo .hero-secao::after{ display: none; }
+body.ui-novo .hero-secao h1{ color: var(--tinta); font-size: 30px; font-weight: 700; }
+body.ui-novo .hero-secao p{ color: var(--ardosia); font-size: 15px; }
+body.ui-novo.escuro .hero-secao h1{ background: linear-gradient(180deg, #FFFFFF 30%, #B8BEC8 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+body.ui-novo .admin-main{ margin: 0 auto 48px; }
+body.ui-novo main{ margin-top: 0; }
+
+/* Cartões e superfícies */
+body.ui-novo .card-flutuante, body.ui-novo .stat-card, body.ui-novo .card-grafico, body.ui-novo .card,
+body.ui-novo .artigo, body.ui-novo .auth-card{
+  background: var(--tela); border: 1px solid var(--linha); box-shadow: var(--sombra-2);
+}
+body.ui-novo .card-flutuante{ border-radius: 16px; }
+body.ui-novo .stat-card, body.ui-novo .card-grafico, body.ui-novo .artigo{ border-radius: 12px; box-shadow: var(--sombra-1); }
+body.ui-novo .mini-stat, body.ui-novo .modal-card{ background: var(--superficie); border: 1px solid var(--linha); }
+body.ui-novo .modal-painel, body.ui-novo .aviso-card, body.ui-novo .notif-painel, body.ui-novo .cadastro-card{ background: var(--elevada); color: var(--tinta); }
+body.ui-novo .stat-valor{ color: var(--tinta); font-variant-numeric: tabular-nums; }
+body.ui-novo .stat-label{ color: var(--ardosia); }
+body.ui-novo .stat-card-alerta{ background: var(--alerta-fundo); border-color: #F1DDB0; }
+body.ui-novo.escuro .stat-card-alerta{ border-color: rgba(224,165,38,.35); }
+body.ui-novo .stat-card-alerta .stat-label, body.ui-novo .stat-card-alerta .stat-valor, body.ui-novo .stat-card-alerta .stat-extra{ color: var(--alerta-texto); }
+
+/* Abas do admin */
+body.ui-novo .admin-nav{ border-bottom-color: var(--linha); }
+body.ui-novo .admin-nav-link{ color: var(--ardosia); }
+body.ui-novo .admin-nav-link:hover{ color: var(--tinta); }
+body.ui-novo .admin-nav-link.ativo{ color: var(--tinta); border-bottom-color: var(--verde); }
+
+/* Tabelas do admin/dashboard: cabeçalho claro em vez de preto */
+body.ui-novo table.tabela-admin, body.ui-novo table.tabela-periodos{ background: var(--tela); border: 1px solid var(--linha); border-radius: 12px; overflow: hidden; }
+body.ui-novo table.tabela-admin th, body.ui-novo table.tabela-periodos th, body.ui-novo .lista-slugs th{
+  background: var(--superficie); color: var(--ardosia); font-family: inherit; font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--linha);
+}
+body.ui-novo table.tabela-admin td, body.ui-novo table.tabela-periodos td{ color: var(--tinta); border-bottom-color: var(--linha); }
+body.ui-novo table.tabela-admin tbody tr:hover{ background: var(--superficie); }
+body.ui-novo .link-nome-usuario{ color: var(--tinta); }
+body.ui-novo .link-exportar{ color: var(--verde-acao); }
+body.ui-novo.escuro .link-exportar{ color: var(--verde-texto); }
+body.ui-novo .base-instrucoes{ color: var(--ardosia); }
+body.ui-novo .base-instrucoes code{ background: var(--superficie); color: var(--verde-texto); border: 1px solid var(--linha); }
+body.ui-novo .base-instrucoes strong{ color: var(--tinta); }
+body.ui-novo .base-input{ background: var(--superficie); border-color: var(--linha-forte); color: var(--tinta); }
+body.ui-novo .lista-slugs{ border-color: var(--linha); }
+body.ui-novo .lista-slugs td{ border-color: var(--linha); color: var(--tinta); }
+
+/* Botões das telas de login/admin/perfil */
+body.ui-novo .btn-auth, body.ui-novo .btn-salvar, body.ui-novo .btn-importar, body.ui-novo .btn-primario{
+  background: var(--verde-acao); color: #fff; border: none; border-radius: 10px; font-weight: 600; min-height: 46px;
+  box-shadow: 0 1px 2px rgba(16,24,40,.08), inset 0 1px 0 rgba(255,255,255,.12);
+}
+body.ui-novo .btn-auth:hover, body.ui-novo .btn-salvar:hover, body.ui-novo .btn-importar:hover, body.ui-novo .btn-primario:hover{ background: var(--verde-acao-hover); transform: none; }
+body.ui-novo.escuro .btn-auth, body.ui-novo.escuro .btn-salvar, body.ui-novo.escuro .btn-importar, body.ui-novo.escuro .btn-primario{
+  color: #0E1405; box-shadow: 0 0 0 1px rgba(168,204,90,.35), 0 8px 24px -6px rgba(136,173,54,.45);
+}
+
+/* Login, cadastro, erro e offline */
+body.ui-novo .auth-tela{ background: transparent; }
+body.ui-novo .auth-tela::before{ display: none; }
+body.ui-novo .auth-card{ border-radius: 16px; box-shadow: var(--sombra-3); }
+body.ui-novo .auth-logo{ background: transparent; padding: 0; height: 36px; }
+body.ui-novo .auth-card h1{ color: var(--tinta); font-size: 21px; font-weight: 700; }
+body.ui-novo .auth-link, body.ui-novo .auth-card p{ color: var(--ardosia); }
+body.ui-novo .auth-link a, body.ui-novo .link-esqueci, body.ui-novo .auth-card a{ color: var(--verde-acao); }
+body.ui-novo.escuro .auth-link a, body.ui-novo.escuro .link-esqueci, body.ui-novo.escuro .auth-card a{ color: var(--verde-texto); }
+body.ui-novo .auth-erro{ border-radius: 10px; }
+body.ui-novo .botao-olho{ color: var(--pedra); }
+
+/* Agenda */
+body.ui-novo .calendario-topo span, body.ui-novo .agenda-dia-painel h2{ color: var(--tinta); }
+body.ui-novo .cal-dia{ color: var(--tinta); }
+body.ui-novo .cal-dia:hover{ background: var(--superficie); }
+body.ui-novo .cal-dia-passado{ color: var(--pedra); }
+body.ui-novo .cal-dia-selecionado, body.ui-novo .cal-dia-selecionado:hover{ background: var(--verde-acao); color: #fff; }
+body.ui-novo.escuro .cal-dia-selecionado, body.ui-novo.escuro .cal-dia-selecionado:hover{ color: #0E1405; }
+body.ui-novo .cal-nav{ background: var(--tela); border: 1px solid var(--linha-forte); color: var(--tinta); border-radius: 8px; }
+body.ui-novo .cal-nav:hover{ background: var(--superficie); }
+body.ui-novo .horario-linha{ background: var(--superficie); border: 1px solid var(--linha); border-radius: 10px; color: var(--tinta); }
+body.ui-novo .horario-linha-ocupado{ background: var(--verde-suave); border-color: rgba(136,173,54,.3); }
+body.ui-novo .btn-roteiro{ background: var(--tela); border: 1px solid var(--linha-forte); color: var(--tinta); border-radius: 8px; }
+body.ui-novo .btn-roteiro:hover{ background: var(--superficie); }
+
+/* Artigos */
+body.ui-novo .aba-fonte{ background: var(--tela); border: 1px solid var(--linha); color: var(--ardosia); font-family: inherit; font-weight: 500; }
+body.ui-novo .aba-fonte.ativo{ background: var(--marinho); border-color: var(--marinho); color: var(--tela); }
+body.ui-novo .artigo h3 a{ color: var(--tinta); }
+body.ui-novo .artigo-meta, body.ui-novo .titulo-original{ color: var(--ardosia); }
+body.ui-novo .artigo-resumo{ color: var(--ardosia); }
+body.ui-novo .artigo-acoes a, body.ui-novo .artigo-acoes button{ background: var(--tela); border: 1px solid var(--linha-forte); color: var(--tinta); font-family: inherit; border-radius: 8px; }
+body.ui-novo .artigo-acoes a:hover, body.ui-novo .artigo-acoes button:hover{ background: var(--superficie); }
+body.ui-novo .artigo-acoes a.principal{ background: var(--verde-acao); border-color: var(--verde-acao); color: #fff; }
+body.ui-novo.escuro .artigo-acoes a.principal{ color: #0E1405; }
+body.ui-novo .artigo-acoes a.whats{ color: #157A3E; border-color: #BFE3CB; }
+body.ui-novo.escuro .artigo-acoes a.whats{ color: #5FD08F; border-color: rgba(95,208,143,.35); background: transparent; }
+body.ui-novo .selo{ background: var(--superficie); color: var(--ardosia); }
+body.ui-novo .selo.pubmed{ background: #E8F0FB; color: #245C9C; }
+body.ui-novo .selo.scielo{ background: #FCEEE2; color: #A3501A; }
+body.ui-novo .selo.gratis{ background: var(--verde-suave); color: var(--verde-texto); }
+body.ui-novo .selo.traduzido{ background: #F0EBFC; color: #5B3FA0; }
+body.ui-novo.escuro .selo.pubmed{ background: rgba(96,150,230,.16); color: #9CC0F5; }
+body.ui-novo.escuro .selo.scielo{ background: rgba(230,140,80,.16); color: #F2AE7D; }
+body.ui-novo.escuro .selo.gratis{ background: var(--verde-suave); color: var(--verde-texto); }
+body.ui-novo.escuro .selo.traduzido{ background: rgba(160,130,240,.18); color: #C6B4F7; }
+body.ui-novo .chave-cannabis{ color: var(--tinta); }
+body.ui-novo .estado{ color: var(--ardosia); }
+
+/* Perfil */
+body.ui-novo .dados-item span.rotulo{ color: var(--pedra); }
+body.ui-novo .dados-item span.valor{ color: var(--tinta); }
+body.ui-novo .card h2{ color: var(--tinta); }
+body.ui-novo .btn-sair-celular{ background: var(--tela); }
+body.ui-novo.escuro .btn-sair-celular{ border-color: rgba(242,139,130,.35); color: #F28B82; }
+body.ui-novo.escuro .form-sucesso{ background: var(--verde-suave); color: var(--verde-texto); }
+body.ui-novo.escuro .form-erro, body.ui-novo.escuro .auth-erro{ background: rgba(242,139,130,.12); color: #F4A39B; }
+
+@media (max-width: 640px){
+  body.ui-novo .admin-header{ padding: 10px 16px; flex-wrap: wrap; row-gap: 8px; }
+  body.ui-novo .admin-header-direita{ width: 100%; justify-content: space-between; gap: 6px; font-size: 13px; white-space: nowrap; }
+  body.ui-novo .admin-header-direita a{ padding: 6px 2px; }
+  body.ui-novo .hero-secao{ padding: 24px 16px 12px; }
+  body.ui-novo .hero-secao h1{ font-size: 23px; }
+}
+
+/* ==========================================================================
+   TEMA "PREMIUM ESCURO" — mesma estrutura do visual novo, outras cores.
+   Liga com <body class="ui-novo escuro">.
+   ========================================================================== */
+body.ui-novo.escuro{
+  color-scheme: dark;
+  --verde: #A8CC5A;
+  --verde-acao: #88AD36;          /* botão verde com texto escuro (bom contraste) */
+  --verde-acao-hover: #9BC045;
+  --verde-suave: rgba(136,173,54,.16);
+  --verde-texto: #C2DE86;
+  --marinho: #E9ECEF;             /* no escuro, o "botão forte" é claro */
+  --tinta: #ECEEF1;
+  --ardosia: #A6ACB7;
+  --pedra: #7B8290;
+  --tela: #161A21;                /* cartões */
+  --superficie: #0E1116;          /* fundo da página */
+  --linha: #262C36;
+  --linha-forte: #353C48;
+  --alerta-fundo: rgba(224,165,38,.12);
+  --alerta-texto: #F0C46B;
+  --sombra-1: 0 1px 2px rgba(0,0,0,.4);
+  --sombra-2: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  --sombra-3: 0 1px 2px rgba(0,0,0,.5), 0 24px 48px -8px rgba(0,0,0,.6);
+  background:
+    radial-gradient(1100px 560px at 88% -12%, rgba(136,173,54,.17), transparent 62%),
+    radial-gradient(900px 620px at -8% 108%, rgba(136,173,54,.08), transparent 60%),
+    var(--superficie);
+  background-attachment: fixed;
+}
+body.ui-novo.escuro header{ background: rgba(14,17,22,.82); border-bottom-color: var(--linha); }
+body.ui-novo.escuro .hero-eyebrow{ border: 1px solid rgba(168,204,90,.25); }
+body.ui-novo.escuro .hero h1{
+  background: linear-gradient(180deg, #FFFFFF 30%, #B8BEC8 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* superfícies que o estilo antigo deixava brancas */
+body.ui-novo.escuro .notif-painel, body.ui-novo.escuro .filtro-painel,
+body.ui-novo.escuro .modal-painel, body.ui-novo.escuro .aviso-card, body.ui-novo.escuro .cadastro-card{ background: #1A1F27; border-color: var(--linha-forte); }
+body.ui-novo.escuro .campo input:not([type=checkbox]):focus, body.ui-novo.escuro .campo select:focus,
+body.ui-novo.escuro .obs-textarea:focus, body.ui-novo.escuro .filtro-btn:hover{ background: var(--tela); }
+body.ui-novo.escuro .campo input:not([type=checkbox]):not([type=radio]), body.ui-novo.escuro .campo select, body.ui-novo.escuro .filtro-btn,
+body.ui-novo.escuro .obs-textarea{ background: #10141A; }
+body.ui-novo.escuro .campo select option{ background: #161A21; color: var(--tinta); }
+
+/* botões */
+body.ui-novo.escuro .btn-buscar, body.ui-novo.escuro .btn-cadastrar-manual,
+body.ui-novo.escuro .filtro-btn-pesquisar, body.ui-novo.escuro .aviso-btn-fechar{
+  color: #0E1405; box-shadow: 0 0 0 1px rgba(168,204,90,.35), 0 8px 24px -6px rgba(136,173,54,.45);
+}
+body.ui-novo.escuro .btn-add-painel{ background: transparent; }
+body.ui-novo.escuro .btn-add-painel:hover{ color: #0E1405; }
+body.ui-novo.escuro .painel-btn-agendar, body.ui-novo.escuro .painel-btn-mover{ color: #0E1116; }
+body.ui-novo.escuro .painel-btn-agendar:hover, body.ui-novo.escuro .painel-btn-mover:hover{ background: #FFFFFF; border-color: #FFFFFF; color: #0E1116; }
+body.ui-novo.escuro .painel-btn-maps, body.ui-novo.escuro .painel-btn-whatsapp, body.ui-novo.escuro .painel-btn-cancelar{ background: transparent; }
+body.ui-novo.escuro .painel-btn-maps:hover, body.ui-novo.escuro .painel-icone-btn:hover{ background: #222833; }
+body.ui-novo.escuro .painel-btn-whatsapp{ color: #5FD08F; border-color: rgba(95,208,143,.35); }
+body.ui-novo.escuro .painel-btn-whatsapp:hover{ background: rgba(95,208,143,.1); }
+body.ui-novo.escuro .painel-btn-cancelar{ color: #F28B82; border-color: rgba(242,139,130,.35); }
+body.ui-novo.escuro .painel-btn-cancelar:hover{ background: rgba(242,139,130,.1); }
+
+/* tabela, painel, avisos */
+body.ui-novo.escuro table.tabela-medicos tbody tr:hover{ background: #1B2029; }
+body.ui-novo.escuro .painel-coluna{ background: rgba(22,26,33,.6); }
+body.ui-novo.escuro .painel-coluna-revisitar{ background: rgba(224,165,38,.06); border-color: rgba(224,165,38,.3); }
+body.ui-novo.escuro .painel-coluna-revisitar .painel-contador{ background: rgba(224,165,38,.16); color: #F0C46B; border-color: rgba(224,165,38,.3); }
+body.ui-novo.escuro .painel-card:hover{ border-color: #3D4552; }
+body.ui-novo.escuro .aviso-fonte{ border-color: rgba(224,165,38,.3); }
+body.ui-novo.escuro .chip-selecionada, body.ui-novo.escuro .badge-no-painel, body.ui-novo.escuro .painel-badge-agenda{ border: 1px solid rgba(168,204,90,.25); }
+
+@media (max-width: 640px){
+  body.ui-novo.escuro nav.barra-mobile{ background: rgba(14,17,22,.94); border-top-color: var(--linha); box-shadow: 0 -8px 24px rgba(0,0,0,.4); }
+}
+
+/* ==========================================================================
+   ENTRADA (login e cadastro) — moldura dividida: marca à esquerda, formulário
+   à direita. No celular fica só o formulário, com a logo no topo.
+   ========================================================================== */
+body.ui-novo .auth-dividida{ padding: 40px 24px; overflow: visible; }
+body.ui-novo .auth-moldura{
+  position: relative; z-index: 1;
+  display: grid; grid-template-columns: 1.05fr 1fr;
+  width: 100%; max-width: 1040px; min-height: 620px;
+  background: var(--tela); border: 1px solid var(--linha); border-radius: 24px;
+  box-shadow: var(--sombra-3); overflow: hidden;
+}
+body.ui-novo.escuro .auth-moldura{ box-shadow: 0 0 0 1px rgba(255,255,255,.02), 0 30px 80px -20px rgba(0,0,0,.7); }
+
+/* lado da marca */
+body.ui-novo .auth-marca{
+  position: relative; overflow: hidden; isolation: isolate;
+  display: flex; flex-direction: column; gap: 40px; justify-content: space-between;
+  padding: 48px 48px 36px;
+  color: #17220A;
+  background:
+    radial-gradient(520px 380px at 0% 0%, rgba(255,255,255,.75), transparent 62%),
+    linear-gradient(155deg, #EDF4DC 0%, #DCEABB 55%, #C9DD98 100%);
+  border-right: 1px solid rgba(92,122,34,.18);
+}
+body.ui-novo.escuro .auth-marca{
+  color: var(--tinta);
+  background:
+    radial-gradient(560px 420px at 0% 0%, rgba(136,173,54,.30), transparent 62%),
+    linear-gradient(160deg, #172010 0%, #10160C 55%, #0C110A 100%);
+  border-right-color: var(--linha);
+}
+/* as duas barras inclinadas da logo, grandes e bem leves ao fundo */
+body.ui-novo .auth-marca-tracos{ position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+body.ui-novo .auth-marca-tracos span{
+  position: absolute; bottom: -80px; width: 110px; height: 560px;
+  background: linear-gradient(180deg, rgba(92,122,34,0) 0%, rgba(92,122,34,.20) 100%);
+  transform: skewX(20deg); border-radius: 4px;
+}
+body.ui-novo .auth-marca-tracos span:first-child{ right: 150px; }
+body.ui-novo .auth-marca-tracos span:last-child{ right: 0; }
+body.ui-novo.escuro .auth-marca-tracos span{ background: linear-gradient(180deg, rgba(136,173,54,0) 0%, rgba(136,173,54,.16) 100%); }
+
+body.ui-novo .auth-marca-logo{ height: 30px; width: 191px; display: block; }
+body.ui-novo .auth-marca-selo{
+  display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  padding: 5px 10px; border-radius: 999px; background: rgba(92,122,34,.14); color: #3F5416;
+}
+body.ui-novo.escuro .auth-marca-selo{ background: rgba(168,204,90,.12); color: #C2DE86; border: 1px solid rgba(168,204,90,.22); }
+body.ui-novo .auth-marca h2{
+  font-family: 'Montserrat', sans-serif; font-size: 32px; font-weight: 800; line-height: 1.12;
+  letter-spacing: -0.025em; margin: 16px 0 12px; color: #121C06; max-width: 15ch;
+}
+body.ui-novo.escuro .auth-marca h2{
+  background: linear-gradient(180deg, #FFFFFF 35%, #B9C3A8 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+body.ui-novo .auth-marca-texto > p{ font-size: 15px; line-height: 1.6; color: #34411F; margin: 0; max-width: 38ch; }
+body.ui-novo.escuro .auth-marca-texto > p{ color: var(--ardosia); }
+body.ui-novo .auth-marca-lista{ list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 14px; }
+body.ui-novo .auth-marca-lista li{ display: flex; align-items: center; gap: 14px; font-size: 14px; line-height: 1.45; color: #2A3517; }
+body.ui-novo .auth-marca-lista strong{ color: #121C06; font-weight: 600; }
+body.ui-novo.escuro .auth-marca-lista li{ color: var(--ardosia); }
+body.ui-novo.escuro .auth-marca-lista strong{ color: var(--tinta); }
+body.ui-novo .auth-marca-lista svg{
+  flex: none; width: 38px; height: 38px; padding: 9px; border-radius: 11px;
+  fill: none; stroke: #4B6519; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+  background: rgba(255,255,255,.7); box-shadow: 0 1px 2px rgba(30,45,10,.08), inset 0 0 0 1px rgba(92,122,34,.16);
+}
+body.ui-novo.escuro .auth-marca-lista svg{ stroke: var(--verde); background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px rgba(168,204,90,.18); }
+body.ui-novo .auth-marca-rodape{ font-size: 12px; color: #4F5D37; margin: 0; }
+body.ui-novo.escuro .auth-marca-rodape{ color: var(--pedra); }
+
+/* lado do formulário */
+body.ui-novo .auth-card.auth-card-form{
+  background: transparent; border: none; box-shadow: none; border-radius: 0; max-width: none;
+  padding: 56px 56px; display: flex; flex-direction: column; justify-content: center; align-items: center;
+}
+body.ui-novo .auth-card-form > *{ width: 100%; max-width: 384px; }
+body.ui-novo .auth-logo-form{ display: none; }
+body.ui-novo .auth-card-form h1{ text-align: left; font-size: 28px; font-weight: 800; letter-spacing: -0.025em; margin: 0 0 6px; }
+body.ui-novo .auth-card-form .auth-sub{ text-align: left; font-size: 14.5px; color: var(--ardosia); margin: 0 0 28px; }
+body.ui-novo .auth-card-form .campo{ margin-bottom: 16px; }
+body.ui-novo .auth-card-form .campo label{ font-size: 13px; font-weight: 600; color: var(--tinta); text-transform: none; letter-spacing: 0; margin-bottom: 7px; display: block; }
+body.ui-novo .auth-card-form .campo input{
+  height: 48px; padding: 0 14px; border-radius: 10px; font-size: 15px;
+  background: var(--tela); border: 1px solid var(--linha-forte); color: var(--tinta);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+body.ui-novo .auth-card-form .campo-senha-wrapper input{ padding-right: 46px; }
+body.ui-novo .auth-card-form .campo input:hover{ border-color: #A9B19B; }
+body.ui-novo .auth-card-form .campo input:focus{ outline: none; border-color: var(--verde); box-shadow: 0 0 0 4px rgba(136,173,54,.20); background: var(--tela); }
+body.ui-novo.escuro .auth-card-form .campo input{ background: #10141A; }
+body.ui-novo.escuro .auth-card-form .campo input:hover{ border-color: #46505E; }
+body.ui-novo .auth-card-form .campo-par{ display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+body.ui-novo .auth-card-form .btn-auth{ width: 100%; min-height: 50px; font-size: 15px; margin-top: 8px; letter-spacing: .01em; }
+body.ui-novo .auth-card-form .auth-erro{ text-align: left; }
+body.ui-novo .auth-card-form .auth-link{ text-align: center; font-size: 14px; margin-top: 16px; }
+body.ui-novo .auth-card-form .auth-link + .auth-link{ margin-top: 10px; padding-top: 18px; border-top: 1px solid var(--linha); }
+body.ui-novo .auth-card-form .auth-link a{ font-weight: 600; }
+
+@media (max-width: 880px){
+  body.ui-novo .auth-dividida{ padding: 72px 16px 28px; align-items: flex-start; }
+  body.ui-novo .auth-moldura{ grid-template-columns: minmax(0, 1fr); max-width: 460px; min-height: 0; border-radius: 20px; }
+  body.ui-novo .auth-marca{ display: none; }
+  body.ui-novo .auth-card.auth-card-form{ padding: 32px 22px 28px; }
+  body.ui-novo .auth-logo-form{ display: block; height: 28px; width: 178px; margin: 0 0 24px; }
+  body.ui-novo .auth-card-form h1{ font-size: 24px; }
+}
+@media (max-width: 400px){
+  body.ui-novo .auth-card-form .campo-par{ grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ==========================================================================
+   MOVIMENTO — inspirado no estilo calmo de sites como o da Wealthsimple:
+   entradas lentas que sobem e aparecem em sequência, curva de desaceleração
+   suave, brilho verde que "respira" ao fundo e micro-reações nos botões.
+   Só mexe em opacidade/transform (leve até em celular simples).
+   ========================================================================== */
+body.ui-novo{ --suave: cubic-bezier(.16,1,.3,1); --entrada: .9s; }
+
+@keyframes ic-sobe{ from{ opacity: 0; transform: translate3d(0,20px,0); } to{ opacity: 1; transform: none; } }
+@keyframes ic-sobe-foco{ from{ opacity: 0; transform: translate3d(0,22px,0); filter: blur(6px); } to{ opacity: 1; transform: none; filter: blur(0); } }
+@keyframes ic-surge{ from{ opacity: 0; transform: translate3d(0,14px,0) scale(.985); } to{ opacity: 1; transform: none; } }
+@keyframes ic-brilho{ from{ transform: translate3d(0,0,0) scale(1); } to{ transform: translate3d(-7%,5%,0) scale(1.12); } }
+@keyframes ic-deriva{ from{ transform: translate3d(0,0,0) skewX(20deg); } to{ transform: translate3d(-22px,-36px,0) skewX(20deg); } }
+@keyframes ic-gira{ from{ opacity: 0; transform: rotate(-100deg) scale(.4); } to{ opacity: 1; transform: none; } }
+
+/* brilho verde que se move devagar atrás de tudo */
+body.ui-novo::after{
+  content: ""; position: fixed; inset: -25%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(38% 32% at 72% 22%, rgba(136,173,54,.13), transparent 70%),
+    radial-gradient(30% 28% at 22% 78%, rgba(136,173,54,.08), transparent 70%);
+  animation: ic-brilho 22s ease-in-out infinite alternate;
+  will-change: transform;
+}
+body.ui-novo.escuro::after{
+  background:
+    radial-gradient(38% 32% at 72% 22%, rgba(136,173,54,.09), transparent 70%),
+    radial-gradient(30% 28% at 22% 78%, rgba(136,173,54,.05), transparent 70%);
+}
+
+/* títulos de cada tela: sobem com um leve desfoque, um depois do outro */
+body.ui-novo .hero > *, body.ui-novo .hero-secao-conteudo > *{ animation: ic-sobe-foco var(--entrada) var(--suave) backwards; }
+body.ui-novo .hero > :nth-child(2), body.ui-novo .hero-secao-conteudo > :nth-child(2){ animation-delay: .08s; }
+body.ui-novo .hero > :nth-child(3), body.ui-novo .hero-secao-conteudo > :nth-child(3){ animation-delay: .16s; }
+body.ui-novo .hero > :nth-child(n+4){ animation-delay: .22s; }
+
+/* blocos principais */
+body.ui-novo .card-busca, body.ui-novo .card-flutuante{ animation: ic-surge 1s var(--suave) .18s backwards; }
+body.ui-novo .stat-card, body.ui-novo .card-grafico, body.ui-novo .mini-stat{ animation: ic-surge .8s var(--suave) backwards; }
+body.ui-novo .stat-card:nth-child(2){ animation-delay: .25s; } body.ui-novo .stat-card:nth-child(3){ animation-delay: .3s; }
+body.ui-novo .stat-card:nth-child(4){ animation-delay: .35s; } body.ui-novo .stat-card:nth-child(5){ animation-delay: .4s; }
+body.ui-novo .stat-card:nth-child(6){ animation-delay: .45s; } body.ui-novo .stat-card:nth-child(n+7){ animation-delay: .5s; }
+body.ui-novo .stat-card:nth-child(1){ animation-delay: .2s; }
+
+/* listas que chegam do servidor: resultados, artigos, painel */
+body.ui-novo table.tabela-medicos tbody tr, body.ui-novo .artigo, body.ui-novo .painel-card{ animation: ic-surge .7s var(--suave) backwards; }
+body.ui-novo table.tabela-medicos tbody tr:nth-child(2), body.ui-novo .artigo:nth-child(2), body.ui-novo .painel-card:nth-child(2){ animation-delay: .04s; }
+body.ui-novo table.tabela-medicos tbody tr:nth-child(3), body.ui-novo .artigo:nth-child(3), body.ui-novo .painel-card:nth-child(3){ animation-delay: .08s; }
+body.ui-novo table.tabela-medicos tbody tr:nth-child(4), body.ui-novo .artigo:nth-child(4), body.ui-novo .painel-card:nth-child(4){ animation-delay: .12s; }
+body.ui-novo table.tabela-medicos tbody tr:nth-child(5), body.ui-novo .artigo:nth-child(5), body.ui-novo .painel-card:nth-child(5){ animation-delay: .16s; }
+body.ui-novo table.tabela-medicos tbody tr:nth-child(6), body.ui-novo .artigo:nth-child(6), body.ui-novo .painel-card:nth-child(6){ animation-delay: .2s; }
+body.ui-novo table.tabela-medicos tbody tr:nth-child(n+7), body.ui-novo .artigo:nth-child(n+7), body.ui-novo .painel-card:nth-child(n+7){ animation-delay: .24s; }
+/* onde o navegador permite, o que está mais abaixo aparece conforme a rolagem */
+@supports (animation-timeline: view()){
+  body.ui-novo .artigo:nth-child(n+5), body.ui-novo table.tabela-medicos tbody tr:nth-child(n+9){
+    animation: ic-surge linear backwards; animation-delay: 0s;
+    animation-timeline: view(); animation-range: entry 0% entry 45%;
+  }
+}
+
+/* entrada (login/cadastro): a moldura surge, depois os textos em sequência */
+body.ui-novo .auth-moldura{ animation: ic-surge 1.1s var(--suave) backwards; }
+body.ui-novo .auth-marca-logo, body.ui-novo .auth-marca-selo, body.ui-novo .auth-marca h2,
+body.ui-novo .auth-marca-texto > p, body.ui-novo .auth-marca-lista li, body.ui-novo .auth-marca-rodape{ animation: ic-sobe-foco 1s var(--suave) backwards; }
+body.ui-novo .auth-marca-logo{ animation-delay: .15s; }
+body.ui-novo .auth-marca-selo{ animation-delay: .25s; display: inline-block; }
+body.ui-novo .auth-marca h2{ animation-delay: .33s; }
+body.ui-novo .auth-marca-texto > p{ animation-delay: .43s; }
+body.ui-novo .auth-marca-lista li:nth-child(1){ animation-delay: .55s; }
+body.ui-novo .auth-marca-lista li:nth-child(2){ animation-delay: .63s; }
+body.ui-novo .auth-marca-lista li:nth-child(3){ animation-delay: .71s; }
+body.ui-novo .auth-marca-rodape{ animation-delay: .85s; }
+body.ui-novo .auth-marca-tracos span{ animation: ic-deriva 14s ease-in-out infinite alternate; }
+body.ui-novo .auth-marca-tracos span:last-child{ animation-duration: 18s; animation-delay: -6s; }
+body.ui-novo .auth-card-form > *{ animation: ic-sobe .9s var(--suave) backwards; }
+body.ui-novo .auth-card-form > :nth-child(1){ animation-delay: .2s; }
+body.ui-novo .auth-card-form > :nth-child(2){ animation-delay: .28s; }
+body.ui-novo .auth-card-form > :nth-child(3){ animation-delay: .34s; }
+body.ui-novo .auth-card-form > :nth-child(4){ animation-delay: .4s; }
+body.ui-novo .auth-card-form > :nth-child(5){ animation-delay: .46s; }
+body.ui-novo .auth-card-form > :nth-child(n+6){ animation-delay: .54s; }
+/* telas avulsas (erro de acesso, sem internet) */
+body.ui-novo .auth-tela:not(.auth-dividida) .auth-card{ animation: ic-surge 1s var(--suave) backwards; }
+
+/* micro-reações: botões sobem 1px no hover e "afundam" no clique */
+body.ui-novo .btn-auth, body.ui-novo .btn-buscar, body.ui-novo .btn-salvar, body.ui-novo .btn-primario,
+body.ui-novo .btn-importar, body.ui-novo .btn-cadastrar-manual, body.ui-novo .filtro-btn-pesquisar,
+body.ui-novo .painel-btn-agendar, body.ui-novo .painel-btn-mover, body.ui-novo .btn-add-painel{
+  transition: transform .35s var(--suave), box-shadow .35s var(--suave), background-color .2s ease, color .2s ease;
+}
+body.ui-novo .btn-auth:hover, body.ui-novo .btn-buscar:hover, body.ui-novo .btn-salvar:hover, body.ui-novo .btn-primario:hover,
+body.ui-novo .btn-importar:hover, body.ui-novo .btn-cadastrar-manual:hover, body.ui-novo .filtro-btn-pesquisar:hover{
+  transform: translateY(-1px); box-shadow: 0 2px 4px rgba(30,45,10,.10), 0 10px 24px -8px rgba(92,122,34,.45);
+}
+body.ui-novo.escuro .btn-auth:hover, body.ui-novo.escuro .btn-buscar:hover, body.ui-novo.escuro .btn-salvar:hover,
+body.ui-novo.escuro .btn-primario:hover, body.ui-novo.escuro .btn-cadastrar-manual:hover, body.ui-novo.escuro .filtro-btn-pesquisar:hover{
+  box-shadow: 0 0 0 1px rgba(168,204,90,.45), 0 12px 32px -6px rgba(136,173,54,.6);
+}
+body.ui-novo .btn-auth:active, body.ui-novo .btn-buscar:active, body.ui-novo .btn-salvar:active, body.ui-novo .btn-primario:active,
+body.ui-novo .btn-importar:active, body.ui-novo .btn-cadastrar-manual:active, body.ui-novo .filtro-btn-pesquisar:active,
+body.ui-novo .painel-btn-agendar:active, body.ui-novo .painel-btn-mover:active, body.ui-novo .btn-add-painel:active{
+  transform: translateY(0) scale(.98); transition-duration: .08s;
+}
+/* cartões levantam de leve */
+body.ui-novo .stat-card, body.ui-novo .artigo, body.ui-novo .painel-card, body.ui-novo .chip, body.ui-novo .aba-fonte{
+  transition: transform .45s var(--suave), box-shadow .45s var(--suave), border-color .2s ease, background-color .2s ease, color .2s ease;
+}
+@media (hover: hover){
+  body.ui-novo .stat-card:hover, body.ui-novo .artigo:hover{ transform: translateY(-3px); box-shadow: var(--sombra-3); }
+  body.ui-novo .painel-card:hover{ transform: translateY(-2px); }
+}
+body.ui-novo header nav a, body.ui-novo .admin-header a, body.ui-novo .admin-nav-link, body.ui-novo nav.barra-mobile a{
+  transition: color .2s ease, background-color .25s ease;
+}
+body.ui-novo .campo input, body.ui-novo .campo select, body.ui-novo .filtro-btn{ transition: border-color .2s ease, box-shadow .3s var(--suave), background-color .2s ease; }
+
+/* botão sol/lua: o ícone gira ao trocar */
+body.ui-novo .btn-tema{ transition: background-color .2s ease, border-color .2s ease, color .2s ease, transform .4s var(--suave); }
+body.ui-novo .btn-tema:hover{ transform: rotate(-12deg); }
+body.ui-novo .btn-tema:active{ transform: scale(.9); }
+body.ui-novo .btn-tema svg{ animation: ic-gira .6s var(--suave) backwards; }
+
+/* transição da troca de tema (círculo que se abre a partir do botão) */
+::view-transition-old(root), ::view-transition-new(root){ animation: none; mix-blend-mode: normal; }
+::view-transition-new(root){ z-index: 2; }
+
+/* quem pediu "menos movimento" no aparelho: tudo parado e na hora */
+@media (prefers-reduced-motion: reduce){
+  body.ui-novo *, body.ui-novo::after{ transition: none !important; animation: none !important; }
+}

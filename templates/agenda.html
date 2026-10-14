@@ -6,9 +6,9 @@
 <title>i.cannal · Agenda</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-<meta name="theme-color" content="#171B22">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -206,8 +206,10 @@
     .card-flutuante{ padding:18px; border-radius:16px; }
   }
 </style>
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
 </head>
-<body>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
 
 <header>
   <svg class="logo-completo" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">
@@ -217,17 +219,20 @@
       <tspan fill="#A8CC5A">I.</tspan><tspan fill="#FFFFFF">CANNAL</tspan>
     </text>
   </svg>
+  <div class="header-direita">
+    {% include '_botao_tema.html' %}
   <nav>
-    <a href="{{ url_for('index') }}">Buscar</a>
-    <a href="{{ url_for('index') }}#painel">Painel Médico</a>
-    <a href="{{ url_for('agenda') }}" class="ativo">Agenda</a>
-    <a href="{{ url_for('artigos') }}">Artigos</a>
-    {% if current_user.is_admin %}
-    <a href="{{ url_for('admin') }}">Painel Admin</a>
-    {% endif %}
-    <a href="{{ url_for('perfil') }}">Meu Perfil</a>
-    <a href="{{ url_for('logout') }}">Sair</a>
-  </nav>
+      <a href="{{ url_for('index') }}">Buscar</a>
+      <a href="{{ url_for('index') }}#painel">Painel Médico</a>
+      <a href="{{ url_for('agenda') }}" class="ativo">Agenda</a>
+      <a href="{{ url_for('artigos') }}">Artigos</a>
+      {% if current_user.is_admin %}
+      <a href="{{ url_for('admin') }}">Painel Admin</a>
+      {% endif %}
+      <a href="{{ url_for('perfil') }}">Meu Perfil</a>
+      <a href="{{ url_for('logout') }}">Sair</a>
+    </nav>
+  </div>
 </header>
 
 <div class="hero-secao">
