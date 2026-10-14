@@ -11,6 +11,7 @@ Por padrão a busca é focada em cannabis medicinal + especialidade (é o que
 interessa pro time da Cannal); dá pra desligar e ver a especialidade em geral.
 """
 import re
+import unicodedata
 import warnings
 from datetime import date
 from urllib.parse import quote_plus
@@ -264,83 +265,115 @@ def _abstracts_pubmed(xml: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# SciELO
+# SciELO (via Crossref)
+#
+# O site de busca do SciELO (search.scielo.org) bloqueia servidores (responde
+# 403 na hora). Por isso os artigos do SciELO Brasil vêm do Crossref, o
+# registro oficial dos DOIs: todo artigo do SciELO Brasil tem DOI começando
+# com 10.1590. API aberta, gratuita, sem cadastro.
 # ---------------------------------------------------------------------------
 
+CROSSREF = "https://api.crossref.org/works"
+PREFIXO_SCIELO_BRASIL = "10.1590"
+IDIOMAS = {"pt": "Português", "en": "Inglês", "es": "Espanhol"}
+
+
+def _sem_acento(texto: str) -> str:
+    return unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode("ascii").lower()
+
+
+def _radicais(termos: list) -> list:
+    """'"esclerose múltipla"' -> 'esclerose multipla'; 'seizure*' -> 'seizure'."""
+    return [_sem_acento(t.strip('"').rstrip("*")) for t in termos if t.strip('"').rstrip("*")]
+
+
+def _contem(texto: str, radicais: list) -> bool:
+    """Palavras curtas (THC, PTSD, dor...) só valem inteiras — senão "thc"
+    bateria dentro de "healthcare". As longas valem como começo de palavra."""
+    for r in radicais:
+        if len(r) <= 4:
+            if re.search(rf"\b{re.escape(r)}\b", texto):
+                return True
+        elif re.search(rf"\b{re.escape(r)}", texto):
+            return True
+    return False
+
+
+def _palavras_consulta(slug: str, so_cannabis: bool) -> str:
+    termos = TERMOS_ESPECIALIDADE[slug]
+    palavras = [t.strip('"').rstrip("*") for t in termos["pt"][:4] + termos["en"][:3]]
+    if so_cannabis:
+        palavras = ["cannabis", "canabidiol", "cannabidiol", "canabinoides"] + palavras
+    return " ".join(palavras)
+
+
+def _idioma_provavel(item: dict, titulo: str) -> str:
+    codigo = (item.get("language") or "").lower()[:2]
+    if codigo in IDIOMAS:
+        return IDIOMAS[codigo]
+    t = f" {_sem_acento(titulo)} "
+    if any(p in t for p in (" de ", " do ", " da ", " em ", " para ", "cao ", "coes ")):
+        return "Português"
+    if any(p in t for p in (" the ", " of ", " and ", " in ", " with ")):
+        return "Inglês"
+    return ""
+
+
 def buscar_scielo(slug: str, so_cannabis: bool, anos) -> dict:
-    consulta = montar_consulta_scielo(slug, so_cannabis)
-    params = [("q", consulta), ("lang", "pt"), ("count", MAX_POR_FONTE), ("from", 1),
-              ("output", "site"), ("sort", "YEAR_DESC"), ("format", "summary"), ("page", 1)]
-    params += [("filter[year_cluster][]", ano) for ano in _anos_filtro(anos)]
-    r = _get(SCIELO_BUSCA, params=params, timeout=20)
+    filtros = [f"prefix:{PREFIXO_SCIELO_BRASIL}", "type:journal-article"]
+    if anos:
+        filtros.append(f"from-pub-date:{date.today().year - anos + 1}-01-01")
+    r = _get(CROSSREF, params={
+        "query.bibliographic": _palavras_consulta(slug, so_cannabis),
+        "filter": ",".join(filtros),
+        "rows": 60,  # pega mais e filtra aqui, pra sobrar só o que é do tema
+        "select": "DOI,title,author,container-title,issued,abstract,language,URL",
+    }, headers={"User-Agent": "icannal/1.0 (busca de artigos cientificos)"}, timeout=20)
     r.raise_for_status()
-    artigos, total = ler_pagina_scielo(r.text)
-    return {"artigos": artigos, "total": total, "link": link_scielo_site(consulta, anos)}
+    mensagem = r.json().get("message", {})
 
-
-def ler_pagina_scielo(html: str):
-    soup = BeautifulSoup(html, "html.parser")
-    total = 0
-    no_total = soup.select_one("#TotalHits")
-    if no_total:
-        digitos = re.sub(r"\D", "", no_total.get_text())
-        total = int(digitos) if digitos else 0
+    radicais_cannabis = _radicais(CANNABIS_PT + CANNABIS_EN) + ["canab", "cannab", "maconha", "marijuana"]
+    radicais_tema = _radicais(TERMOS_ESPECIALIDADE[slug]["pt"] + TERMOS_ESPECIALIDADE[slug]["en"])
 
     artigos = []
-    for item in soup.select(".item"):
-        no_titulo = item.select_one(".title")
-        if not no_titulo:
-            continue
-        titulo = _limpar(no_titulo.get_text(" "))
+    for item in mensagem.get("items", []):
+        titulo = _limpar(" ".join(item.get("title") or []))
         if not titulo:
             continue
+        resumo = _limpar(re.sub(r"<[^>]+>", " ", item.get("abstract") or ""))
+        resumo = re.sub(r"^(Abstract|Resumo|Resumen)\s*[:.]?\s*", "", resumo, flags=re.IGNORECASE)
+        texto = _sem_acento(titulo + " " + resumo)
+        # A busca do Crossref é por relevância (não entende E/OU): aqui garante
+        # que o artigo é mesmo do assunto.
+        if so_cannabis and not _contem(texto, radicais_cannabis):
+            continue
+        if not _contem(texto, radicais_tema):
+            continue
 
-        autores = [_limpar(a.get_text(" ")) for a in item.select(".authors a.author")]
-        if not autores and item.select_one(".authors"):
-            autores = [_limpar(x) for x in item.select_one(".authors").get_text(";").split(";") if _limpar(x)]
-
-        fonte_txt = _limpar(item.select_one(".source").get_text(" ")) if item.select_one(".source") else ""
-        ano = (re.search(r"\b(19|20)\d{2}\b", fonte_txt) or [None])[0] or ""
-        revista = _limpar(re.split(r",|\d{4}", fonte_txt)[0]) if fonte_txt else ""
-
-        link = ""
-        a_titulo = no_titulo.find_parent("a") or no_titulo.find("a")
-        if a_titulo and a_titulo.get("href"):
-            link = a_titulo["href"]
-        if not link:
-            for a in item.find_all("a", href=True):
-                if "scielo" in a["href"] and ("pid=" in a["href"] or "/a/" in a["href"] or "/article/" in a["href"]):
-                    link = a["href"]
-                    break
-        doi_a = item.select_one(".DOIResults a")
-        doi = doi_a["href"] if doi_a and doi_a.get("href") else ""
-        if not link:
-            link = doi
-        if link.startswith("//"):
-            link = "https:" + link
-
-        resumo, idioma = "", ""
-        id_item = item.get("id")
-        if id_item:
-            for sufixo, nome_idioma in (("pt", "Português"), ("en", "Inglês"), ("es", "Espanhol")):
-                bloco = soup.find("div", id=f"{id_item}_{sufixo}")
-                if bloco and _limpar(bloco.get_text(" ")):
-                    resumo, idioma = _limpar(bloco.get_text(" ")), nome_idioma
-                    break
-
+        autores = []
+        for a in item.get("author") or []:
+            nome = " ".join(x for x in (a.get("given"), a.get("family")) if x) or a.get("name", "")
+            if nome:
+                autores.append(_limpar(nome))
+        partes_data = (item.get("issued") or {}).get("date-parts") or [[None]]
+        ano = str(partes_data[0][0]) if partes_data and partes_data[0] and partes_data[0][0] else ""
+        doi = item.get("DOI", "")
         artigos.append({
             "fonte": "SciELO",
             "titulo": titulo.rstrip("."),
             "autores": autores[:3] + (["et al."] if len(autores) > 3 else []),
-            "revista": revista,
+            "revista": _limpar(" ".join(item.get("container-title") or [])),
             "ano": ano,
             "resumo": resumo,
-            "link": link,
-            "doi": doi,
+            "link": f"https://doi.org/{doi}" if doi else (item.get("URL") or ""),
+            "doi": f"https://doi.org/{doi}" if doi else "",
             "gratis": True,  # tudo no SciELO é de acesso aberto
-            "idioma": idioma,
+            "idioma": _idioma_provavel(item, titulo),
         })
-    return artigos, total
+
+    artigos.sort(key=lambda a: a["ano"] or "0", reverse=True)
+    consulta_site = montar_consulta_scielo(slug, so_cannabis)
+    return {"artigos": artigos[:MAX_POR_FONTE], "total": len(artigos), "link": link_scielo_site(consulta_site, anos)}
 
 
 # ---------------------------------------------------------------------------
