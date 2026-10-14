@@ -78,6 +78,7 @@ from auth import (
     data_valida,
 )
 import re
+import artigos as artigos_mod
 import requests
 import webbrowser
 import threading
@@ -1142,6 +1143,55 @@ def api_painel_cancelar_agendamento(entrada_id):
 @login_required
 def agenda():
     return render_template("agenda.html")
+
+
+# ---------------------------------------------------------------------------
+# Artigos científicos (PubMed + SciELO) por especialidade
+# ---------------------------------------------------------------------------
+
+@app.route("/artigos")
+@login_required
+def artigos():
+    return render_template("artigos.html", especialidades=NOMES_ESPECIALIDADES)
+
+
+@app.route("/api/artigos")
+@login_required
+def api_artigos():
+    slug = request.args.get("especialidade", "")
+    if slug not in NOMES_ESPECIALIDADES or slug not in artigos_mod.TERMOS_ESPECIALIDADE:
+        return jsonify({"erro": "Escolha uma especialidade."}), 400
+    so_cannabis = request.args.get("cannabis", "1") != "0"
+    periodo = request.args.get("periodo", "5")
+    if periodo not in artigos_mod.PERIODOS:
+        periodo = "5"
+    anos = artigos_mod.PERIODOS[periodo]
+
+    chave = artigos_mod.chave_cache(slug, so_cannabis, anos)
+    achou, guardado = artigos_mod.cache().pegar(chave)
+    if achou:
+        return jsonify(guardado)
+
+    if _passou_do_limite("artigos", str(usuario_logado()["id"]), 20, 300):
+        return jsonify({"erro": "Muitas buscas seguidas. Aguarde um minuto e tente de novo."}), 429
+
+    fontes = {"PubMed": artigos_mod.buscar_pubmed, "SciELO": artigos_mod.buscar_scielo}
+    resposta = {"especialidade": NOMES_ESPECIALIDADES[slug], "fontes": {}, "avisos": []}
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futuros = {executor.submit(f, slug, so_cannabis, anos): nome for nome, f in fontes.items()}
+        for futuro in as_completed(futuros):
+            nome = futuros[futuro]
+            try:
+                resposta["fontes"][nome] = futuro.result()
+            except Exception as e:
+                app.logger.warning("Fonte de artigos com erro — %s: %s", nome, e)
+                _registrar_falha_fonte(f"{nome} (artigos)", e)
+                resposta["avisos"].append(f"{nome} não respondeu agora. Tente de novo em alguns minutos.")
+                resposta["fontes"][nome] = {"artigos": [], "total": 0, "link": ""}
+
+    if not resposta["avisos"]:  # só guarda resultado completo
+        artigos_mod.cache().guardar(chave, resposta)
+    return jsonify(resposta)
 
 
 @app.route("/api/agenda/mes")

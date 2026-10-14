@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i.cannal · Artigos científicos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#171B22">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="i.cannal">
+<style>
+  :root{
+    --roxo: #88AD36;
+    --roxo-escuro: #343C4C;
+    --roxo-suave: #E9F0DA;
+    --fundo: #F6F7F2;
+    --fundo-card: #FFFFFF;
+    --texto: #232935;
+    --texto-suave: #7A8175;
+    --borda: #E7EADF;
+    --marinho-profundo: #171B22;
+  }
+  *{ box-sizing: border-box; }
+  body{ margin:0; font-family:'Montserrat',sans-serif; background:var(--fundo); color:var(--texto); }
+
+  h1,h2,h3,.brand{ font-family:'Montserrat',sans-serif; }
+
+  header{ background:var(--marinho-profundo); color:#fff; padding:20px 32px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+  .brand{ display:flex; align-items:center; }
+  .logo-completo{ height:36px; width:auto; display:block; }
+
+  nav{ display:flex; gap:4px; background:rgba(255,255,255,.07); padding:4px; border-radius:999px; align-items:center; flex-wrap:wrap; }
+  .nav-link{ color:rgba(255,255,255,.72); text-decoration:none; padding:9px 19px; font-size:14px; font-weight:500; border-radius:999px; }
+  .nav-link:hover{ color:#fff; }
+  .nav-link.ativo{ background:var(--roxo); color:#fff; }
+
+  .sub-header{ background:var(--roxo); color:#fff; padding:10px 32px; font-size:13px; text-align:center; }
+
+  main{ max-width:720px; margin:0 auto; padding:0 24px 80px; }
+
+  .hero{
+    background:var(--marinho-profundo);
+    border-radius:24px;
+    padding:36px 32px 76px;
+    margin:32px 0 -48px;
+    position:relative;
+    overflow:hidden;
+  }
+  .hero::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background-image:
+      radial-gradient(circle at 88% 24%, rgba(136,173,54,.5) 0, rgba(136,173,54,.5) 3px, transparent 4px),
+      radial-gradient(circle at 78% 58%, rgba(168,204,90,.4) 0, rgba(168,204,90,.4) 2.5px, transparent 3.5px);
+    pointer-events:none;
+  }
+  .hero h1{ position:relative; font-size:27px; font-weight:800; letter-spacing:-0.02em; margin:0 0 8px; color:#fff; }
+  .hero p{ position:relative; color:rgba(255,255,255,.62); font-size:14.5px; line-height:1.6; margin:0; }
+
+  .card-flutuante{ position:relative; z-index:2; }
+
+  .card{
+    background:var(--fundo-card);
+    border:1px solid var(--borda);
+    border-radius:16px;
+    padding:26px;
+    box-shadow:0 1px 2px rgba(23,27,34,.05), 0 18px 36px rgba(23,27,34,.07);
+    margin-bottom:24px;
+  }
+
+  .card h2{ font-size:16px; font-weight:700; margin:0 0 18px; color:var(--roxo-escuro); }
+
+
+
+
+
+
+  main{ max-width:880px; }
+  .campo{ margin-bottom:16px; }
+  .campo label{ display:block; font-size:13px; font-weight:600; color:var(--texto); margin-bottom:7px; }
+  .btn-salvar{ width:100%; padding:14px; background:var(--roxo); color:#fff; border:none; border-radius:12px; font-family:'Montserrat',sans-serif; font-size:14px; font-weight:700; cursor:pointer; margin-top:4px; transition:background .15s ease, transform .15s ease; }
+  .btn-salvar:hover{ background:#5C7A22; transform:translateY(-1px); }
+  .campo select{ width:100%; padding:13px 15px; border:1.5px solid var(--borda); border-radius:12px; font-family:'Montserrat',sans-serif; font-size:14px; color:var(--texto); background:var(--fundo); outline:none; appearance:auto; }
+  .campo select:focus{ border-color:var(--roxo); background:#fff; box-shadow:0 0 0 4px var(--roxo-suave); }
+  .linha-filtros{ display:grid; grid-template-columns: 1fr 200px; gap:14px; }
+  .chave-cannabis{ display:flex; align-items:center; gap:10px; font-size:13.5px; font-weight:600; color:var(--texto); cursor:pointer; margin:2px 0 18px; user-select:none; }
+  .chave-cannabis input{ width:18px; height:18px; accent-color:var(--roxo); margin:0; }
+  .chave-cannabis small{ font-weight:500; color:var(--texto-suave); }
+  .btn-salvar:disabled{ opacity:.6; cursor:default; transform:none; }
+
+  .resumo-busca{ font-size:14px; font-weight:700; color:var(--roxo-escuro); margin:6px 0 12px; }
+  .abas-fonte{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .aba-fonte{ border:1.5px solid var(--borda); background:#fff; color:var(--texto); padding:8px 14px; border-radius:999px; font-family:'Montserrat',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
+  .aba-fonte.ativo{ background:var(--marinho-profundo); border-color:var(--marinho-profundo); color:#fff; }
+  .aviso-fonte{ background:#FFF6E0; color:#8A6100; border-radius:12px; padding:11px 14px; font-size:13px; font-weight:600; margin-bottom:14px; }
+
+  .lista-artigos{ display:flex; flex-direction:column; gap:12px; }
+  .artigo{ background:#fff; border:1px solid var(--borda); border-radius:14px; padding:18px 20px; }
+  .artigo-selos{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:9px; }
+  .selo{ font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; background:var(--fundo); color:var(--texto-suave); }
+  .selo.pubmed{ background:#E6EEF8; color:#245C9C; }
+  .selo.scielo{ background:#FCEBDD; color:#A3501A; }
+  .selo.gratis{ background:var(--roxo-suave); color:#4C6320; }
+  .artigo h3{ font-size:15.5px; line-height:1.45; margin:0 0 6px; }
+  .artigo h3 a{ color:var(--texto); text-decoration:none; }
+  .artigo h3 a:hover{ color:#5C7A22; text-decoration:underline; }
+  .artigo-meta{ font-size:12.5px; color:var(--texto-suave); line-height:1.5; margin-bottom:8px; overflow-wrap:anywhere; }
+  .artigo-resumo{ font-size:13px; line-height:1.6; color:#4A5160; margin:0; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .artigo-resumo.aberto{ display:block; -webkit-line-clamp:unset; }
+  .artigo-acoes{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .artigo-acoes a, .artigo-acoes button{ font-family:'Montserrat',sans-serif; font-size:12.5px; font-weight:600; padding:8px 13px; border-radius:10px; cursor:pointer; text-decoration:none; border:1.5px solid var(--borda); background:#fff; color:var(--texto); display:inline-flex; align-items:center; gap:6px; }
+  .artigo-acoes a.principal{ background:var(--roxo); border-color:var(--roxo); color:#fff; }
+  .artigo-acoes a.whats{ border-color:#BFE6CC; color:#1C8A45; }
+  .artigo-acoes svg{ width:15px; height:15px; }
+  .ver-mais-fonte{ display:block; text-align:center; margin-top:14px; font-size:13px; font-weight:600; color:#5C7A22; }
+  .estado{ text-align:center; color:var(--texto-suave); font-size:13.5px; padding:26px 10px; line-height:1.6; }
+  .carregando-ponto{ display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--roxo); margin:0 3px; animation:pulsar 1s infinite ease-in-out; }
+  .carregando-ponto:nth-child(2){ animation-delay:.15s } .carregando-ponto:nth-child(3){ animation-delay:.3s }
+  @keyframes pulsar{ 0%,80%,100%{ opacity:.25; transform:scale(.8) } 40%{ opacity:1; transform:scale(1) } }
+
+  @media (max-width: 640px){
+    .linha-filtros{ grid-template-columns:1fr; gap:0; }
+    .campo select{ font-size:16px; }
+    .artigo{ padding:15px 16px; }
+    .artigo h3{ font-size:14.5px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg class="logo-completo" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">
+      <polygon points="2,0 16,0 32,44 18,44" fill="#88AD36"/>
+      <polygon points="25,0 39,0 55,44 41,44" fill="#88AD36"/>
+      <text x="72" y="34" font-family="Montserrat, sans-serif" font-weight="900" font-size="34" textLength="204" lengthAdjust="spacing">
+        <tspan fill="#A8CC5A">I.</tspan><tspan fill="#FFFFFF">CANNAL</tspan>
+      </text>
+    </svg>
+  </div>
+  <nav>
+    <a href="{{ url_for('index') }}" class="nav-link">Buscar</a>
+    <a href="{{ url_for('index') }}#painel" class="nav-link">Painel Médico</a>
+    <a href="{{ url_for('agenda') }}" class="nav-link">Agenda</a>
+    <a href="{{ url_for('artigos') }}" class="nav-link ativo">Artigos</a>
+    {% if current_user.is_admin %}
+    <a href="{{ url_for('admin') }}" class="nav-link">Painel Admin</a>
+    {% endif %}
+    <a href="{{ url_for('perfil') }}" class="nav-link">Meu Perfil</a>
+    <a href="{{ url_for('logout') }}" class="nav-link">Sair</a>
+  </nav>
+</header>
+<div class="sub-header">Evidência científica pra apoiar suas conversas com os médicos.</div>
+
+<main>
+  <div class="hero">
+    <h1>Artigos científicos</h1>
+    <p>Escolha a especialidade e veja os estudos mais recentes do PubMed e do SciELO.</p>
+  </div>
+
+  <div class="card card-flutuante">
+    <form id="form-artigos">
+      <div class="linha-filtros">
+        <div class="campo">
+          <label for="especialidade">Especialidade</label>
+          <select id="especialidade" required>
+            <option value="">Selecione...</option>
+            {% for slug, nome in especialidades|dictsort(by='value') %}
+            <option value="{{ slug }}">{{ nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="campo">
+          <label for="periodo">Publicados</label>
+          <select id="periodo">
+            <option value="2">Nos últimos 2 anos</option>
+            <option value="5" selected>Nos últimos 5 anos</option>
+            <option value="10">Nos últimos 10 anos</option>
+            <option value="todos">Em qualquer data</option>
+          </select>
+        </div>
+      </div>
+      <label class="chave-cannabis">
+        <input type="checkbox" id="so-cannabis" checked>
+        <span>Só artigos sobre cannabis medicinal <small>(desmarque pra ver a especialidade em geral)</small></span>
+      </label>
+      <button type="submit" class="btn-salvar" id="btn-buscar-artigos">Buscar artigos</button>
+    </form>
+  </div>
+
+  <section id="resultados"></section>
+</main>
+
+<script>
+  const form = document.getElementById('form-artigos');
+  const botao = document.getElementById('btn-buscar-artigos');
+  const area = document.getElementById('resultados');
+  let ultimo = null;
+  let filtro = 'todos';
+
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function linkSeguro(u){ return /^https?:\/\//i.test(u || '') ? u : ''; }
+
+  const ICONE_ABRIR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>';
+  const ICONE_WHATS = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.6a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3z"/></svg>';
+
+  function cartao(a){
+    const link = linkSeguro(a.link) || linkSeguro(a.doi);
+    const autores = (a.autores || []).join(', ');
+    const meta = [autores, a.revista].filter(Boolean).join(' · ');
+    const textoWhats = encodeURIComponent(`${a.titulo}${a.ano ? ' (' + a.ano + ')' : ''}\n${link}`);
+    return `
+      <article class="artigo" data-fonte="${esc(a.fonte)}">
+        <div class="artigo-selos">
+          <span class="selo ${a.fonte === 'PubMed' ? 'pubmed' : 'scielo'}">${esc(a.fonte)}</span>
+          ${a.ano ? `<span class="selo">${esc(a.ano)}</span>` : ''}
+          ${a.idioma ? `<span class="selo">${esc(a.idioma)}</span>` : ''}
+          ${a.gratis ? '<span class="selo gratis">Leitura gratuita</span>' : ''}
+        </div>
+        <h3>${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">${esc(a.titulo)}</a>` : esc(a.titulo)}</h3>
+        ${meta ? `<div class="artigo-meta">${esc(meta)}</div>` : ''}
+        ${a.resumo ? `<p class="artigo-resumo">${esc(a.resumo)}</p>` : ''}
+        <div class="artigo-acoes">
+          ${link ? `<a class="principal" href="${esc(link)}" target="_blank" rel="noopener">${ICONE_ABRIR} Abrir artigo</a>` : ''}
+          ${a.resumo ? '<button type="button" class="btn-resumo">Ler resumo</button>' : ''}
+          ${link ? `<a class="whats" href="https://wa.me/?text=${textoWhats}" target="_blank" rel="noopener">${ICONE_WHATS} Enviar no WhatsApp</a>` : ''}
+        </div>
+      </article>`;
+  }
+
+  function desenhar(){
+    if(!ultimo) return;
+    const pub = (ultimo.fontes.PubMed || {}).artigos || [];
+    const sci = (ultimo.fontes.SciELO || {}).artigos || [];
+    let lista = filtro === 'PubMed' ? pub : filtro === 'SciELO' ? sci : pub.concat(sci);
+    lista = lista.slice().sort((x, y) => (parseInt(y.ano) || 0) - (parseInt(x.ano) || 0));
+
+    const avisos = (ultimo.avisos || []).map(t => `<div class="aviso-fonte">${esc(t)}</div>`).join('');
+    const total = pub.length + sci.length;
+    let html = `<div class="resumo-busca">${total} artigo(s) mais recentes — ${esc(ultimo.especialidade)}</div>` + avisos;
+
+    if(total === 0){
+      html += `<div class="card estado">Nenhum artigo encontrado com esses filtros.<br>Tente aumentar o período${document.getElementById('so-cannabis').checked ? ' ou desmarcar "Só artigos sobre cannabis medicinal"' : ''}.</div>`;
+      area.innerHTML = html;
+      return;
+    }
+
+    html += `<div class="abas-fonte">
+      <button class="aba-fonte ${filtro === 'todos' ? 'ativo' : ''}" data-filtro="todos">Todos (${total})</button>
+      <button class="aba-fonte ${filtro === 'PubMed' ? 'ativo' : ''}" data-filtro="PubMed">PubMed (${pub.length})</button>
+      <button class="aba-fonte ${filtro === 'SciELO' ? 'ativo' : ''}" data-filtro="SciELO">SciELO (${sci.length})</button>
+    </div>`;
+    html += `<div class="lista-artigos">${lista.map(cartao).join('') || '<div class="card estado">Nenhum artigo nesta fonte.</div>'}</div>`;
+
+    ['PubMed', 'SciELO'].forEach(nome => {
+      const f = ultimo.fontes[nome] || {};
+      if((filtro === 'todos' || filtro === nome) && linkSeguro(f.link) && f.total > (f.artigos || []).length){
+        html += `<a class="ver-mais-fonte" href="${esc(f.link)}" target="_blank" rel="noopener">Ver todos os ${f.total.toLocaleString('pt-BR')} resultados no ${nome} →</a>`;
+      }
+    });
+    area.innerHTML = html;
+
+    area.querySelectorAll('.aba-fonte').forEach(b => b.addEventListener('click', () => { filtro = b.dataset.filtro; desenhar(); }));
+    area.querySelectorAll('.btn-resumo').forEach(b => b.addEventListener('click', () => {
+      const p = b.closest('.artigo').querySelector('.artigo-resumo');
+      const aberto = p.classList.toggle('aberto');
+      b.textContent = aberto ? 'Fechar resumo' : 'Ler resumo';
+    }));
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const esp = document.getElementById('especialidade').value;
+    if(!esp) return;
+    const params = new URLSearchParams({
+      especialidade: esp,
+      periodo: document.getElementById('periodo').value,
+      cannabis: document.getElementById('so-cannabis').checked ? '1' : '0',
+    });
+    botao.disabled = true;
+    botao.textContent = 'Buscando...';
+    area.innerHTML = '<div class="card estado"><span class="carregando-ponto"></span><span class="carregando-ponto"></span><span class="carregando-ponto"></span><br>Buscando artigos no PubMed e no SciELO...</div>';
+    fetch('/api/artigos?' + params.toString())
+      .then(r => r.json().then(d => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if(!ok || d.erro){ area.innerHTML = `<div class="card estado">${esc(d.erro || 'Não foi possível buscar agora.')}</div>`; return; }
+        ultimo = d; filtro = 'todos'; desenhar();
+      })
+      .catch(() => { area.innerHTML = '<div class="card estado">Sem conexão. Confira a internet e tente de novo.</div>'; })
+      .finally(() => { botao.disabled = false; botao.textContent = 'Buscar artigos'; });
+  });
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+  }
+</script>
+{% with aba_mobile='artigos' %}{% include '_barra_mobile.html' %}{% endwith %}
+</body>
+</html>
