@@ -4,9 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>i.cannal · Painel Admin</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="preload" href="/static/fontes/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fontes/montserrat.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 <meta name="theme-color" content="#FFFFFF">
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
@@ -86,6 +85,14 @@
         <a href="{{ url_for('admin') }}" class="admin-nav-link ativo">Usuários</a>
         <a href="{{ url_for('admin_dashboard') }}" class="admin-nav-link">Dashboard</a>
         <a href="{{ url_for('admin_base_propria') }}" class="admin-nav-link">Base de médicos</a>
+      </div>
+
+      <div class="admin-acoes">
+        <p class="admin-acoes-texto">Planilha com cada usuário e os números do painel: prospectados, agendados, visitados e a revisitar.</p>
+        <a href="{{ url_for('admin_exportar_usuarios') }}" class="btn-exportar-excel" download>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4.5-4.5M12 15l4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          Exportar para Excel
+        </a>
       </div>
 
       <div class="tabela-scroll">

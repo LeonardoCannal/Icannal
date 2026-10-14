@@ -8,12 +8,14 @@
 //
 // Se aumentar a versão aqui embaixo (v1 -> v2), o navegador troca o cache
 // antigo pelo novo sozinho na próxima visita.
-const CACHE_VERSAO = 'icannal-v3';
+const CACHE_VERSAO = 'icannal-v4';
 
 const ARQUIVOS_ESTATICOS = [
   '/static/auth.css',
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',
+  '/static/fontes/inter.woff2',
+  '/static/fontes/montserrat.woff2',
   '/offline',
 ];
 
@@ -49,7 +51,19 @@ self.addEventListener('fetch', (event) => {
       caches.match(request).then((doCache) => {
         const daRede = fetch(request)
           .then((resposta) => {
-            caches.open(CACHE_VERSAO).then((cache) => cache.put(request, resposta.clone()));
+            if (resposta.ok) {
+              const copia = resposta.clone();
+              caches.open(CACHE_VERSAO).then(async (cache) => {
+                // versão nova de um arquivo (?v=...): apaga as antigas dele
+                if (url.search) {
+                  for (const chave of await cache.keys()) {
+                    const u = new URL(chave.url);
+                    if (u.pathname === url.pathname && u.search !== url.search) cache.delete(chave);
+                  }
+                }
+                cache.put(request, copia);
+              });
+            }
             return resposta;
           })
           .catch(() => doCache);

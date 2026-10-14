@@ -6,6 +6,21 @@
    cartões 12px, muito respiro. Cores da marca: verde e azul-marinho.
    ========================================================================== */
 
+/* Fontes do próprio site (antes vinham do Google): Inter no texto e
+   Montserrat nos títulos. Um arquivo só por fonte cobre todos os pesos
+   (100 a 900) e todos os acentos do português. Licença livre (OFL) em
+   static/fontes/LICENCA-*.txt. */
+@font-face{
+  font-family: 'Inter'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url(fontes/inter.woff2) format('woff2-variations'), url(fontes/inter.woff2) format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family: 'Montserrat'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url(fontes/montserrat.woff2) format('woff2-variations'), url(fontes/montserrat.woff2) format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
 body.ui-novo{
   --verde: #88AD36;          /* destaques, ícones, foco */
   --verde-acao: #5C7A22;     /* botões principais (texto branco legível) */
@@ -751,6 +766,29 @@ body.ui-novo .btn-tema svg{ animation: ic-gira .6s var(--suave) backwards; }
 /* transição da troca de tema (círculo que se abre a partir do botão) */
 ::view-transition-old(root), ::view-transition-new(root){ animation: none; mix-blend-mode: normal; }
 ::view-transition-new(root){ z-index: 2; }
+
+
+/* Admin: barra de ações (exportar planilha) */
+body.ui-novo .admin-acoes{
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  margin: 4px 0 18px; padding: 14px 16px; border-radius: 12px;
+  background: var(--verde-suave); border: 1px solid rgba(92,122,34,.18);
+}
+body.ui-novo.escuro .admin-acoes{ border-color: rgba(168,204,90,.2); }
+body.ui-novo .admin-acoes-texto{ margin: 0; font-size: 13.5px; color: var(--ardosia); max-width: 60ch; }
+body.ui-novo .btn-exportar-excel{
+  display: inline-flex; align-items: center; gap: 8px; flex: none;
+  min-height: 40px; padding: 0 16px; border-radius: 10px;
+  background: var(--verde-acao); color: #fff; font-weight: 600; font-size: 14px; text-decoration: none;
+  transition: transform .35s var(--suave, ease), box-shadow .35s var(--suave, ease), background-color .2s ease;
+}
+body.ui-novo .btn-exportar-excel svg{ width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+body.ui-novo .btn-exportar-excel:hover{ background: var(--verde-acao-hover); transform: translateY(-1px); box-shadow: 0 10px 24px -8px rgba(92,122,34,.45); }
+body.ui-novo .btn-exportar-excel:active{ transform: scale(.98); }
+body.ui-novo.escuro .btn-exportar-excel{ color: #0E1405; }
+@media (max-width: 640px){
+  body.ui-novo .btn-exportar-excel{ width: 100%; justify-content: center; }
+}
 
 /* quem pediu "menos movimento" no aparelho: tudo parado e na hora */
 @media (prefers-reduced-motion: reduce){
