@@ -323,13 +323,25 @@ def buscar_scielo(slug: str, so_cannabis: bool, anos) -> dict:
     filtros = [f"prefix:{PREFIXO_SCIELO_BRASIL}", "type:journal-article"]
     if anos:
         filtros.append(f"from-pub-date:{date.today().year - anos + 1}-01-01")
-    r = _get(CROSSREF, params={
+    base = {
         "query.bibliographic": _palavras_consulta(slug, so_cannabis),
         "filter": ",".join(filtros),
         "rows": 60,  # pega mais e filtra aqui, pra sobrar só o que é do tema
-        "select": "DOI,title,author,container-title,issued,abstract,language,URL",
-    }, headers={"User-Agent": "icannal/1.0 (busca de artigos cientificos)"}, timeout=20)
-    r.raise_for_status()
+    }
+    # Pede só os campos usados (resposta menor). Se o Crossref recusar algum
+    # campo (400), tenta de novo com menos campos e, por fim, sem escolher.
+    tentativas = [
+        {**base, "select": "DOI,title,author,container-title,issued,abstract,language,URL"},
+        {**base, "select": "DOI,title,author,container-title,issued,abstract,URL"},
+        {**base, "rows": 40},
+        {**base, "rows": 40, "filter": ",".join(f for f in filtros if not f.startswith("type:"))},
+    ]
+    for i, params in enumerate(tentativas):
+        r = _get(CROSSREF, params=params, headers={"User-Agent": "icannal/1.0 (busca de artigos cientificos)"}, timeout=25)
+        if r.status_code == 400 and i < len(tentativas) - 1:
+            continue
+        r.raise_for_status()
+        break
     mensagem = r.json().get("message", {})
 
     radicais_cannabis = _radicais(CANNABIS_PT + CANNABIS_EN) + ["canab", "cannab", "maconha", "marijuana"]
