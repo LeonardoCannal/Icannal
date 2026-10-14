@@ -424,6 +424,49 @@ def _kwargs_postgres():
     return kwargs
 
 
+class _PoolCheio(Exception):
+    pass
+
+
+class _PoolDeConexoes:
+    """Pool simples e próprio. O ThreadedConnectionPool do psycopg2 FECHA toda
+    conexão devolvida quando o mínimo é 0 — na prática não reaproveitava nada
+    e cada consulta reabria a conexão com o Supabase (~0,5 s cada vez).
+    Aqui a conexão devolvida fica guardada aberta, até o limite."""
+
+    def __init__(self, maximo: int):
+        self.maximo = maximo
+        self.livres = []
+        self.em_uso = 0
+        self._trava = threading.Lock()
+
+    def getconn(self):
+        with self._trava:
+            if self.livres:
+                self.em_uso += 1
+                return self.livres.pop()
+            if self.em_uso >= self.maximo:
+                raise _PoolCheio("pool cheio")
+            self.em_uso += 1
+        try:
+            return _get_conn_bruta()  # conecta fora da trava (é a parte demorada)
+        except Exception:
+            with self._trava:
+                self.em_uso -= 1
+            raise
+
+    def putconn(self, conn, close=False):
+        with self._trava:
+            self.em_uso = max(0, self.em_uso - 1)
+            if not close and not conn.closed and len(self.livres) < self.maximo:
+                self.livres.append(conn)
+                return
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 def _obter_pool():
     """Um pool por processo: o gunicorn cria processos separados, e uma
     conexão nunca pode ser compartilhada entre processos."""
@@ -432,7 +475,7 @@ def _obter_pool():
     if _pool is None or _pool_pid != pid:
         with _pool_trava:
             if _pool is None or _pool_pid != pid:
-                _pool = psycopg2.pool.ThreadedConnectionPool(0, POOL_MAX_CONEXOES, DATABASE_URL, **_kwargs_postgres())
+                _pool = _PoolDeConexoes(POOL_MAX_CONEXOES)
                 _pool_pid = pid
                 _ultimo_uso.clear()
     return _pool
@@ -442,7 +485,9 @@ def _conexao_esta_viva(conn) -> bool:
     if conn.closed:
         return False
     parada_desde = _ultimo_uso.get(id(conn))
-    if parada_desde is not None and time.time() - parada_desde < POOL_TESTAR_APOS_SEG:
+    if parada_desde is None:
+        return True  # acabou de ser aberta: não precisa testar
+    if time.time() - parada_desde < POOL_TESTAR_APOS_SEG:
         return True
     try:
         cur = conn.cursor()
@@ -462,7 +507,7 @@ def _pegar_conexao():
     for _ in range(2):
         try:
             conn = pool.getconn()
-        except psycopg2.pool.PoolError:
+        except _PoolCheio:
             # Pool cheio (muita coisa ao mesmo tempo): usa uma conexão avulsa
             # em vez de esperar — nunca trava a página.
             return _get_conn_bruta(), False
@@ -1647,6 +1692,30 @@ def listar_usuarios_com_contagem_painel():
             GROUP BY u.id, u.nome, u.email, u.cpf, u.criado_em, u.ultimo_login, u.is_admin
             ORDER BY u.criado_em DESC
         """)
+        return cursor.fetchall()
+
+
+def resumo_painel_por_usuario():
+    """Pra exportação do admin: cada usuário com os NÚMEROS do painel dele
+    (prospectados, agendados, visitados e a revisitar) — sem dados de médico.
+    Uma consulta só, mesma regra das colunas do painel (bucket_painel)."""
+    limite = (datetime.utcnow() - timedelta(days=DIAS_PARA_REVISITAR)).isoformat()
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""
+            SELECT u.id, u.nome, u.email, u.criado_em, u.ultimo_login, u.is_admin, u.aprovado,
+                   COALESCE(SUM(CASE WHEN p.status = 'prospectado' THEN 1 ELSE 0 END), 0) AS prospectados,
+                   COALESCE(SUM(CASE WHEN p.status = 'agendado' THEN 1 ELSE 0 END), 0) AS agendados,
+                   COALESCE(SUM(CASE WHEN p.status = 'visitado'
+                                      AND (p.visitado_em IS NULL OR p.visitado_em = '' OR p.visitado_em >= ?)
+                                     THEN 1 ELSE 0 END), 0) AS visitados,
+                   COALESCE(SUM(CASE WHEN p.status = 'visitado' AND p.visitado_em <> '' AND p.visitado_em < ?
+                                     THEN 1 ELSE 0 END), 0) AS revisitar
+            FROM usuarios u
+            LEFT JOIN painel_medicos p ON p.usuario_id = u.id
+            GROUP BY u.id, u.nome, u.email, u.criado_em, u.ultimo_login, u.is_admin, u.aprovado
+            ORDER BY u.nome
+        """), (limite, limite))
         return cursor.fetchall()
 
 

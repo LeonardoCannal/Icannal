@@ -24,6 +24,7 @@ from auth import (
     checar_senha,
     atualizar_ultimo_login,
     listar_usuarios_com_contagem_painel,
+    resumo_painel_por_usuario,
     usuario_logado,
     fazer_login,
     fazer_logout,
@@ -93,7 +94,7 @@ import secrets
 import time
 from datetime import datetime
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 
 def resource_path(relative_path):
@@ -195,7 +196,7 @@ def _cabecalhos_de_seguranca(resposta):
 # ---------------------------------------------------------------------------
 
 # CSS, ícones e manifest ganham um "?v=..." automático que muda quando o
-# arquivo muda. Assim o navegador pode guardar esses arquivos por 30 dias
+# arquivo muda. Assim o navegador pode guardar esses arquivos por 1 ano
 # sem medo: depois de uma atualização, o endereço muda e ele baixa de novo.
 _VERSOES_ESTATICOS = {}
 
@@ -217,11 +218,26 @@ def _versao_dos_estaticos(endpoint, valores):
         valores["v"] = versao
 
 
+_UM_ANO = 365 * 24 * 3600
+
+
+def _estatico_imutavel():
+    # Com "?v=..." o endereço muda a cada atualização; as fontes nunca mudam.
+    return bool(request.args.get("v")) or request.path.startswith("/static/fontes/")
+
+
 def _validade_estatico(nome_arquivo):
-    return 30 * 24 * 3600 if request.args.get("v") else None
+    return _UM_ANO if _estatico_imutavel() else 3600
 
 
 app.get_send_file_max_age = _validade_estatico
+
+
+@app.after_request
+def _cache_estaticos(resposta):
+    if request.path.startswith("/static/") and resposta.status_code == 200 and _estatico_imutavel():
+        resposta.headers["Cache-Control"] = f"public, max-age={_UM_ANO}, immutable"
+    return resposta
 
 _TIPOS_COMPRIMIVEIS = {"text/html", "text/css", "text/plain", "application/javascript",
                        "application/json", "application/manifest+json", "image/svg+xml"}
@@ -680,6 +696,77 @@ def admin():
         for u in listar_usuarios_com_contagem_painel()
     ]
     return render_template("admin.html", usuarios=usuarios, eh_mestre=eh_admin_mestre(usuario_logado()))
+
+
+@app.route("/admin/exportar-usuarios")
+@admin_required
+def admin_exportar_usuarios():
+    """Planilha com todos os usuários e só os números do painel de cada um."""
+    linhas = resumo_painel_por_usuario()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Usuários"
+
+    colunas = ["Nome", "E-mail", "Situação", "Cadastrado em", "Último login",
+               "Prospectados", "Agendados", "Visitados", "A revisitar", "Total no painel"]
+    ws.append(colunas)
+    cabecalho_fonte = Font(bold=True, color="FFFFFF")
+    cabecalho_fundo = PatternFill(start_color="5C7A22", end_color="5C7A22", fill_type="solid")
+    for celula in ws[1]:
+        celula.font = cabecalho_fonte
+        celula.fill = cabecalho_fundo
+        celula.alignment = Alignment(vertical="center", wrap_text=True)
+    ws.row_dimensions[1].height = 30
+
+    def _data(valor):
+        try:
+            return datetime.fromisoformat(valor).strftime("%d/%m/%Y") if valor else ""
+        except (ValueError, TypeError):
+            return valor or ""
+
+    for i, u in enumerate(linhas, start=2):
+        if not u["aprovado"]:
+            situacao = "Aguardando aprovação"
+        elif u["is_admin"]:
+            situacao = "Admin"
+        else:
+            situacao = "Ativo"
+        ws.append([
+            u["nome"], u["email"], situacao, _data(u["criado_em"]), _data(u["ultimo_login"]) or "Nunca",
+            int(u["prospectados"]), int(u["agendados"]), int(u["visitados"]), int(u["revisitar"]),
+            f"=SUM(F{i}:I{i})",
+        ])
+
+    ultima = len(linhas) + 1
+    if linhas:
+        total = ultima + 1
+        ws.append(["Total", "", "", "", ""] + [f"=SUM({c}2:{c}{ultima})" for c in "FGHIJ"])
+        for celula in ws[total]:
+            celula.font = Font(bold=True)
+            celula.fill = PatternFill(start_color="EEF4E1", end_color="EEF4E1", fill_type="solid")
+            celula.border = Border(top=Side(style="thin", color="5C7A22"))
+
+    for linha in ws.iter_rows(min_row=2, min_col=6, max_col=10):
+        for celula in linha:
+            celula.number_format = "0"
+            celula.alignment = Alignment(horizontal="center")
+
+    larguras = [30, 32, 22, 15, 15, 14, 12, 12, 13, 15]
+    for i, largura in enumerate(larguras, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = largura
+    ws.freeze_panes = "B2"
+    ws.auto_filter.ref = f"A1:J{ultima}"
+
+    arquivo = io.BytesIO()
+    wb.save(arquivo)
+    arquivo.seek(0)
+    return send_file(
+        arquivo,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"icannal_usuarios_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+    )
 
 
 @app.route("/admin/exportar/<int:user_id>")
