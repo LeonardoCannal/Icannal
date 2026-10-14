@@ -114,6 +114,10 @@
   .artigo-meta{ font-size:12.5px; color:var(--texto-suave); line-height:1.5; margin-bottom:8px; overflow-wrap:anywhere; }
   .artigo-resumo{ font-size:13px; line-height:1.6; color:#4A5160; margin:0; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
   .artigo-resumo.aberto{ display:block; -webkit-line-clamp:unset; }
+  .selo.traduzido{ background:#EFE9FB; color:#5B3FA0; }
+  .titulo-original{ font-size:12px; color:var(--texto-suave); font-style:italic; margin:-2px 0 6px; display:none; }
+  .titulo-original.aberto{ display:block; }
+  .link-mini{ background:none; border:none; padding:0; font-family:'Montserrat',sans-serif; font-size:11.5px; font-weight:600; color:#5C7A22; cursor:pointer; text-decoration:underline; margin-left:4px; }
   .artigo-acoes{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
   .artigo-acoes a, .artigo-acoes button{ font-family:'Montserrat',sans-serif; font-size:12.5px; font-weight:600; padding:8px 13px; border-radius:10px; cursor:pointer; text-decoration:none; border:1.5px solid var(--borda); background:#fff; color:var(--texto); display:inline-flex; align-items:center; gap:6px; }
   .artigo-acoes a.principal{ background:var(--roxo); border-color:var(--roxo); color:#fff; }
@@ -217,7 +221,10 @@
     const link = linkSeguro(a.link) || linkSeguro(a.doi);
     const autores = (a.autores || []).join(', ');
     const meta = [autores, a.revista].filter(Boolean).join(' · ');
-    const textoWhats = encodeURIComponent(`${a.titulo}${a.ano ? ' (' + a.ano + ')' : ''}\n${link}`);
+    const titulo = a.titulo_pt || a.titulo;
+    const textoWhats = encodeURIComponent(`${titulo}${a.ano ? ' (' + a.ano + ')' : ''}\n${link}`);
+    // Resumo em outra língua + tradução ligada: só aparece (já traduzido) ao clicar.
+    const traduzResumo = !!(ultimo && ultimo.traducao_ativa && a.resumo && a.idioma === 'Inglês');
     return `
       <article class="artigo" data-fonte="${esc(a.fonte)}">
         <div class="artigo-selos">
@@ -225,13 +232,17 @@
           ${a.ano ? `<span class="selo">${esc(a.ano)}</span>` : ''}
           ${a.idioma ? `<span class="selo">${esc(a.idioma)}</span>` : ''}
           ${a.gratis ? '<span class="selo gratis">Leitura gratuita</span>' : ''}
+          ${a.titulo_pt ? `<span class="selo traduzido">Traduzido<button type="button" class="link-mini btn-original">ver original</button></span>` : ''}
         </div>
-        <h3>${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">${esc(a.titulo)}</a>` : esc(a.titulo)}</h3>
+        <h3>${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">${esc(titulo)}</a>` : esc(titulo)}</h3>
+        ${a.titulo_pt ? `<div class="titulo-original">Original: ${esc(a.titulo)}</div>` : ''}
         ${meta ? `<div class="artigo-meta">${esc(meta)}</div>` : ''}
-        ${a.resumo ? `<p class="artigo-resumo">${esc(a.resumo)}</p>` : ''}
+        ${a.resumo && !traduzResumo ? `<p class="artigo-resumo">${esc(a.resumo)}</p>` : ''}
+        ${traduzResumo ? `<p class="artigo-resumo aberto" style="display:none" data-original="${esc(a.resumo)}"></p>` : ''}
         <div class="artigo-acoes">
           ${link ? `<a class="principal" href="${esc(link)}" target="_blank" rel="noopener">${ICONE_ABRIR} Abrir artigo</a>` : ''}
-          ${a.resumo ? '<button type="button" class="btn-resumo">Ler resumo</button>' : ''}
+          ${a.resumo && !traduzResumo ? '<button type="button" class="btn-resumo">Ler resumo</button>' : ''}
+          ${traduzResumo ? '<button type="button" class="btn-resumo-traduzir">Ler resumo em português</button>' : ''}
           ${link ? `<a class="whats" href="https://wa.me/?text=${textoWhats}" target="_blank" rel="noopener">${ICONE_WHATS} Enviar no WhatsApp</a>` : ''}
         </div>
       </article>`;
@@ -270,11 +281,58 @@
     area.innerHTML = html;
 
     area.querySelectorAll('.aba-fonte').forEach(b => b.addEventListener('click', () => { filtro = b.dataset.filtro; desenhar(); }));
+    area.querySelectorAll('.btn-original').forEach(b => b.addEventListener('click', () => {
+      const orig = b.closest('.artigo').querySelector('.titulo-original');
+      const aberto = orig.classList.toggle('aberto');
+      b.textContent = aberto ? 'esconder original' : 'ver original';
+    }));
+    area.querySelectorAll('.btn-resumo-traduzir').forEach(b => b.addEventListener('click', () => traduzirResumo(b)));
     area.querySelectorAll('.btn-resumo').forEach(b => b.addEventListener('click', () => {
       const p = b.closest('.artigo').querySelector('.artigo-resumo');
       const aberto = p.classList.toggle('aberto');
       b.textContent = aberto ? 'Fechar resumo' : 'Ler resumo';
     }));
+  }
+
+  // Resumo: busca a tradução na 1ª vez; depois alterna entre fechar,
+  // ver em português e ver o original.
+  function traduzirResumo(botao){
+    const p = botao.closest('.artigo').querySelector('.artigo-resumo');
+    const estado = botao.dataset.estado || 'fechado';
+    if(estado === 'aberto'){ p.style.display = 'none'; botao.dataset.estado = 'fechado'; botao.textContent = 'Ler resumo em português'; trocaOriginal(botao, false); return; }
+    if(p.dataset.traduzido){ mostrar(p.dataset.traduzido, false); return; }
+    botao.disabled = true; botao.textContent = 'Traduzindo...';
+    fetch('/api/artigos/traduzir', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: p.dataset.original }) })
+      .then(r => r.json())
+      .then(d => {
+        if(d.traducao){ p.dataset.traduzido = d.traducao; mostrar(d.traducao, false); }
+        else { mostrar(p.dataset.original, true); }
+      })
+      .catch(() => mostrar(p.dataset.original, true))
+      .finally(() => { botao.disabled = false; });
+
+    function mostrar(texto, falhou){
+      p.textContent = falhou ? texto + '  (tradução indisponível agora — texto original)' : texto;
+      p.style.display = 'block';
+      botao.dataset.estado = 'aberto';
+      botao.textContent = 'Fechar resumo';
+      trocaOriginal(botao, !falhou);
+    }
+  }
+  function trocaOriginal(botao, mostrarBotao){
+    let extra = botao.parentElement.querySelector('.btn-resumo-original');
+    if(!mostrarBotao){ if(extra) extra.remove(); return; }
+    if(extra) return;
+    extra = document.createElement('button');
+    extra.type = 'button'; extra.className = 'btn-resumo-original'; extra.textContent = 'Ver original';
+    botao.after(extra);
+    extra.addEventListener('click', () => {
+      const p = botao.closest('.artigo').querySelector('.artigo-resumo');
+      const vendoOriginal = extra.dataset.original === '1';
+      p.textContent = vendoOriginal ? p.dataset.traduzido : p.dataset.original;
+      extra.dataset.original = vendoOriginal ? '0' : '1';
+      extra.textContent = vendoOriginal ? 'Ver original' : 'Ver em português';
+    });
   }
 
   form.addEventListener('submit', (e) => {

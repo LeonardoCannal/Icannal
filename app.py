@@ -79,6 +79,7 @@ from auth import (
 )
 import re
 import artigos as artigos_mod
+import traducao
 import requests
 import webbrowser
 import threading
@@ -1189,9 +1190,48 @@ def api_artigos():
                 resposta["avisos"].append(f"{nome} não respondeu agora. Tente de novo em alguns minutos.")
                 resposta["fontes"][nome] = {"artigos": [], "total": 0, "link": ""}
 
+    _traduzir_titulos(resposta)
+
     if not resposta["avisos"]:  # só guarda resultado completo
         artigos_mod.cache().guardar(chave, resposta)
     return jsonify(resposta)
+
+
+def _traduzir_titulos(resposta):
+    """Põe "titulo_pt" nos artigos que não estão em português (o título
+    original continua em "titulo"). Se a tradução falhar, segue em inglês."""
+    resposta["traducao_ativa"] = traducao.ativa()
+    if not resposta["traducao_ativa"]:
+        return
+    alvos = [a for f in resposta["fontes"].values() for a in f.get("artigos", [])
+             if a.get("fonte") == "PubMed" or a.get("idioma") == "Inglês"]
+    if not alvos:
+        return
+    try:
+        for artigo, titulo_pt in zip(alvos, traducao.traduzir([a["titulo"] for a in alvos])):
+            if titulo_pt and titulo_pt != artigo["titulo"]:
+                artigo["titulo_pt"] = titulo_pt
+    except Exception as e:
+        app.logger.warning("Tradução de títulos falhou: %s", e)
+        _registrar_falha_fonte("Tradutor (títulos)", e)
+
+
+@app.route("/api/artigos/traduzir", methods=["POST"])
+@login_required
+def api_artigos_traduzir():
+    if not traducao.ativa():
+        return jsonify({"erro": "Tradução não está configurada."}), 400
+    texto = (_corpo_json().get("texto") or "").strip()
+    if not texto or len(texto) > 8000:
+        return jsonify({"erro": "Texto inválido."}), 400
+    if _passou_do_limite("traducao", str(usuario_logado()["id"]), 60, 300):
+        return jsonify({"erro": "Muitas traduções seguidas. Aguarde um minuto."}), 429
+    try:
+        return jsonify({"traducao": traducao.traduzir([texto])[0]})
+    except Exception as e:
+        app.logger.warning("Tradução de resumo falhou: %s", e)
+        _registrar_falha_fonte("Tradutor (resumos)", e)
+        return jsonify({"erro": "Não foi possível traduzir agora. Mostrando o original."}), 502
 
 
 @app.route("/api/agenda/mes")

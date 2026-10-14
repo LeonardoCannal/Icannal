@@ -1,0 +1,20 @@
+[Unit]
+Description=Tradutor LibreTranslate (ingles -> portugues) do i.cannal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=cannal
+WorkingDirectory=/home/cannal
+# So ingles e portugues (menos memoria), so acessivel de dentro do servidor,
+# sem a pagina web do tradutor.
+ExecStart=/home/cannal/libretranslate-venv/bin/libretranslate --host 127.0.0.1 --port 5000 --load-only en,pt --threads 2 --disable-web-ui
+Restart=always
+RestartSec=10
+# Se um dia o tradutor exagerar na memoria, ele e reiniciado sozinho
+# antes de atrapalhar o site.
+MemoryMax=1800M
+Nice=5
+
+[Install]
+WantedBy=multi-user.target
