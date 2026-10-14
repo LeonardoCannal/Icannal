@@ -6,9 +6,9 @@
 <title>i.cannal · Artigos científicos</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-<meta name="theme-color" content="#171B22">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -136,8 +136,10 @@
     .artigo h3{ font-size:14.5px; }
   }
 </style>
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
 </head>
-<body>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
 
 <header>
   <div class="brand">
@@ -149,17 +151,20 @@
       </text>
     </svg>
   </div>
+  <div class="header-direita">
+    {% include '_botao_tema.html' %}
   <nav>
-    <a href="{{ url_for('index') }}" class="nav-link">Buscar</a>
-    <a href="{{ url_for('index') }}#painel" class="nav-link">Painel Médico</a>
-    <a href="{{ url_for('agenda') }}" class="nav-link">Agenda</a>
-    <a href="{{ url_for('artigos') }}" class="nav-link ativo">Artigos</a>
-    {% if current_user.is_admin %}
-    <a href="{{ url_for('admin') }}" class="nav-link">Painel Admin</a>
-    {% endif %}
-    <a href="{{ url_for('perfil') }}" class="nav-link">Meu Perfil</a>
-    <a href="{{ url_for('logout') }}" class="nav-link">Sair</a>
-  </nav>
+      <a href="{{ url_for('index') }}" class="nav-link">Buscar</a>
+      <a href="{{ url_for('index') }}#painel" class="nav-link">Painel Médico</a>
+      <a href="{{ url_for('agenda') }}" class="nav-link">Agenda</a>
+      <a href="{{ url_for('artigos') }}" class="nav-link ativo">Artigos</a>
+      {% if current_user.is_admin %}
+      <a href="{{ url_for('admin') }}" class="nav-link">Painel Admin</a>
+      {% endif %}
+      <a href="{{ url_for('perfil') }}" class="nav-link">Meu Perfil</a>
+      <a href="{{ url_for('logout') }}" class="nav-link">Sair</a>
+    </nav>
+  </div>
 </header>
 <div class="sub-header">Evidência científica pra apoiar suas conversas com os médicos.</div>
 

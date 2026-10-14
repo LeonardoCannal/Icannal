@@ -6,10 +6,13 @@
 <title>i.cannal · Sem conexão</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
 </head>
-<body>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
+<div class="tema-flutuante">{% include '_botao_tema.html' %}</div>
   <div class="auth-tela">
     <div class="auth-card" style="text-align:center;">
       <svg class="auth-logo" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">

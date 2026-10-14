@@ -6,9 +6,9 @@
 <title>i.cannal · Base de médicos</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-<meta name="theme-color" content="#171B22">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -56,8 +56,10 @@
   .base-total{ font-size: 13px; color: var(--cinza); margin-bottom: 4px; }
   .base-total strong{ color: var(--escuro); font-size: 20px; display: block; margin-bottom: 2px; }
 </style>
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
 </head>
-<body>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
   <div class="admin-header">
     <svg class="logo-admin" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">
       <polygon points="2,0 16,0 32,44 18,44" fill="#88AD36"/>
@@ -67,6 +69,7 @@
       </text>
     </svg>
     <div class="admin-header-direita">
+      {% include '_botao_tema.html' %}
       <a href="{{ url_for('index') }}">Voltar ao i.cannal</a>
       &nbsp;&nbsp;·&nbsp;&nbsp;
       <a href="{{ url_for('perfil') }}">Meu Perfil</a>
@@ -82,6 +85,7 @@
     </div>
   </div>
 
+  <main class="admin-main">
   <div class="card-flutuante">
     <div class="admin-nav">
       <a href="{{ url_for('admin') }}" class="admin-nav-link">Usuários</a>
@@ -133,6 +137,7 @@
       </div>
     </div>
   </div>
+  </main>
 
 <script>
   function esc(valor){
