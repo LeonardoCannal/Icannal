@@ -270,7 +270,8 @@
             <option>SP</option><option>SE</option><option>TO</option>
           </select>
         </div>
-        <div class="campo"><label>Telefone</label><input type="text" id="add-med-telefone"></div>
+        <div class="campo"><label>Telefone da clínica</label><input type="tel" id="add-med-telefone"></div>
+        <div class="campo"><label>Telefone pessoal do médico</label><input type="tel" id="add-med-telefone-pessoal"></div>
         <div class="campo campo-largura-total"><label>Endereço</label><input type="text" id="add-med-endereco"></div>
       </div>
       <button type="button" id="add-med-salvar" class="btn-cadastrar-manual">Adicionar ao painel</button>
@@ -278,7 +279,8 @@
 
       <h3 class="modal-secao-titulo">Importar planilha (CSV)</h3>
       <div class="base-instrucoes">
-        Colunas aceitas: <code>nome, crm, especialidade, cidade, uf, endereco, telefone</code>.
+        Colunas aceitas: <code>nome, crm, especialidade, cidade, uf, endereco, telefone, telefone_pessoal</code>
+        (<code>telefone</code> = da clínica; <code>telefone_pessoal</code> = celular do médico).
         Só <strong>nome</strong> é obrigatória. Um médico que já está em outro painel não é
         duplicado — a linha é reportada como erro.
       </div>
@@ -336,7 +338,8 @@
         <span>${esc(item.crm)}</span>
         <span>${esc(linhaLocal)}</span>
         <span>${esc(item.endereco)}</span>
-        <span>${esc(item.telefone)}</span>
+        <span>${item.telefone && item.telefone.replace(/\D/g, '').length >= 8 ? 'Clínica: ' + esc(item.telefone) : ''}</span>
+        <span>${item.telefone_pessoal ? 'Pessoal: ' + esc(item.telefone_pessoal) : ''}</span>
         ${badge}
       `;
       div.querySelector('.modal-btn-remover-x').addEventListener('click', () => {
@@ -475,6 +478,7 @@
     const addMedCidade = document.getElementById('add-med-cidade');
     const addMedUf = document.getElementById('add-med-uf');
     const addMedTelefone = document.getElementById('add-med-telefone');
+    const addMedTelefonePessoal = document.getElementById('add-med-telefone-pessoal');
     const addMedEndereco = document.getElementById('add-med-endereco');
     const addMedSalvarBtn = document.getElementById('add-med-salvar');
     const addMedResultado = document.getElementById('add-med-resultado');
@@ -486,7 +490,7 @@
     function abrirModalAdicionar(id, nome){
       usuarioAdicionarId = id;
       addMedicosTitulo.textContent = `Adicionar médicos — ${nome}`;
-      [addMedNome, addMedCrm, addMedEspecialidade, addMedCidade, addMedTelefone, addMedEndereco].forEach(campo => campo.value = '');
+      [addMedNome, addMedCrm, addMedEspecialidade, addMedCidade, addMedTelefone, addMedTelefonePessoal, addMedEndereco].forEach(campo => campo.value = '');
       addMedUf.value = '';
       addMedResultado.innerHTML = '';
       addCsvArquivo.value = '';
@@ -518,6 +522,7 @@
         cidade: addMedCidade.value.trim(),
         uf: addMedUf.value,
         telefone: addMedTelefone.value.trim(),
+        telefone_pessoal: addMedTelefonePessoal.value.trim(),
         endereco: addMedEndereco.value.trim(),
       };
       addMedSalvarBtn.disabled = true;
@@ -533,7 +538,7 @@
           addMedSalvarBtn.textContent = 'Adicionar ao painel';
           if(resp.ok){
             addMedResultado.innerHTML = `<span class="ok">${esc(resp.mensagem)}</span>`;
-            [addMedNome, addMedCrm, addMedEspecialidade, addMedCidade, addMedTelefone, addMedEndereco].forEach(campo => campo.value = '');
+            [addMedNome, addMedCrm, addMedEspecialidade, addMedCidade, addMedTelefone, addMedTelefonePessoal, addMedEndereco].forEach(campo => campo.value = '');
             addMedUf.value = '';
           } else {
             addMedResultado.innerHTML = `<span class="erro-linha">${esc(resp.mensagem)}</span>`;

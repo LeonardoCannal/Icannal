@@ -919,7 +919,9 @@ def _drsac_ler_lista(html_lista: str) -> list:
             numero_whats = achado.group(1) if achado else ""
         numero_tel = tel["href"].split(":", 1)[1] if tel else ""
         endereco = card.select_one(".doc-addr")
+        esp_card = card.select_one(".card-body p")
         itens.append({
+            "especialidade": esp_card.get_text(" ", strip=True) if esp_card and "doc-addr" not in (esp_card.get("class") or []) else "",
             "nome": nome,
             "perfil_url": perfil,
             "whatsapp": _drsac_formatar_telefone(numero_whats),
@@ -990,6 +992,11 @@ def buscar_medicos_drsac(nomes_no_site, especialidade_nome: str, cidade: str, uf
             pagina += 1
     itens = itens[:DRSAC_MAX_PERFIS]
 
+    return _drsac_montar(itens, especialidade_nome, cidade, uf)
+
+
+def _drsac_montar(itens: list, especialidade_nome: str, cidade: str, uf: str) -> list:
+    """Abre os perfis (CRM) e monta os registros no formato do sistema."""
     perfis = {}
     if itens:
         with ThreadPoolExecutor(max_workers=6) as executor:
@@ -1000,7 +1007,7 @@ def buscar_medicos_drsac(nomes_no_site, especialidade_nome: str, cidade: str, uf
                 except Exception:
                     perfis[futuros[futuro]] = None
 
-    cidade_norm = normalizar(cidade)
+    cidade_norm = normalizar(cidade or "")
     medicos = []
     for it in itens:
         perfil = perfis.get(it["perfil_url"])
@@ -1009,7 +1016,7 @@ def buscar_medicos_drsac(nomes_no_site, especialidade_nome: str, cidade: str, uf
         # o site já filtra a cidade; confere de novo pelo "Cidade, UF" do cartão
         local = it["local"]
         cidade_card = local.split(",")[0].strip() if local else ""
-        if cidade_card and normalizar(cidade_card) != cidade_norm:
+        if cidade_norm and cidade_card and normalizar(cidade_card) != cidade_norm:
             continue
         uf_card = local.split(",")[-1].strip().upper() if "," in local else (uf or "").upper()
         telefone = it["whatsapp"] if len(re.sub(r"\D", "", it["whatsapp"])) >= 10 else it["telefone"]
@@ -1018,12 +1025,47 @@ def buscar_medicos_drsac(nomes_no_site, especialidade_nome: str, cidade: str, uf
         medicos.append(registro_vazio(
             nome=it["nome"],
             crm=perfil["crm"],
-            cidade=cidade_card or cidade.strip(),
+            cidade=cidade_card or (cidade or "").strip() or "Não encontrado",
             uf=uf_card or "Não encontrado",
             endereco=endereco if tem_rua else "Não encontrado",
             telefone=telefone or "Não disponível",
-            especialidade=especialidade_nome,
+            especialidade=especialidade_nome or it.get("especialidade") or "Não encontrado",
             perfil_url=it["perfil_url"],
             fonte="Dr. SAC",
         ))
     return medicos
+
+
+def buscar_medicos_drsac_por_nome(nome: str, cidade: str = "", uf: str = "") -> list:
+    """Busca no Dr. SAC pelo NOME do médico (cidade e UF opcionais).
+    O site procura o nome como trecho seguido ("Joao Batista Jabur" acha,
+    "Joao Jabur" não): se não vier nada, tenta só pelo sobrenome e confere
+    aqui se todas as palavras digitadas estão no nome."""
+    nome = re.sub(r"\s+", " ", (nome or "").strip())
+    if len(nome) < 3:
+        return []
+    from urllib.parse import urlencode
+
+    def _consultar(trecho):
+        params = {"nome": trecho, "cidade": (cidade or "").strip(), "uf": (uf or "").strip().upper(), "ordem": "Prioridade"}
+        resposta = _get(f"{DRSAC_BASE_URL}/medicos.asp?{urlencode(params)}", timeout=20)
+        resposta.raise_for_status()
+        return _drsac_ler_lista(resposta.text)[0]
+
+    itens = _consultar(nome)
+    palavras = [p for p in normalizar(nome).split() if len(p) >= 2]
+    if not itens and len(palavras) > 1:
+        maior = max(nome.split(), key=len)
+        itens = [it for it in _consultar(maior) if nome_bate(it["nome"], nome)]
+    return _drsac_montar(itens[:DRSAC_MAX_PERFIS], "", cidade, uf)
+
+
+def nome_bate(nome_medico: str, busca: str) -> bool:
+    """Todas as palavras digitadas aparecem no nome (sem ligar pra acento,
+    maiúscula, ordem ou "Dr./Dra.")."""
+    alvo = normalizar(RE_PREFIXO_DR.sub("", nome_medico or ""))
+    palavras = [p for p in normalizar(RE_PREFIXO_DR.sub("", busca or "")).split() if len(p) >= 2]
+    if not palavras:
+        return False
+    termos = set(re.findall(r"[a-z0-9]+", alvo))
+    return all(any(t.startswith(p) for t in termos) for p in palavras)
