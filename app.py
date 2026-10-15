@@ -6,6 +6,9 @@ from scraper import (
     buscar_medicos_doctoralia,
     buscar_medicos_sechat,
     buscar_medicos_apepi,
+    buscar_medicos_catalogomed,
+    buscar_medicos_drsac,
+    ESPECIALIDADES_COM_CRN,
     CacheTTL,
     normalizar,
     buscar_medicos_fonte_generica,
@@ -482,34 +485,34 @@ SENHA_MINIMA = 8
 MAX_ESPECIALIDADES_POR_BUSCA = 3
 
 ESPECIALIDADES = {
-    "neurologista": {"nome": "Neurologista", "doctoralia": "neurologista", "sechat": "n6k3wbvn8k5ajvtb75ikhaaw"},
-    "psiquiatra": {"nome": "Psiquiatra", "doctoralia": "psiquiatra", "sechat": "jiagob2yvu3v78j041jb70oz"},
-    "neurologista-pediatrico": {"nome": "Neuropediatra", "doctoralia": "neurologista-pediatrico", "sechat": "k9b3og0pgrbrizm138hkamr8"},
-    "medico-clinico-geral": {"nome": "Clínico / Clínica Médica", "doctoralia": "medico-clinico-geral", "sechat": "eol7qqtdgtvf8buc2px9hbrq"},
-    "pediatra": {"nome": "Pediatra", "doctoralia": "pediatra", "sechat": "dfwzf1l7z9efzucsufeqqeu9"},
-    "medico-de-familia": {"nome": "Medicina de Família", "doctoralia": "medico-de-familia", "sechat": "yycwljzp344y327g6rkuyvp1"},
-    "especialista-em-dor": {"nome": "Médico da Dor / Anestesiologia", "doctoralia": "especialista-em-dor", "sechat": "zyqcuzojsnjny7wl1lk1g7ah"},
-    "ortopedista-traumatologista": {"nome": "Ortopedista", "doctoralia": "ortopedista-traumatologista", "sechat": "wc5z54hdmebdmv8n783876nk"},
-    "oncologista": {"nome": "Oncologista", "doctoralia": "oncologista", "sechat": "r742v7goz2k4q6467wsk99di"},
-    "geriatra": {"nome": "Geriatra", "doctoralia": "geriatra", "sechat": "ly7dotxntqq446jbqlg6b3l5"},
-    "alergista": {"nome": "Alergologista", "doctoralia": "alergista", "sechat": "homqkrplnu5aqeu2uota9wu9"},
-    "cardiologista": {"nome": "Cardiologista", "doctoralia": "cardiologista", "sechat": "x14ir5c9kvx9s11bwbvi1mys"},
-    "dermatologista": {"nome": "Dermatologista", "doctoralia": "dermatologista", "sechat": "pylctsugyjl97vtfjjs8da1k"},
-    "endocrinologista": {"nome": "Endocrinologista", "doctoralia": "endocrinologista", "sechat": "u28uuuaeimpxf3k25cnxru8o"},
-    "endocrinologista-pediatrico": {"nome": "Endocrinologista Pediátrico", "doctoralia": "endocrinologista-pediatrico", "sechat": None},
-    "especialista-em-medicina-fisica-e-reabilitacao": {"nome": "Medicina Física e Reabilitação", "doctoralia": "especialista-em-medicina-fisica-e-reabilitacao", "sechat": "alfpewwlicu8tux4xcta4yh5"},
-    "especialista-em-medicina-preventiva": {"nome": "Medicina Preventiva", "doctoralia": "especialista-em-medicina-preventiva", "sechat": "wutli6r3320ylrt2uclsfp57"},
-    "gastroenterologista": {"nome": "Gastroenterologista", "doctoralia": "gastroenterologista", "sechat": "f6w5gv0vbyw6tpambkg1mxag"},
-    "generalista": {"nome": "Generalista", "doctoralia": "generalista", "sechat": "c6vsx97abcofv176xjliox2w"},
-    "ginecologista": {"nome": "Ginecologista", "doctoralia": "ginecologista", "sechat": "mlhojg8vxi8iftl7jbgudfsw"},
-    "medico-acupunturista": {"nome": "Médico Acupunturista", "doctoralia": "medico-acupunturista", "sechat": "djkdf9qhvdw4jzfbhgp4o1pk"},
-    "medico-do-esporte": {"nome": "Médico do Esporte", "doctoralia": "medico-do-esporte", "sechat": "kqs3bhoscy5nnf3vdb3vxn1w"},
-    "medico-do-sono": {"nome": "Médico do Sono", "doctoralia": "medico-do-sono", "sechat": None},
-    "medico-do-trabalho": {"nome": "Médico do Trabalho", "doctoralia": "medico-do-trabalho", "sechat": "evc6v5o06an5xtefc9339ay9"},
-    "nutricionista": {"nome": "Nutricionista", "doctoralia": "nutricionista", "sechat": None},
-    "nutrologo": {"nome": "Nutrólogo", "doctoralia": "nutrologo", "sechat": "g3ugrfoqk6f4t42chx5ppoe9"},
-    "traumatologista": {"nome": "Traumatologista", "doctoralia": "ortopedista-traumatologista", "sechat": "wc5z54hdmebdmv8n783876nk"},
-    "reumatologista": {"nome": "Reumatologista", "doctoralia": "reumatologista", "sechat": "qeiljtcgscrqrwp7wy8jr3cp"},
+    "neurologista": {"nome": "Neurologista", "doctoralia": "neurologista", "sechat": "n6k3wbvn8k5ajvtb75ikhaaw", "catalogomed": "neurologistas", "drsac": ["Neurologia"]},
+    "psiquiatra": {"nome": "Psiquiatra", "doctoralia": "psiquiatra", "sechat": "jiagob2yvu3v78j041jb70oz", "catalogomed": "psiquiatras", "drsac": ["Psiquiatria"]},
+    "neurologista-pediatrico": {"nome": "Neuropediatra", "doctoralia": "neurologista-pediatrico", "sechat": "k9b3og0pgrbrizm138hkamr8", "catalogomed": None, "drsac": ["Neurologia Pediátrica"]},
+    "medico-clinico-geral": {"nome": "Clínico / Clínica Médica", "doctoralia": "medico-clinico-geral", "sechat": "eol7qqtdgtvf8buc2px9hbrq", "catalogomed": "clinicos-gerais", "drsac": ["Clínica Médica", "Clínica Geral"]},
+    "pediatra": {"nome": "Pediatra", "doctoralia": "pediatra", "sechat": "dfwzf1l7z9efzucsufeqqeu9", "catalogomed": "pediatras", "drsac": ["Pediatria"]},
+    "medico-de-familia": {"nome": "Medicina de Família", "doctoralia": "medico-de-familia", "sechat": "yycwljzp344y327g6rkuyvp1", "catalogomed": None, "drsac": ["Medicina De Família E Comunidade"]},
+    "especialista-em-dor": {"nome": "Médico da Dor / Anestesiologia", "doctoralia": "especialista-em-dor", "sechat": "zyqcuzojsnjny7wl1lk1g7ah", "catalogomed": "anestesiologistas", "drsac": ["Medicina Da Dor", "Anestesiologia"]},
+    "ortopedista-traumatologista": {"nome": "Ortopedista", "doctoralia": "ortopedista-traumatologista", "sechat": "wc5z54hdmebdmv8n783876nk", "catalogomed": "ortopedistas-e-traumatologistas", "drsac": ["Ortopedia E Traumatologia", "Ortopedia"]},
+    "oncologista": {"nome": "Oncologista", "doctoralia": "oncologista", "sechat": "r742v7goz2k4q6467wsk99di", "catalogomed": "cancerologistas", "drsac": ["Oncologia Clínica", "Cancerologia"]},
+    "geriatra": {"nome": "Geriatra", "doctoralia": "geriatra", "sechat": "ly7dotxntqq446jbqlg6b3l5", "catalogomed": "geriatras", "drsac": ["Geriatria"]},
+    "alergista": {"nome": "Alergologista", "doctoralia": "alergista", "sechat": "homqkrplnu5aqeu2uota9wu9", "catalogomed": "alergologistas", "drsac": ["Alergia E Imunologia", "Alergologia"]},
+    "cardiologista": {"nome": "Cardiologista", "doctoralia": "cardiologista", "sechat": "x14ir5c9kvx9s11bwbvi1mys", "catalogomed": "cardiologistas", "drsac": ["Cardiologia", "Cardiologista"]},
+    "dermatologista": {"nome": "Dermatologista", "doctoralia": "dermatologista", "sechat": "pylctsugyjl97vtfjjs8da1k", "catalogomed": "dermatologistas", "drsac": ["Dermatologia"]},
+    "endocrinologista": {"nome": "Endocrinologista", "doctoralia": "endocrinologista", "sechat": "u28uuuaeimpxf3k25cnxru8o", "catalogomed": "endocrinologia-e-metabologia", "drsac": ["Endocrinologia E Metabologia", "Endocrinologia"]},
+    "endocrinologista-pediatrico": {"nome": "Endocrinologista Pediátrico", "doctoralia": "endocrinologista-pediatrico", "sechat": None, "catalogomed": None, "drsac": ["Endocrinologia Pediátrica"]},
+    "especialista-em-medicina-fisica-e-reabilitacao": {"nome": "Medicina Física e Reabilitação", "doctoralia": "especialista-em-medicina-fisica-e-reabilitacao", "sechat": "alfpewwlicu8tux4xcta4yh5", "catalogomed": "fisiatria", "drsac": ["Medicina Física E Reabilitação", "Fisiatria"]},
+    "especialista-em-medicina-preventiva": {"nome": "Medicina Preventiva", "doctoralia": "especialista-em-medicina-preventiva", "sechat": "wutli6r3320ylrt2uclsfp57", "catalogomed": None, "drsac": ["Medicina Preventiva E Social"]},
+    "gastroenterologista": {"nome": "Gastroenterologista", "doctoralia": "gastroenterologista", "sechat": "f6w5gv0vbyw6tpambkg1mxag", "catalogomed": "gastroenterologistas", "drsac": ["Gastroenterologia"]},
+    "generalista": {"nome": "Generalista", "doctoralia": "generalista", "sechat": "c6vsx97abcofv176xjliox2w", "catalogomed": None, "drsac": ["Clínica Geral"]},
+    "ginecologista": {"nome": "Ginecologista", "doctoralia": "ginecologista", "sechat": "mlhojg8vxi8iftl7jbgudfsw", "catalogomed": "ginecologistas", "drsac": ["Ginecologia E Obstetrícia", "Ginecologia"]},
+    "medico-acupunturista": {"nome": "Médico Acupunturista", "doctoralia": "medico-acupunturista", "sechat": "djkdf9qhvdw4jzfbhgp4o1pk", "catalogomed": "acupunturistas", "drsac": ["Acupuntura"]},
+    "medico-do-esporte": {"nome": "Médico do Esporte", "doctoralia": "medico-do-esporte", "sechat": "kqs3bhoscy5nnf3vdb3vxn1w", "catalogomed": None, "drsac": ["Medicina Esportiva"]},
+    "medico-do-sono": {"nome": "Médico do Sono", "doctoralia": "medico-do-sono", "sechat": None, "catalogomed": None, "drsac": None},
+    "medico-do-trabalho": {"nome": "Médico do Trabalho", "doctoralia": "medico-do-trabalho", "sechat": "evc6v5o06an5xtefc9339ay9", "catalogomed": "medicos-do-trabalho", "drsac": ["Medicina Do Trabalho"]},
+    "nutricionista": {"nome": "Nutricionista", "doctoralia": "nutricionista", "sechat": None, "catalogomed": "nutricionistas", "drsac": None},
+    "nutrologo": {"nome": "Nutrólogo", "doctoralia": "nutrologo", "sechat": "g3ugrfoqk6f4t42chx5ppoe9", "catalogomed": "nutrologos", "drsac": ["Nutrologia"]},
+    "traumatologista": {"nome": "Traumatologista", "doctoralia": "ortopedista-traumatologista", "sechat": "wc5z54hdmebdmv8n783876nk", "catalogomed": "ortopedistas-e-traumatologistas", "drsac": ["Ortopedia E Traumatologia", "Traumatologia"]},
+    "reumatologista": {"nome": "Reumatologista", "doctoralia": "reumatologista", "sechat": "qeiljtcgscrqrwp7wy8jr3cp", "catalogomed": "reumatologistas", "drsac": ["Reumatologia"]},
 }
 
 NOMES_ESPECIALIDADES = {slug: info["nome"] for slug, info in ESPECIALIDADES.items()}
@@ -1011,6 +1014,20 @@ def api_buscar():
                 f"Sechat ({nome_especialidade})",
                 buscar_medicos_sechat,
                 (info["sechat"], nome_especialidade, cidade, uf),
+            ))
+
+        if info.get("catalogomed") and len(uf.strip()) == 2:
+            tarefas.append((
+                f"CatalogoMed ({nome_especialidade})",
+                buscar_medicos_catalogomed,
+                (info["catalogomed"], nome_especialidade, cidade, uf, slug in ESPECIALIDADES_COM_CRN),
+            ))
+
+        if info.get("drsac"):
+            tarefas.append((
+                f"Dr. SAC ({nome_especialidade})",
+                buscar_medicos_drsac,
+                (info["drsac"], nome_especialidade, cidade, uf),
             ))
 
         tarefas.append((
