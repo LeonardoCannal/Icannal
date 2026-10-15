@@ -1,7 +1,7 @@
 """
 scraper.py
 Faz a captação (scraping) de médicos em múltiplas fontes públicas:
-Doctoralia, Sechat, APEPI, Ama-me, Kaya Doc e Cannaceia.
+Doctoralia, Sechat, APEPI, CatalogoMed, Dr. SAC, Ama-me, Kaya Doc e Cannaceia.
 
 IMPORTANTE — leia antes de usar:
 - Doctoralia e Sechat foram verificados com maior confiança (a estrutura
@@ -713,5 +713,317 @@ def buscar_medicos_apepi(especialidade_slug: str, especialidade_nome: str, cidad
             especialidade=especialidade_nome,
             perfil_url=c["link"],
             fonte="APEPI",
+        ))
+    return medicos
+
+
+# ---------------------------------------------------------------------------
+# CATALOGOMED (https://www.catalogo.med.br)
+# ---------------------------------------------------------------------------
+# Lista por especialidade + cidade:  /medicos/<especialidade>/em-<cidade>-<uf>/
+# (10 por página; a 2ª página fica em .../pagina-2). A lista não mostra o CRM,
+# então cada perfil (/doutor/<nome>-<id>.htm) é aberto pra pegar CRM e
+# endereço — em paralelo e guardado por 24h. O telefone do site vem cortado
+# ("(15) 3018...") e só aparece inteiro num botão: não usamos.
+# A leitura é por TEXTO (não depende do nome das classes do site), pra
+# aguentar pequenas mudanças de layout.
+
+CATALOGOMED_BASE_URL = "https://www.catalogo.med.br"
+CATALOGOMED_MAX_PAGINAS = 2
+CATALOGOMED_MAX_PERFIS = 20
+_CACHE_PERFIL_CATALOGOMED = CacheTTL(24 * 3600, 5000)
+
+RE_LINK_PERFIL_CATALOGOMED = re.compile(r"/doutor/[a-z0-9\-]+-\d+\.htm", re.IGNORECASE)
+RE_CRM_CATALOGOMED = re.compile(r"\bCRM\s*:?\s*(\d{2,9})\s*/\s*([A-Z]{2})\b")
+# linha de cidade de um endereço: "Centro - Araguaína/TO" ou "Votorantim/SP"
+RE_LINHA_CIDADE_CATALOGOMED = re.compile(r"^(?:(.+?)\s+-\s+)?([^/\d]{2,60})/([A-Z]{2})$")
+RE_PREFIXO_DR = re.compile(r"^(?:dr|dra|doutor|doutora)\.?\s+", re.IGNORECASE)
+
+
+def _catalogomed_url_lista(especialidade_slug: str, cidade: str, uf: str, pagina: int = 1) -> str:
+    url = f"{CATALOGOMED_BASE_URL}/medicos/{especialidade_slug}/em-{slugify(cidade)}-{uf.lower()}/"
+    return url if pagina == 1 else url + f"pagina-{pagina}"
+
+
+def _catalogomed_links_da_lista(html_lista: str) -> list:
+    soup = BeautifulSoup(html_lista, "html.parser")
+    links = []
+    for a in soup.find_all("a", href=True):
+        achado = RE_LINK_PERFIL_CATALOGOMED.search(a["href"])
+        if achado:
+            url = CATALOGOMED_BASE_URL + achado.group(0)
+            if url not in links:
+                links.append(url)
+    return links
+
+
+def _catalogomed_ler_perfil(html_perfil: str) -> dict:
+    """Tira nome, CRM/CRN e endereços (com cidade/UF) do texto do perfil."""
+    soup = BeautifulSoup(html_perfil, "html.parser")
+    for lixo in soup(["script", "style", "noscript"]):
+        lixo.decompose()
+    h1 = soup.find("h1")
+    nome = h1.get_text(" ", strip=True) if h1 else ""
+    nome = RE_PREFIXO_DR.sub("", re.sub(r"\s+", " ", nome)).strip()
+
+    linhas = [l.strip() for l in soup.get_text("\n").split("\n")]
+    linhas = [l for l in linhas if l]
+    texto = "\n".join(linhas)
+
+    crm = "Não encontrado"
+    achado = RE_CRM_CATALOGOMED.search(texto)
+    if achado:
+        crm = f"CRM {achado.group(2)} {achado.group(1)}"
+    crn = extrair_crn(texto)
+
+    enderecos = []
+    for i, linha in enumerate(linhas):
+        m = RE_LINHA_CIDADE_CATALOGOMED.match(linha)
+        if not m or i == 0:
+            continue
+        rua = linhas[i - 1]
+        # a linha de cima precisa parecer endereço (tem número ou tipo de logradouro)
+        if not (re.search(r"\d", rua) or RE_INICIO_LOGRADOURO.match(rua)):
+            continue
+        bairro, cidade_end, uf_end = m.group(1), m.group(2).strip(), m.group(3)
+        completo = rua + (f" - {bairro}" if bairro else "") + f", {cidade_end}/{uf_end}"
+        enderecos.append({"endereco": completo, "cidade": cidade_end, "uf": uf_end})
+    return {"nome": nome, "crm": crm, "crn": crn, "enderecos": enderecos}
+
+
+RE_INICIO_LOGRADOURO = re.compile(
+    r"^(?:Rua|R\.|Avenida|Av\.?|Alameda|Al\.|Travessa|Tv\.|Rodovia|Rod\.|Estrada|Pra[çc]a|Largo|Quadra|Setor|Via|SHS|SCN|SEPS|SGAS|SMHN|SHLS|SRTVS)\b",
+    re.IGNORECASE,
+)
+
+
+def _catalogomed_perfil(url: str):
+    achou, guardado = _CACHE_PERFIL_CATALOGOMED.pegar(url)
+    if achou:
+        return guardado
+    try:
+        resposta = _get(url, timeout=12)
+        resposta.raise_for_status()
+    except Exception:
+        return None  # falha de rede não vai pro cache
+    dados = _catalogomed_ler_perfil(resposta.text)
+    _CACHE_PERFIL_CATALOGOMED.guardar(url, dados)
+    return dados
+
+
+def buscar_medicos_catalogomed(especialidade_slug: str, especialidade_nome: str, cidade: str, uf: str = "",
+                               usa_crn: bool = False) -> list:
+    """Busca no CatalogoMed por especialidade + cidade (precisa da UF)."""
+    uf = (uf or "").strip().upper()
+    if not especialidade_slug or len(uf) != 2 or not cidade.strip():
+        return []  # o endereço da lista do site exige cidade + UF
+
+    links = []
+    for pagina in range(1, CATALOGOMED_MAX_PAGINAS + 1):
+        resposta = _get(_catalogomed_url_lista(especialidade_slug, cidade, uf, pagina), timeout=15)
+        if resposta.status_code == 404:
+            break  # cidade/especialidade sem página no site: só não tem resultado
+        resposta.raise_for_status()
+        novos = [l for l in _catalogomed_links_da_lista(resposta.text) if l not in links]
+        links.extend(novos)
+        if not novos or f"pagina-{pagina + 1}" not in resposta.text:
+            break
+    links = links[:CATALOGOMED_MAX_PERFIS]
+
+    perfis = {}
+    if links:
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futuros = {executor.submit(_catalogomed_perfil, l): l for l in links}
+            for futuro in as_completed(futuros):
+                try:
+                    perfis[futuros[futuro]] = futuro.result()
+                except Exception:
+                    perfis[futuros[futuro]] = None
+
+    cidade_norm = normalizar(cidade)
+    medicos = []
+    for link in links:  # mantém a ordem do site
+        p = perfis.get(link)
+        if not p or not p["nome"]:
+            continue
+        registro = p["crn"] if usa_crn else p["crm"]
+        if registro == "Não encontrado":
+            continue  # igual às outras fontes: sem registro profissional, não entra
+        na_cidade = [e for e in p["enderecos"] if normalizar(e["cidade"]) == cidade_norm and e["uf"] == uf]
+        if p["enderecos"] and not na_cidade:
+            continue  # atende só em outra cidade
+        endereco = na_cidade[0]["endereco"] if na_cidade else "Não encontrado"
+        medicos.append(registro_vazio(
+            nome=p["nome"],
+            crm=registro,
+            cidade=na_cidade[0]["cidade"] if na_cidade else cidade.strip(),
+            uf=uf,
+            endereco=endereco,
+            telefone="Não disponível",
+            especialidade=especialidade_nome,
+            perfil_url=link,
+            fonte="CatalogoMed",
+        ))
+    return medicos
+
+
+# ---------------------------------------------------------------------------
+# DR. SAC (https://www.drsac.com.br)
+# ---------------------------------------------------------------------------
+# Busca pública do site (GET, conferida no navegador):
+#   /medicos.asp?especialidade=<nome exato>&cidade=<cidade>&uf=<UF>[&pagina=2]
+# A cidade não liga pra acento nem maiúscula; a especialidade precisa ser o
+# nome exato da lista do site (por isso cada especialidade do i.cannal aponta
+# pra 1 ou 2 nomes de lá). 28 médicos por página, cada um num
+# <article class="card-vertical"> com nome, telefone e WhatsApp. O CRM só
+# aparece no perfil (/<nome-do-medico>, ~20 KB), aberto em paralelo e
+# guardado por 24h. A página de lista é pesada (~1 MB), então lê no máximo
+# 2 páginas do 1º nome e 1 página do 2º.
+
+DRSAC_BASE_URL = "https://www.drsac.com.br"
+DRSAC_MAX_PERFIS = 40
+_CACHE_PERFIL_DRSAC = CacheTTL(24 * 3600, 5000)
+RE_CRM_DRSAC = re.compile(r"\b(\d{3,7})(?:\s*-\s*[A-Z]{2})?\s*/\s*([A-Z]{2})\b")
+
+
+def _drsac_formatar_telefone(digitos: str) -> str:
+    d = re.sub(r"\D", "", digitos or "")
+    if d.startswith("55") and len(d) in (12, 13):
+        d = d[2:]
+    if len(d) == 11:
+        return f"({d[:2]}) {d[2:7]}-{d[7:]}"
+    if len(d) == 10:
+        return f"({d[:2]}) {d[2:6]}-{d[6:]}"
+    return d
+
+
+def _drsac_ler_lista(html_lista: str) -> list:
+    soup = BeautifulSoup(html_lista, "html.parser")
+    itens = []
+    for card in soup.select("article.card-vertical"):
+        link = card.select_one("h3 a[href]")
+        if not link:
+            continue
+        nome = re.sub(r"\s+", " ", link.get_text(" ", strip=True))
+        href = link["href"].strip()
+        if not nome or not href or href.startswith("#"):
+            continue
+        if href.startswith("http") and "drsac.com.br" not in href:
+            continue
+        perfil = href if href.startswith("http") else f"{DRSAC_BASE_URL}/{href.lstrip('/')}"
+        tel = card.select_one('a[href^="tel:"]')
+        whats = card.select_one('a[href*="whatsapp.com/send"], a[href*="wa.me/"]')
+        numero_whats = ""
+        if whats:
+            achado = re.search(r"phone=(\d+)", whats["href"]) or re.search(r"wa\.me/(\d+)", whats["href"])
+            numero_whats = achado.group(1) if achado else ""
+        numero_tel = tel["href"].split(":", 1)[1] if tel else ""
+        endereco = card.select_one(".doc-addr")
+        itens.append({
+            "nome": nome,
+            "perfil_url": perfil,
+            "whatsapp": _drsac_formatar_telefone(numero_whats),
+            "telefone": _drsac_formatar_telefone(numero_tel),
+            "local": endereco.get_text(" ", strip=True).lstrip("🏠").strip() if endereco else "",
+        })
+    paginas = {int(n) for n in re.findall(r"[?&]pagina=(\d+)", html_lista)}
+    return itens, (max(paginas) if paginas else 1)
+
+
+def _drsac_ler_perfil(html_perfil: str) -> dict:
+    soup = BeautifulSoup(html_perfil, "html.parser")
+    crm = "Não encontrado"
+    for p in soup.select(".perfil-especialidade"):
+        achado = RE_CRM_DRSAC.search(p.get_text(" ", strip=True))
+        if achado:
+            crm = f"CRM {achado.group(2)} {achado.group(1)}"
+            break
+    endereco = soup.select_one(".perfil-endereco")
+    texto_end = endereco.get_text(" ", strip=True).lstrip("📍").strip(" –-") if endereco else ""
+    return {"crm": crm, "endereco": re.sub(r"\s+", " ", texto_end)}
+
+
+def _drsac_perfil(url: str):
+    achou, guardado = _CACHE_PERFIL_DRSAC.pegar(url)
+    if achou:
+        return guardado
+    try:
+        resposta = _get(url, timeout=12)
+        resposta.raise_for_status()
+    except Exception:
+        return None
+    dados = _drsac_ler_perfil(resposta.text)
+    _CACHE_PERFIL_DRSAC.guardar(url, dados)
+    return dados
+
+
+def _drsac_url_lista(nome_especialidade_site: str, cidade: str, uf: str, pagina: int = 1) -> str:
+    from urllib.parse import urlencode
+    params = {"especialidade": nome_especialidade_site, "cidade": cidade.strip(), "uf": (uf or "").strip().upper(),
+              "ordem": "Prioridade"}
+    if pagina > 1:
+        params["pagina"] = pagina
+    return f"{DRSAC_BASE_URL}/medicos.asp?{urlencode(params)}"
+
+
+def buscar_medicos_drsac(nomes_no_site, especialidade_nome: str, cidade: str, uf: str = "") -> list:
+    """Busca no Dr. SAC. `nomes_no_site`: nome(s) exato(s) da especialidade lá."""
+    if isinstance(nomes_no_site, str):
+        nomes_no_site = [nomes_no_site]
+    if not nomes_no_site or not cidade.strip():
+        return []
+
+    vistos, itens = set(), []
+    for i, nome_site in enumerate(nomes_no_site[:2]):
+        max_paginas = 2 if i == 0 else 1
+        pagina = 1
+        while pagina <= max_paginas:
+            resposta = _get(_drsac_url_lista(nome_site, cidade, uf, pagina), timeout=20)
+            resposta.raise_for_status()
+            novos, ultima = _drsac_ler_lista(resposta.text)
+            for item in novos:
+                if item["perfil_url"] not in vistos:
+                    vistos.add(item["perfil_url"])
+                    itens.append(item)
+            if pagina >= ultima:
+                break
+            pagina += 1
+    itens = itens[:DRSAC_MAX_PERFIS]
+
+    perfis = {}
+    if itens:
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futuros = {executor.submit(_drsac_perfil, it["perfil_url"]): it["perfil_url"] for it in itens}
+            for futuro in as_completed(futuros):
+                try:
+                    perfis[futuros[futuro]] = futuro.result()
+                except Exception:
+                    perfis[futuros[futuro]] = None
+
+    cidade_norm = normalizar(cidade)
+    medicos = []
+    for it in itens:
+        perfil = perfis.get(it["perfil_url"])
+        if not perfil or perfil["crm"] == "Não encontrado":
+            continue
+        # o site já filtra a cidade; confere de novo pelo "Cidade, UF" do cartão
+        local = it["local"]
+        cidade_card = local.split(",")[0].strip() if local else ""
+        if cidade_card and normalizar(cidade_card) != cidade_norm:
+            continue
+        uf_card = local.split(",")[-1].strip().upper() if "," in local else (uf or "").upper()
+        telefone = it["whatsapp"] if len(re.sub(r"\D", "", it["whatsapp"])) >= 10 else it["telefone"]
+        endereco = perfil["endereco"]
+        tem_rua = bool(re.search(r"\d", endereco)) or bool(RE_INICIO_LOGRADOURO.match(endereco))
+        medicos.append(registro_vazio(
+            nome=it["nome"],
+            crm=perfil["crm"],
+            cidade=cidade_card or cidade.strip(),
+            uf=uf_card or "Não encontrado",
+            endereco=endereco if tem_rua else "Não encontrado",
+            telefone=telefone or "Não disponível",
+            especialidade=especialidade_nome,
+            perfil_url=it["perfil_url"],
+            fonte="Dr. SAC",
         ))
     return medicos
