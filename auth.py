@@ -90,6 +90,7 @@ def inicializar_auth(app, sqlite_path):
                 uf TEXT,
                 endereco TEXT,
                 telefone TEXT,
+                telefone_pessoal TEXT,
                 status TEXT NOT NULL DEFAULT 'prospectado',
                 adicionado_em TEXT NOT NULL,
                 UNIQUE(usuario_id, chave_medico)
@@ -188,6 +189,7 @@ def inicializar_auth(app, sqlite_path):
                 uf TEXT,
                 endereco TEXT,
                 telefone TEXT,
+                telefone_pessoal TEXT,
                 status TEXT NOT NULL DEFAULT 'prospectado',
                 adicionado_em TEXT NOT NULL,
                 UNIQUE(usuario_id, chave_medico)
@@ -304,6 +306,9 @@ def inicializar_auth(app, sqlite_path):
     _adicionar_coluna_se_faltar("painel_medicos", "visitado_em", "TEXT")
     _adicionar_coluna_se_faltar("painel_medicos", "observacoes", "TEXT")
     _adicionar_coluna_se_faltar("painel_medicos", "resultado_visita", "TEXT")
+    # 2 telefones por médico: "telefone" = da clínica/consultório (o que vem
+    # das buscas) e "telefone_pessoal" = celular do próprio médico.
+    _adicionar_coluna_se_faltar("painel_medicos", "telefone_pessoal", "TEXT")
     _adicionar_coluna_se_faltar("visitas_log", "resultado", "TEXT")
     _adicionar_coluna_se_faltar("usuarios", "telefone", "TEXT")
     # DEFAULT verdadeiro é de propósito: ninguém que já tinha conta fica
@@ -956,6 +961,41 @@ def buscar_base_propria(especialidade_slugs: list, cidade: str, uf: str, nomes_e
     return resultado
 
 
+def buscar_base_propria_por_nome(nome: str, cidade: str, uf: str, nomes_especialidades: dict, limite: int = 60):
+    """Busca na base própria pelo nome do médico (cidade/UF opcionais).
+    O banco filtra pela palavra mais longa digitada — com '_' no lugar das
+    vogais e do 'c', pra 'joao' achar 'João' — e aqui confere se TODAS as
+    palavras batem (sem acento, em qualquer ordem)."""
+    from scraper import nome_bate, normalizar
+    palavras = [p for p in normalizar(nome or "").split() if len(p) >= 2]
+    if not palavras:
+        return []
+    maior = max(palavras, key=len)
+    padrao = "%" + re.sub(r"[aeiouc]", "_", maior) + "%"
+    filtros, valores = ["LOWER(nome) LIKE ?"], [padrao]
+    if (cidade or "").strip():
+        filtros.append("cidade_norm = ?")
+        valores.append(_normalizar_cidade(cidade))
+    if (uf or "").strip():
+        filtros.append("UPPER(uf) = ?")
+        valores.append(uf.strip().upper())
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q(f"SELECT * FROM medicos_base_propria WHERE {' AND '.join(filtros)} LIMIT 500"), tuple(valores))
+        linhas = [l for l in cursor.fetchall() if nome_bate(l["nome"], nome)]
+    return [{
+        "nome": l["nome"],
+        "crm": l["crm"] or "Não encontrado",
+        "cidade": l["cidade"] or "Não encontrado",
+        "uf": l["uf"] or "Não encontrado",
+        "endereco": l["endereco"] or "Não encontrado",
+        "telefone": l["telefone"] or "Não disponível",
+        "especialidade": nomes_especialidades.get(l["especialidade"], l["especialidade"]),
+        "perfil_url": "Não encontrado",
+        "fonte": "Base própria",
+    } for l in linhas[:limite]]
+
+
 def contar_base_propria():
     with _conexao() as conn:
         cursor = conn.cursor()
@@ -990,14 +1030,15 @@ def adicionar_ao_painel(usuario_id: int, medico: dict):
         try:
             cursor.execute(
                 _q("""INSERT INTO painel_medicos
-                      (usuario_id, chave_medico, nome, crm, especialidade, cidade, uf, endereco, telefone, status, adicionado_em)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'prospectado', ?)"""),
+                      (usuario_id, chave_medico, nome, crm, especialidade, cidade, uf, endereco, telefone,
+                       telefone_pessoal, status, adicionado_em)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prospectado', ?)"""),
                 (
                     usuario_id, chave,
                     medico.get("nome", ""), medico.get("crm", ""),
                     medico.get("especialidade", ""), medico.get("cidade", ""),
                     medico.get("uf", ""), medico.get("endereco", ""),
-                    medico.get("telefone", ""), agora,
+                    medico.get("telefone", ""), (medico.get("telefone_pessoal") or "").strip()[:40], agora,
                 ),
             )
         except ErroIntegridade:
@@ -1027,7 +1068,7 @@ def admin_importar_painel_usuario(usuario_alvo_id: int, linhas: list):
     for i, linha in enumerate(linhas, start=2):  # linha 1 do arquivo é o cabeçalho
         medico = {
             campo: (linha.get(campo) or "").strip()
-            for campo in ("nome", "crm", "especialidade", "cidade", "uf", "endereco", "telefone")
+            for campo in ("nome", "crm", "especialidade", "cidade", "uf", "endereco", "telefone", "telefone_pessoal")
         }
         if not medico["nome"]:
             erros.append({"linha": i, "motivo": "Sem nome — linha ignorada."})
@@ -1531,6 +1572,44 @@ def salvar_observacoes(usuario_id: int, entrada_id: int, texto: str) -> bool:
             (texto, entrada_id, usuario_id),
         )
         return cursor.rowcount > 0
+
+
+UFS_VALIDAS = {"AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA",
+               "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"}
+
+
+def editar_dados_medico_painel(usuario_id: int, entrada_id: int, dados: dict):
+    """O usuário corrige/atualiza os 2 telefones (clínica e pessoal), endereço, cidade e UF de um médico
+    do PRÓPRIO painel. Nome, CRM e especialidade não mudam (é por eles que o
+    sistema reconhece o médico). Devolve (ok, mensagem_de_erro)."""
+    def _limpo(campo, limite):
+        return re.sub(r"\s+", " ", str(dados.get(campo) or "")).strip()[:limite]
+
+    telefone = _limpo("telefone", 40)
+    telefone_pessoal = _limpo("telefone_pessoal", 40)
+    endereco = _limpo("endereco", 200)
+    cidade = _limpo("cidade", 80)
+    uf = _limpo("uf", 2).upper()
+
+    if telefone and len(re.sub(r"\D", "", telefone)) < 8:
+        return False, "Telefone da clínica incompleto: confira o DDD e o número."
+    if telefone_pessoal and len(re.sub(r"\D", "", telefone_pessoal)) < 8:
+        return False, "Telefone pessoal incompleto: confira o DDD e o número."
+    if uf and uf not in UFS_VALIDAS:
+        return False, "UF inválida."
+    if not cidade:
+        return False, "Informe a cidade."
+
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _q("""UPDATE painel_medicos SET telefone = ?, telefone_pessoal = ?, endereco = ?, cidade = ?, uf = ?
+                  WHERE id = ? AND usuario_id = ?"""),
+            (telefone or "Não disponível", telefone_pessoal, endereco or "Não encontrado", cidade, uf, entrada_id, usuario_id),
+        )
+        if cursor.rowcount == 0:
+            return False, "Médico não encontrado no seu painel."
+    return True, ""
 
 
 # ---------------------------------------------------------------------------

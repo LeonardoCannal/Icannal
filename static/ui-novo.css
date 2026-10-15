@@ -790,6 +790,34 @@ body.ui-novo.escuro .btn-exportar-excel{ color: #0E1405; }
   body.ui-novo .btn-exportar-excel{ width: 100%; justify-content: center; }
 }
 
+
+/* Busca: campo "Nome do médico" com lupa */
+body.ui-novo .rotulo-opcional{ font-weight: 400; color: var(--pedra); font-size: 12px; }
+body.ui-novo .input-com-icone{ position: relative; }
+body.ui-novo .input-com-icone svg{
+  position: absolute; left: 13px; top: 50%; width: 18px; height: 18px; transform: translateY(-50%);
+  fill: none; stroke: var(--pedra); stroke-width: 2; stroke-linecap: round; pointer-events: none;
+}
+body.ui-novo .campo .input-com-icone input#nome-medico:not([type=checkbox]):not([type=radio]){ padding-left: 40px; width: 100%; box-sizing: border-box; }
+body.ui-novo .input-com-icone input::-webkit-search-cancel-button{ cursor: pointer; }
+body.ui-novo .input-com-icone:focus-within svg{ stroke: var(--verde); }
+
+
+/* Modal "Editar dados do médico" */
+body.ui-novo .editar-subtitulo{ margin: -4px 0 16px; font-size: 13.5px; color: var(--ardosia); }
+body.ui-novo .editar-erro{ min-height: 18px; font-size: 13px; color: #C13B3B; margin: 2px 0 6px; }
+body.ui-novo.escuro .editar-erro{ color: #F28B82; }
+body.ui-novo #modal-editar-medico .campo{ margin-bottom: 14px; }
+body.ui-novo #modal-editar-medico .linha-local{ display: grid; grid-template-columns: 1fr 96px; gap: 12px; }
+body.ui-novo #modal-editar-medico .campo input, body.ui-novo #modal-editar-medico .campo select{ width: 100%; box-sizing: border-box; }
+
+
+/* 2 telefones (clínica e pessoal) lado a lado nos formulários do painel */
+body.ui-novo .linha-telefones{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+body.ui-novo .linha-telefones input{ width: 100%; box-sizing: border-box; }
+@media (max-width: 480px){ body.ui-novo .linha-telefones{ grid-template-columns: minmax(0, 1fr); } }
+body.ui-novo .painel-card .painel-tel b{ font-weight: 600; color: var(--tinta); }
+
 /* quem pediu "menos movimento" no aparelho: tudo parado e na hora */
 @media (prefers-reduced-motion: reduce){
   body.ui-novo *, body.ui-novo::after{ transition: none !important; animation: none !important; }

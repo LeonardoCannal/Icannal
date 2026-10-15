@@ -8,6 +8,8 @@ from scraper import (
     buscar_medicos_apepi,
     buscar_medicos_catalogomed,
     buscar_medicos_drsac,
+    buscar_medicos_drsac_por_nome,
+    nome_bate,
     ESPECIALIDADES_COM_CRN,
     CacheTTL,
     normalizar,
@@ -27,6 +29,8 @@ from auth import (
     checar_senha,
     atualizar_ultimo_login,
     listar_usuarios_com_contagem_painel,
+    buscar_base_propria_por_nome,
+    editar_dados_medico_painel,
     resumo_painel_por_usuario,
     usuario_logado,
     fazer_login,
@@ -785,7 +789,8 @@ def admin_exportar_painel(user_id):
     ws = wb.active
     ws.title = "Painel Médico"
 
-    colunas = ["Nome", "CRM/CRN", "Especialidade", "Cidade", "UF", "Endereço", "Telefone", "Status", "Adicionado em"]
+    colunas = ["Nome", "CRM/CRN", "Especialidade", "Cidade", "UF", "Endereço", "Telefone da clínica",
+               "Telefone pessoal", "Status", "Adicionado em"]
     ws.append(colunas)
 
     cabecalho_fonte = Font(bold=True, color="FFFFFF")
@@ -802,12 +807,12 @@ def admin_exportar_painel(user_id):
 
         ws.append([
             m["nome"], m["crm"], m["especialidade"], m["cidade"], m["uf"],
-            m["endereco"], m["telefone"],
-            "Visitado" if m["status"] == "visitado" else "Prospectado",
+            m["endereco"], m["telefone"], m["telefone_pessoal"] or "",
+            {"visitado": "Visitado", "agendado": "Agendado"}.get(m["status"], "Prospectado"),
             data_fmt,
         ])
 
-    larguras = [28, 16, 24, 18, 6, 38, 18, 14, 18]
+    larguras = [28, 16, 24, 18, 6, 38, 18, 18, 14, 18]
     for i, largura in enumerate(larguras, start=1):
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = largura
 
@@ -971,19 +976,24 @@ def api_buscar():
     especialidades_selecionadas = request.args.getlist("especialidade")
     cidade = request.args.get("cidade", "")[:80]
     uf = request.args.get("uf", "")[:2]
+    nome_busca = " ".join(request.args.get("nome", "")[:80].split())
 
     if _passou_do_limite("busca", str(usuario_logado()["id"]), 40, 300):
         return jsonify({"erro": "Muitas buscas seguidas. Aguarde um minuto e tente de novo."}), 429
 
-    if not especialidades_selecionadas:
-        return jsonify({"erro": "Selecione ao menos uma especialidade."}), 400
+    if nome_busca and len(nome_busca.replace(" ", "")) < 3:
+        return jsonify({"erro": "Digite pelo menos 3 letras do nome do médico."}), 400
+    if not especialidades_selecionadas and not nome_busca:
+        return jsonify({"erro": "Selecione uma especialidade ou digite o nome do médico."}), 400
     if len(especialidades_selecionadas) > MAX_ESPECIALIDADES_POR_BUSCA:
         return jsonify({"erro": f"Selecione no máximo {MAX_ESPECIALIDADES_POR_BUSCA} especialidades por busca."}), 400
     for slug in especialidades_selecionadas:
         if slug not in ESPECIALIDADES:
             return jsonify({"erro": f"Especialidade inválida: {slug}"}), 400
-    if not cidade.strip():
+    if especialidades_selecionadas and not cidade.strip():
         return jsonify({"erro": "Informe a cidade."}), 400
+    if not especialidades_selecionadas:
+        return _buscar_por_nome(nome_busca, cidade, uf)
 
     usuario = usuario_logado()
     registrar_busca(usuario["id"])
@@ -1075,29 +1085,76 @@ def api_buscar():
             _CACHE_BUSCAS.guardar(chave_cache, [dict(m) for m in resultados_sites])
 
     todos_medicos = _juntar_duplicados(todos_medicos + resultados_sites)
+    if nome_busca:  # especialidade + nome: filtra o resultado pelo nome
+        todos_medicos = [m for m in todos_medicos if nome_bate(m.get("nome", ""), nome_busca)]
 
     # Médico que já está no painel do usuário logado: mostra "Presente no
     # painel médico" em vez do botão de adicionar. Médico que já está no
     # painel de OUTRO usuário: nem aparece — já tem alguém de olho nele.
-    chaves_meu_painel = chaves_no_painel_usuario(usuario["id"])
-    chaves_outros_paineis = chaves_no_painel_todos() - chaves_meu_painel
-
-    medicos_visiveis = []
-    for medico in todos_medicos:
-        chave = computar_chave_medico(medico)
-        if chave in chaves_outros_paineis:
-            continue
-        medico["no_painel"] = chave in chaves_meu_painel
-        medicos_visiveis.append(medico)
-    todos_medicos = medicos_visiveis
+    todos_medicos, em_outros = _separar_paineis(todos_medicos, usuario["id"])
 
     return jsonify({
         "especialidades": nomes_especialidades,
         "cidade": cidade,
         "uf": uf,
+        "nome": nome_busca,
         "total": len(todos_medicos),
         "medicos": todos_medicos,
         "avisos": fontes_com_erro,
+        "em_outros_paineis": em_outros if nome_busca else 0,
+    })
+
+
+def _separar_paineis(medicos: list, usuario_id: int):
+    """Marca quem já está no MEU painel e tira quem está no painel de OUTRO
+    usuário (já tem alguém de olho). Devolve (visíveis, quantos tirou)."""
+    chaves_meu_painel = chaves_no_painel_usuario(usuario_id)
+    chaves_outros_paineis = chaves_no_painel_todos() - chaves_meu_painel
+    visiveis, tirados = [], 0
+    for medico in medicos:
+        chave = computar_chave_medico(medico)
+        if chave in chaves_outros_paineis:
+            tirados += 1
+            continue
+        medico["no_painel"] = chave in chaves_meu_painel
+        visiveis.append(medico)
+    return visiveis, tirados
+
+
+def _buscar_por_nome(nome_busca: str, cidade: str, uf: str):
+    """Busca um médico específico pelo nome, sem precisar de especialidade.
+    Fontes que aceitam busca por nome: a base própria e o Dr. SAC. Cidade e
+    UF são opcionais (ajudam a separar homônimos)."""
+    usuario = usuario_logado()
+    registrar_busca(usuario["id"])
+    medicos = buscar_base_propria_por_nome(nome_busca, cidade, uf, NOMES_ESPECIALIDADES)
+
+    chave_cache = ("nome", normalizar_texto_busca(nome_busca), normalizar_texto_busca(cidade), uf.strip().upper())
+    achou, guardado = _CACHE_BUSCAS.pegar(chave_cache)
+    avisos = []
+    if achou:
+        do_site = [dict(m) for m in guardado]
+    else:
+        try:
+            do_site = buscar_medicos_drsac_por_nome(nome_busca, cidade, uf)
+            _CACHE_BUSCAS.guardar(chave_cache, [dict(m) for m in do_site])
+        except Exception as e:
+            app.logger.warning("Fonte com erro na busca por nome — Dr. SAC: %s", e)
+            _registrar_falha_fonte("Dr. SAC (busca por nome)", e)
+            do_site, avisos = [], ["Dr. SAC: fonte indisponível no momento"]
+
+    todos = _juntar_duplicados(medicos + do_site)
+    todos = [m for m in todos if nome_bate(m.get("nome", ""), nome_busca)]
+    todos, em_outros = _separar_paineis(todos, usuario["id"])
+    return jsonify({
+        "especialidades": [],
+        "cidade": cidade,
+        "uf": uf,
+        "nome": nome_busca,
+        "total": len(todos),
+        "medicos": todos,
+        "avisos": avisos,
+        "em_outros_paineis": em_outros,
     })
 
 
@@ -1218,6 +1275,16 @@ def api_painel_observacoes(entrada_id):
 
     ok = salvar_observacoes(usuario["id"], entrada_id, texto)
     return jsonify({"ok": ok})
+
+
+@app.route("/api/painel/<int:entrada_id>/editar", methods=["POST"])
+@login_required
+def api_painel_editar(entrada_id):
+    usuario = usuario_logado()
+    ok, erro = editar_dados_medico_painel(usuario["id"], entrada_id, _corpo_json())
+    if not ok:
+        return jsonify({"ok": False, "erro": erro}), 400
+    return jsonify({"ok": True})
 
 
 @app.route("/api/painel/agendar", methods=["POST"])
@@ -1477,7 +1544,7 @@ def admin_painel_importar(user_id):
         if "nome" not in leitor.fieldnames:
             return jsonify({
                 "ok": False,
-                "mensagem": "O CSV precisa ter uma coluna 'nome'. Colunas aceitas: nome, crm, especialidade, cidade, uf, endereco, telefone.",
+                "mensagem": "O CSV precisa ter uma coluna 'nome'. Colunas aceitas: nome, crm, especialidade, cidade, uf, endereco, telefone, telefone_pessoal.",
             }), 400
         linhas = list(leitor)
     except csv.Error:

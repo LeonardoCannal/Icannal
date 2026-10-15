@@ -1207,6 +1207,15 @@
         <div class="aviso-limite">Selecione até {{ max_especialidades }} especialidades por busca.</div>
       </div>
 
+      <div class="campo campo-nome-medico">
+        <label for="nome-medico">Nome do médico <span class="rotulo-opcional">(opcional)</span></label>
+        <div class="input-com-icone">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input type="search" id="nome-medico" name="nome-medico" placeholder="Ex: João Batista Jabur…" autocomplete="off" spellcheck="false" maxlength="80">
+        </div>
+        <div class="aviso-limite">Pra achar um médico específico. Sem especialidade, a cidade vira opcional.</div>
+      </div>
+
       <div class="campo linha-local">
         <div>
           <label for="cidade">Cidade</label>
@@ -1298,9 +1307,15 @@
       <label for="cad-crm">CRM/CRN</label>
       <input type="text" id="cad-crm" placeholder="Ex: CRM SP 123456">
     </div>
-    <div class="campo">
-      <label for="cad-telefone">Telefone</label>
-      <input type="text" id="cad-telefone" placeholder="Ex: (11) 99999-9999">
+    <div class="campo linha-telefones">
+      <div>
+        <label for="cad-telefone">Telefone da clínica</label>
+        <input type="tel" id="cad-telefone" inputmode="tel" placeholder="Ex: (11) 3333-4444">
+      </div>
+      <div>
+        <label for="cad-telefone-pessoal">Telefone pessoal do médico</label>
+        <input type="tel" id="cad-telefone-pessoal" inputmode="tel" placeholder="Ex: (11) 99999-9999">
+      </div>
     </div>
     <div class="campo linha-local">
       <div>
@@ -1362,6 +1377,44 @@
     </div>
     <textarea id="obs-texto" class="obs-textarea" rows="7" placeholder="Anote aqui informações e observações sobre esse médico…"></textarea>
     <button type="button" id="obs-salvar" class="btn-buscar" style="margin-top:14px;">Salvar observações</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-editar-medico">
+  <div class="modal-painel modal-obs-painel" role="dialog" aria-modal="true" aria-labelledby="editar-titulo">
+    <div class="modal-cabecalho">
+      <h2 id="editar-titulo">Editar dados do médico</h2>
+      <button type="button" id="editar-fechar" class="modal-fechar" aria-label="Fechar">&times;</button>
+    </div>
+    <p class="editar-subtitulo" id="editar-subtitulo"></p>
+    <form id="form-editar-medico" novalidate>
+      <div class="campo linha-telefones">
+        <div>
+          <label for="editar-telefone">Telefone da clínica</label>
+          <input type="tel" id="editar-telefone" name="telefone" inputmode="tel" autocomplete="off" placeholder="(15) 3333-4444" maxlength="40">
+        </div>
+        <div>
+          <label for="editar-telefone-pessoal">Telefone pessoal do médico</label>
+          <input type="tel" id="editar-telefone-pessoal" name="telefone_pessoal" inputmode="tel" autocomplete="off" placeholder="(15) 99999-9999" maxlength="40">
+        </div>
+      </div>
+      <div class="campo">
+        <label for="editar-endereco">Endereço</label>
+        <input type="text" id="editar-endereco" name="endereco" autocomplete="off" placeholder="Rua, número, sala, bairro…" maxlength="200">
+      </div>
+      <div class="campo linha-local">
+        <div>
+          <label for="editar-cidade">Cidade</label>
+          <input type="text" id="editar-cidade" name="cidade" autocomplete="off" maxlength="80">
+        </div>
+        <div>
+          <label for="editar-uf">UF</label>
+          <select id="editar-uf" name="uf"><option value="">--</option><option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option><option>SE</option><option>TO</option></select>
+        </div>
+      </div>
+      <div class="editar-erro" id="editar-erro" role="alert" aria-live="polite"></div>
+      <button type="submit" id="editar-salvar" class="btn-buscar" style="margin-top:6px;">Salvar alterações</button>
+    </form>
   </div>
 </div>
 
@@ -1434,6 +1487,7 @@
   const btnFecharFiltro = document.getElementById('btn-fechar-filtro');
   const btnPesquisarFiltro = document.getElementById('btn-pesquisar-filtro');
   const inputCidade = document.getElementById('cidade');
+  const inputNomeMedico = document.getElementById('nome-medico');
   const selectUf = document.getElementById('uf');
   const btnBuscar = document.getElementById('btn-buscar');
   const blocoRecentes = document.getElementById('bloco-recentes');
@@ -1563,11 +1617,14 @@
     atualizarDisponibilidadeCheckboxes();
     inputCidade.value = item.cidade;
     selectUf.value = item.uf;
+    inputNomeMedico.value = item.nome || '';
   }
 
   function formatarBusca(item){
     const nomes = item.especialidadesSlugs.map(slug => especialidades[slug] || slug);
-    let partes = [nomes.join(', ')];
+    let partes = [];
+    if(item.nome) partes.push(`“${item.nome}”`);
+    if(nomes.length) partes.push(nomes.join(', '));
     if(item.cidade || item.uf) partes.push([item.cidade, item.uf].filter(Boolean).join(' - '));
     return partes.join(' · ');
   }
@@ -1594,7 +1651,11 @@
 
   function renderizarResultados(dados){
     blocoResultados.style.display = 'block';
-    resultadosTitulo.textContent = `${dados.total} médico(s) encontrado(s) — ${dados.especialidades.join(', ')} em ${dados.cidade}`;
+    const filtros = [];
+    if(dados.nome) filtros.push(`“${dados.nome}”`);
+    if(dados.especialidades && dados.especialidades.length) filtros.push(dados.especialidades.join(', '));
+    const onde = [dados.cidade, dados.uf].filter(Boolean).join('/');
+    resultadosTitulo.textContent = `${dados.total} médico(s) encontrado(s) — ${filtros.join(' · ')}${onde ? ' em ' + onde : ''}`;
 
     ultimoResultado = dados;
 
@@ -1602,9 +1663,15 @@
     if(dados.avisos && dados.avisos.length > 0){
       avisoHtml = `<div class="aviso-fonte">Algumas fontes não responderam nesta busca (pode ser bloqueio temporário do site): ${dados.avisos.length} aviso(s).</div>`;
     }
+    if(dados.em_outros_paineis > 0){
+      avisoHtml += `<div class="aviso-fonte">${dados.em_outros_paineis === 1 ? '1 médico com esse nome já está' : dados.em_outros_paineis + ' médicos com esse nome já estão'} no painel de outro consultor, por isso não aparece${dados.em_outros_paineis === 1 ? '' : 'm'} aqui.</div>`;
+    }
 
     if(dados.total === 0){
-      resultadosConteudo.innerHTML = avisoHtml + '<div class="estado-vazio">Nenhum médico encontrado para essa busca.</div>';
+      const dica = (dados.nome && !(dados.especialidades || []).length)
+        ? '<br><small>Na busca só pelo nome, o i.cannal consulta a base própria e o Dr. SAC. Pra procurar em todas as fontes, escolha também a especialidade e a cidade.</small>'
+        : '';
+      resultadosConteudo.innerHTML = avisoHtml + `<div class="estado-vazio">Nenhum médico encontrado para essa busca.${dica}</div>`;
       return;
     }
 
@@ -1678,14 +1745,20 @@
 
   function executarBusca(){
     const cidade = inputCidade.value.trim();
-    if(!cidade){
-      alert('Informe a cidade para buscar.');
+    const nomeMedico = inputNomeMedico.value.trim().replace(/\s+/g, ' ');
+    const slugsSelecionados = especialidadesSelecionadas();
+
+    if(slugsSelecionados.length === 0 && !nomeMedico){
+      alert('Selecione uma especialidade ou digite o nome do médico.');
       return;
     }
-
-    const slugsSelecionados = especialidadesSelecionadas();
-    if(slugsSelecionados.length === 0){
-      alert('Selecione ao menos uma especialidade.');
+    if(nomeMedico && nomeMedico.replace(/ /g, '').length < 3){
+      alert('Digite pelo menos 3 letras do nome do médico.');
+      inputNomeMedico.focus();
+      return;
+    }
+    if(slugsSelecionados.length > 0 && !cidade){
+      alert('Informe a cidade para buscar.');
       return;
     }
     if(slugsSelecionados.length > MAX_ESPECIALIDADES){
@@ -1705,6 +1778,7 @@
     slugsSelecionados.forEach(slug => params.append('especialidade', slug));
     params.append('cidade', cidade);
     params.append('uf', uf);
+    if(nomeMedico) params.append('nome', nomeMedico);
 
     fetch(`/api/buscar?${params.toString()}`)
       .then(res => res.json().then(dados => ({ ok: res.ok, dados })))
@@ -1718,6 +1792,7 @@
 
         const item = {
           especialidadesSlugs: slugsSelecionados,
+          nome: nomeMedico,
           cidade,
           uf,
           total: dados.total,
@@ -1736,6 +1811,9 @@
   }
 
   btnBuscar.addEventListener('click', executarBusca);
+  [inputNomeMedico, inputCidade].forEach(campo => campo.addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ e.preventDefault(); executarBusca(); }
+  }));
 
   // ===== Painel Médico =====
 
@@ -1754,6 +1832,14 @@
   // (com o 55 do Brasil na frente). null se não tiver telefone de verdade —
   // os valores "Não encontrado"/"Não disponível" não têm dígito nenhum,
   // então caem fora sozinhos.
+  // Linha de telefone do cartão do painel ("Clínica: ..." / "Pessoal: ..."),
+  // só quando tem número de verdade.
+  function linhaTelefone(rotulo, telefone){
+    const valor = String(telefone || '').trim();
+    if(!valor || /\D/.test(valor) && valor.replace(/\D/g, '').length < 8) return '';
+    return `<span class="painel-tel"><b>${rotulo}:</b> ${esc(valor)}</span>`;
+  }
+
   function numeroWhatsApp(telefone){
     const digitos = String(telefone || '').replace(/\D/g, '');
     if(digitos.length < 10) return null;
@@ -1782,6 +1868,9 @@
       <div class="painel-card-topo">
         <strong${classeNome}>${esc(item.nome)}</strong>
         <div class="painel-card-icones">
+          <button type="button" class="painel-icone-btn btn-editar-dados" title="Editar telefone e endereço" aria-label="Editar dados de ${esc(item.nome)}" data-id="${item.id}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M6 16c.5-1.5 1.7-2.3 3-2.3s2.5.8 3 2.3M15 9h3M15 13h3"/></svg>
+          </button>
           <button type="button" class="painel-icone-btn btn-editar-obs" title="Observações" aria-label="Observações" data-id="${item.id}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           </button>
@@ -1795,7 +1884,8 @@
       <span>${esc(item.crm || '')}</span>
       <span>${esc(linhaLocal)}</span>
       <span>${esc(item.endereco || '')}</span>
-      <span>${esc(item.telefone || '')}</span>
+      ${linhaTelefone('Clínica', item.telefone)}
+      ${linhaTelefone('Pessoal', item.telefone_pessoal)}
       ${badgeAgenda}
     `;
 
@@ -1859,7 +1949,8 @@
       acoes.appendChild(btnMaps);
     }
 
-    const numWhats = numeroWhatsApp(item.telefone);
+    // WhatsApp: o celular pessoal do médico, se tiver; senão o da clínica.
+    const numWhats = numeroWhatsApp(item.telefone_pessoal) || numeroWhatsApp(item.telefone);
     if(numWhats){
       const btnWhats = document.createElement('button');
       btnWhats.type = 'button';
@@ -1872,6 +1963,7 @@
     div.appendChild(acoes);
 
     div.querySelector('.btn-editar-obs').addEventListener('click', () => abrirModalObservacoes(item.id, item.nome, item.observacoes || ''));
+    div.querySelector('.btn-editar-dados').addEventListener('click', () => abrirModalEditarMedico(item));
     const btnVerObs = div.querySelector('.btn-ver-obs');
     if(btnVerObs){
       btnVerObs.addEventListener('click', () => abrirModalObservacoes(item.id, item.nome, item.observacoes || ''));
@@ -2134,6 +2226,77 @@
       });
   });
 
+  // ===== Modal: editar telefone/endereço do médico =====
+  const modalEditar = document.getElementById('modal-editar-medico');
+  const formEditar = document.getElementById('form-editar-medico');
+  const editarSalvarBtn = document.getElementById('editar-salvar');
+  const editarErro = document.getElementById('editar-erro');
+  const camposEditar = {
+    telefone: document.getElementById('editar-telefone'),
+    telefone_pessoal: document.getElementById('editar-telefone-pessoal'),
+    endereco: document.getElementById('editar-endereco'),
+    cidade: document.getElementById('editar-cidade'),
+    uf: document.getElementById('editar-uf'),
+  };
+  let editarEntradaId = null;
+  const VALORES_VAZIOS = ['Não encontrado', 'Não disponível', 'Não informado'];
+  const semVazio = v => (VALORES_VAZIOS.includes(String(v || '').trim()) ? '' : String(v || '').trim());
+
+  function abrirModalEditarMedico(item){
+    editarEntradaId = item.id;
+    document.getElementById('editar-subtitulo').textContent = [item.nome, item.crm].filter(v => semVazio(v)).join(' · ');
+    camposEditar.telefone.value = semVazio(item.telefone);
+    camposEditar.telefone_pessoal.value = semVazio(item.telefone_pessoal);
+    camposEditar.endereco.value = semVazio(item.endereco);
+    camposEditar.cidade.value = semVazio(item.cidade);
+    camposEditar.uf.value = semVazio(item.uf).toUpperCase();
+    editarErro.textContent = '';
+    modalEditar.classList.add('aberto');
+    setTimeout(() => camposEditar.telefone.focus(), 50);
+  }
+  function fecharModalEditar(){ modalEditar.classList.remove('aberto'); }
+  document.getElementById('editar-fechar').addEventListener('click', fecharModalEditar);
+  modalEditar.addEventListener('click', (e) => { if(e.target === modalEditar) fecharModalEditar(); });
+  document.addEventListener('keydown', (e) => { if(e.key === 'Escape' && modalEditar.classList.contains('aberto')) fecharModalEditar(); });
+
+  formEditar.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if(editarEntradaId === null) return;
+    if(!camposEditar.cidade.value.trim()){
+      editarErro.textContent = 'Informe a cidade.';
+      camposEditar.cidade.focus();
+      return;
+    }
+    editarErro.textContent = '';
+    editarSalvarBtn.disabled = true;
+    editarSalvarBtn.textContent = 'Salvando…';
+    fetch(`/api/painel/${editarEntradaId}/editar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telefone: camposEditar.telefone.value,
+        telefone_pessoal: camposEditar.telefone_pessoal.value,
+        endereco: camposEditar.endereco.value,
+        cidade: camposEditar.cidade.value,
+        uf: camposEditar.uf.value,
+      })
+    })
+      .then(res => res.json())
+      .then(resp => {
+        if(resp.ok){
+          fecharModalEditar();
+          carregarPainel();
+        } else {
+          editarErro.textContent = resp.erro || 'Não foi possível salvar.';
+        }
+      })
+      .catch(() => { editarErro.textContent = 'Erro de conexão ao salvar. Tente de novo.'; })
+      .finally(() => {
+        editarSalvarBtn.disabled = false;
+        editarSalvarBtn.textContent = 'Salvar alterações';
+      });
+  });
+
   // ===== Cadastro manual de médico =====
 
   const cadastroOverlay = document.getElementById('cadastro-overlay');
@@ -2143,6 +2306,7 @@
   const campoCadNome = document.getElementById('cad-nome');
   const campoCadCrm = document.getElementById('cad-crm');
   const campoCadTelefone = document.getElementById('cad-telefone');
+  const campoCadTelefonePessoal = document.getElementById('cad-telefone-pessoal');
   const campoCadCidade = document.getElementById('cad-cidade');
   const campoCadUf = document.getElementById('cad-uf');
 
@@ -2150,6 +2314,7 @@
     campoCadNome.value = '';
     campoCadCrm.value = '';
     campoCadTelefone.value = '';
+    campoCadTelefonePessoal.value = '';
     campoCadCidade.value = '';
     campoCadUf.value = '';
   }
@@ -2176,6 +2341,7 @@
       nome,
       crm: campoCadCrm.value.trim(),
       telefone: campoCadTelefone.value.trim(),
+      telefone_pessoal: campoCadTelefonePessoal.value.trim(),
       cidade: campoCadCidade.value.trim(),
       uf: campoCadUf.value,
       especialidade: '',
