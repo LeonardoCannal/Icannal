@@ -31,6 +31,8 @@ from auth import (
     listar_usuarios_com_contagem_painel,
     buscar_base_propria_por_nome,
     editar_dados_medico_painel,
+    listar_historico_visitas,
+    listar_usuarios,
     resumo_painel_por_usuario,
     usuario_logado,
     fazer_login,
@@ -99,7 +101,7 @@ import io
 import csv
 import secrets
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
@@ -773,6 +775,135 @@ def admin_exportar_usuarios():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
         download_name=f"icannal_usuarios_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Admin: histórico de visitas de cada usuário
+# ---------------------------------------------------------------------------
+try:
+    from zoneinfo import ZoneInfo
+    _FUSO_BR = ZoneInfo("America/Sao_Paulo")
+except Exception:  # servidor sem a base de fusos: Brasília não tem mais horário de verão
+    _FUSO_BR = timezone(timedelta(hours=-3))
+
+
+def _utc_para_br(valor_iso):
+    """As visitas são gravadas em UTC; na tela aparecem no horário de Brasília."""
+    try:
+        return datetime.fromisoformat(valor_iso).replace(tzinfo=timezone.utc).astimezone(_FUSO_BR)
+    except (TypeError, ValueError):
+        return None
+
+
+def _dia_br_para_utc(texto_data, fim=False):
+    """'2026-11-05' (dia no Brasil) -> ISO em UTC do começo do dia (ou do dia seguinte, se fim)."""
+    try:
+        dia = datetime.strptime(texto_data, "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return None
+    if fim:
+        dia += timedelta(days=1)
+    return dia.replace(tzinfo=_FUSO_BR).astimezone(timezone.utc).replace(tzinfo=None).isoformat()
+
+
+def _filtros_historico():
+    hoje_br = datetime.now(_FUSO_BR).date()
+    de = request.args.get("de") or (hoje_br - timedelta(days=29)).isoformat()
+    ate = request.args.get("ate") or hoje_br.isoformat()
+    usuario = request.args.get("usuario", "")
+    resultado = request.args.get("resultado", "")
+    if usuario and not usuario.isdigit():
+        usuario = ""
+    if resultado and resultado != "sem_resultado" and resultado not in RESULTADOS_VISITA:
+        resultado = ""
+    return {"de": de, "ate": ate, "usuario": usuario, "resultado": resultado}
+
+
+def _buscar_historico(filtros, limite):
+    linhas, cortado = listar_historico_visitas(
+        usuario_id=filtros["usuario"] or None,
+        de_utc=_dia_br_para_utc(filtros["de"]),
+        ate_utc=_dia_br_para_utc(filtros["ate"], fim=True),
+        resultado=filtros["resultado"] or None,
+        limite=limite,
+    )
+    for l in linhas:
+        quando = _utc_para_br(l["visitado_em"])
+        l["data_br"] = quando.strftime("%d/%m/%Y") if quando else ""
+        l["hora_br"] = quando.strftime("%H:%M") if quando else ""
+        l["resultado_nome"] = RESULTADOS_VISITA.get(l["resultado"] or "", "Sem resultado informado")
+        l["local"] = " - ".join(x for x in (l["medico_cidade"], l["medico_uf"]) if x)
+        l["usuario_nome"] = l["usuario_nome"] or "(usuário excluído)"
+        l["fora_do_painel"] = l["painel_medico_id"] is None
+    return linhas, cortado
+
+
+@app.route("/admin/visitas")
+@admin_required
+def admin_historico_visitas():
+    filtros = _filtros_historico()
+    linhas, cortado = _buscar_historico(filtros, limite=1000)
+
+    # resumo: total por usuário e por resultado (do que está filtrado)
+    por_usuario = {}
+    for l in linhas:
+        item = por_usuario.setdefault(l["usuario_id"], {"nome": l["usuario_nome"], "total": 0, "medicos": set()})
+        item["total"] += 1
+        item["medicos"].add((l["medico_crm"] or "") + "|" + l["medico_nome"])
+    resumo_usuarios = sorted(
+        ({"id": uid, "nome": v["nome"], "total": v["total"], "medicos": len(v["medicos"])} for uid, v in por_usuario.items()),
+        key=lambda x: (-x["total"], x["nome"]),
+    )
+    por_resultado = {}
+    for l in linhas:
+        por_resultado[l["resultado_nome"]] = por_resultado.get(l["resultado_nome"], 0) + 1
+
+    usuarios = sorted(({"id": u["id"], "nome": u["nome"]} for u in listar_usuarios()), key=lambda u: u["nome"].lower())
+    return render_template(
+        "admin_visitas.html",
+        visitas=linhas,
+        cortado=cortado,
+        filtros=filtros,
+        usuarios=usuarios,
+        resultados=RESULTADOS_VISITA,
+        resumo_usuarios=resumo_usuarios,
+        por_resultado=sorted(por_resultado.items(), key=lambda kv: -kv[1]),
+        medicos_distintos=len({(l["medico_crm"] or "") + "|" + l["medico_nome"] for l in linhas}),
+    )
+
+
+@app.route("/admin/visitas/exportar")
+@admin_required
+def admin_historico_visitas_exportar():
+    filtros = _filtros_historico()
+    linhas, _ = _buscar_historico(filtros, limite=50000)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Visitas"
+    colunas = ["Data", "Hora", "Usuário", "Médico", "CRM/CRN", "Especialidade", "Cidade", "UF", "Resultado da visita"]
+    ws.append(colunas)
+    for celula in ws[1]:
+        celula.font = Font(bold=True, color="FFFFFF")
+        celula.fill = PatternFill(start_color="5C7A22", end_color="5C7A22", fill_type="solid")
+    for l in linhas:
+        ws.append([l["data_br"], l["hora_br"], l["usuario_nome"], l["medico_nome"], l["medico_crm"] or "",
+                   l["medico_especialidade"] or "", l["medico_cidade"] or "", l["medico_uf"] or "", l["resultado_nome"]])
+    for i, largura in enumerate([12, 8, 26, 32, 16, 24, 20, 6, 24], start=1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = largura
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:I{len(linhas) + 1}"
+
+    arquivo = io.BytesIO()
+    wb.save(arquivo)
+    arquivo.seek(0)
+    sufixo = f"{filtros['de']}_a_{filtros['ate']}"
+    return send_file(
+        arquivo,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"icannal_visitas_{sufixo}.xlsx",
     )
 
 

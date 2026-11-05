@@ -270,6 +270,25 @@ def inicializar_auth(app, sqlite_path):
         cursor.execute(sql_solicitacoes_senha)
         cursor.execute(sql_agenda)
         cursor.execute(sql_visitas)
+        # Histórico PERMANENTE de visitas (pra tela "Histórico de visitas" do
+        # admin). Guarda uma cópia dos dados do médico no momento da visita,
+        # sem depender do painel: a visita continua no histórico mesmo se o
+        # médico sair do painel depois (removido ou por inatividade).
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS historico_visitas (
+                id {"SERIAL PRIMARY KEY" if USANDO_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
+                visita_log_id INTEGER UNIQUE,
+                usuario_id INTEGER NOT NULL,
+                painel_medico_id INTEGER,
+                visitado_em TEXT NOT NULL,
+                resultado TEXT,
+                medico_nome TEXT NOT NULL,
+                medico_crm TEXT,
+                medico_especialidade TEXT,
+                medico_cidade TEXT,
+                medico_uf TEXT
+            )
+        """)
         cursor.execute(sql_base_propria)
         cursor.execute(sql_removidos)
         # Traduções de artigos (Google Cloud Translation): cada texto é
@@ -291,6 +310,8 @@ def inicializar_auth(app, sqlite_path):
         ("idx_visitas_usuario_data", "visitas_log", "usuario_id, visitado_em"),
         ("idx_visitas_data", "visitas_log", "visitado_em"),
         ("idx_visitas_painel", "visitas_log", "painel_medico_id"),
+        ("idx_historico_usuario_data", "historico_visitas", "usuario_id, visitado_em"),
+        ("idx_historico_data", "historico_visitas", "visitado_em"),
         ("idx_agenda_painel", "agenda_compromissos", "painel_medico_id"),
         ("idx_agenda_data", "agenda_compromissos", "data"),
         ("idx_buscas_usuario_data", "buscas_log", "usuario_id, criado_em"),
@@ -338,6 +359,14 @@ def inicializar_auth(app, sqlite_path):
             "SELECT p.usuario_id, p.id, p.visitado_em FROM painel_medicos p "
             "WHERE p.visitado_em IS NOT NULL "
             "AND NOT EXISTS (SELECT 1 FROM visitas_log v WHERE v.painel_medico_id = p.id)"
+        )
+        cursor.execute(
+            "INSERT INTO historico_visitas (visita_log_id, usuario_id, painel_medico_id, visitado_em, resultado, "
+            "medico_nome, medico_crm, medico_especialidade, medico_cidade, medico_uf) "
+            "SELECT v.id, v.usuario_id, v.painel_medico_id, v.visitado_em, v.resultado, "
+            "p.nome, p.crm, p.especialidade, p.cidade, p.uf "
+            "FROM visitas_log v JOIN painel_medicos p ON p.id = v.painel_medico_id "
+            "WHERE NOT EXISTS (SELECT 1 FROM historico_visitas h WHERE h.visita_log_id = v.id)"
         )
 
     @app.context_processor
@@ -1122,6 +1151,18 @@ def mover_no_painel(usuario_id: int, entrada_id: int, novo_status: str, resultad
                 _q("INSERT INTO visitas_log (usuario_id, painel_medico_id, visitado_em, resultado) VALUES (?, ?, ?, ?)"),
                 (usuario_id, entrada_id, agora, resultado),
             )
+            cursor.execute(
+                _q("""SELECT id FROM visitas_log WHERE usuario_id = ? AND painel_medico_id = ? AND visitado_em = ?
+                      ORDER BY id DESC LIMIT 1"""),
+                (usuario_id, entrada_id, agora),
+            )
+            log_id = cursor.fetchone()["id"]
+            cursor.execute(
+                _q("""INSERT INTO historico_visitas (visita_log_id, usuario_id, painel_medico_id, visitado_em, resultado,
+                          medico_nome, medico_crm, medico_especialidade, medico_cidade, medico_uf)
+                      SELECT ?, ?, id, ?, ?, nome, crm, especialidade, cidade, uf FROM painel_medicos WHERE id = ?"""),
+                (log_id, usuario_id, agora, resultado, entrada_id),
+            )
             return True
 
         # Desfazer uma visita (voltar pra Prospectados): tira a visita mais
@@ -1133,6 +1174,7 @@ def mover_no_painel(usuario_id: int, entrada_id: int, novo_status: str, resultad
             )
             ultima = cursor.fetchone()
             if ultima:
+                cursor.execute(_q("DELETE FROM historico_visitas WHERE visita_log_id = ?"), (ultima["id"],))
                 cursor.execute(_q("DELETE FROM visitas_log WHERE id = ?"), (ultima["id"],))
             cursor.execute(
                 _q("""SELECT visitado_em, resultado FROM visitas_log
@@ -1206,6 +1248,7 @@ def _excluir_medico_do_painel(cursor, entrada_id: int):
     aponta pra ele (agenda e histórico de visitas). Só o SQL — quem chama
     decide se guarda algum registro antes (pro caso da exclusão automática)."""
     cursor.execute(_q("DELETE FROM agenda_compromissos WHERE painel_medico_id = ?"), (entrada_id,))
+    cursor.execute(_q("UPDATE historico_visitas SET painel_medico_id = NULL, visita_log_id = NULL WHERE painel_medico_id = ?"), (entrada_id,))
     cursor.execute(_q("DELETE FROM visitas_log WHERE painel_medico_id = ?"), (entrada_id,))
     cursor.execute(_q("DELETE FROM painel_medicos WHERE id = ?"), (entrada_id,))
 
@@ -1645,6 +1688,38 @@ def dias_sem_visitar(usuario_id: int, agora_utc=None):
     return ((agora_utc or datetime.utcnow()) - dt).days
 
 
+def listar_historico_visitas(usuario_id=None, de_utc=None, ate_utc=None, resultado=None, limite=1000):
+    """Visitas registradas (mais recentes primeiro), com o nome de quem
+    visitou. Filtros opcionais: usuário, período (ISO em UTC, [de, até)) e
+    resultado ('sem_resultado' = visitas sem resultado informado)."""
+    filtros, valores = [], []
+    if usuario_id:
+        filtros.append("h.usuario_id = ?"); valores.append(int(usuario_id))
+    if de_utc:
+        filtros.append("h.visitado_em >= ?"); valores.append(de_utc)
+    if ate_utc:
+        filtros.append("h.visitado_em < ?"); valores.append(ate_utc)
+    if resultado == "sem_resultado":
+        filtros.append("(h.resultado IS NULL OR h.resultado = '')")
+    elif resultado:
+        filtros.append("h.resultado = ?"); valores.append(resultado)
+    onde = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q(f"""
+            SELECT h.id, h.usuario_id, u.nome AS usuario_nome, h.visitado_em, h.resultado,
+                   h.medico_nome, h.medico_crm, h.medico_especialidade, h.medico_cidade, h.medico_uf,
+                   h.painel_medico_id
+            FROM historico_visitas h
+            LEFT JOIN usuarios u ON u.id = h.usuario_id
+            {onde}
+            ORDER BY h.visitado_em DESC, h.id DESC
+            LIMIT {int(limite) + 1}
+        """), tuple(valores))
+        linhas = [dict(l) for l in cursor.fetchall()]
+    return linhas[:limite], len(linhas) > limite
+
+
 # ---------------------------------------------------------------------------
 # Roteiro do dia (visitas de hoje, em ordem, prontas pro Google Maps)
 # ---------------------------------------------------------------------------
@@ -1744,6 +1819,7 @@ def excluir_usuario(usuario_id: int) -> bool:
 
         cursor.execute(_q("DELETE FROM agenda_compromissos WHERE usuario_id = ?"), (usuario_id,))
         cursor.execute(_q("DELETE FROM visitas_log WHERE usuario_id = ?"), (usuario_id,))
+        cursor.execute(_q("DELETE FROM historico_visitas WHERE usuario_id = ?"), (usuario_id,))
         # agenda/visitas ligadas aos médicos do painel dele (garantia extra)
         cursor.execute(_q("DELETE FROM agenda_compromissos WHERE painel_medico_id IN (SELECT id FROM painel_medicos WHERE usuario_id = ?)"), (usuario_id,))
         cursor.execute(_q("DELETE FROM visitas_log WHERE painel_medico_id IN (SELECT id FROM painel_medicos WHERE usuario_id = ?)"), (usuario_id,))

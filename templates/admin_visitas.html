@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i.cannal · Histórico de visitas</title>
+<link rel="preload" href="/static/fontes/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fontes/montserrat.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="i.cannal">
+<link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
+</head>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
+  <div class="admin-header">
+    <svg class="logo-admin" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">
+      <polygon points="2,0 16,0 32,44 18,44" fill="#88AD36"/>
+      <polygon points="25,0 39,0 55,44 41,44" fill="#88AD36"/>
+      <text x="72" y="34" font-family="Montserrat, sans-serif" font-weight="900" font-size="34" textLength="204" lengthAdjust="spacing">
+        <tspan fill="#A8CC5A">I.</tspan><tspan fill="#FFFFFF">CANNAL</tspan>
+      </text>
+    </svg>
+    <div class="admin-header-direita">
+      {% include '_botao_tema.html' %}
+      <a href="{{ url_for('index') }}">Voltar ao i.cannal</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('perfil') }}">Meu Perfil</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('logout') }}">Sair</a>
+    </div>
+  </div>
+
+  <div class="hero-secao">
+    <div class="hero-secao-conteudo">
+      <h1>Histórico de visitas</h1>
+      <p>Todas as visitas marcadas pelos usuários, com o médico, a data e o resultado.</p>
+    </div>
+  </div>
+
+  <main class="admin-main">
+  <div class="card-flutuante">
+    <div class="admin-nav">
+      <a href="{{ url_for('admin') }}" class="admin-nav-link">Usuários</a>
+      <a href="{{ url_for('admin_dashboard') }}" class="admin-nav-link">Dashboard</a>
+      <a href="{{ url_for('admin_historico_visitas') }}" class="admin-nav-link ativo">Visitas</a>
+      <a href="{{ url_for('admin_base_propria') }}" class="admin-nav-link">Base de médicos</a>
+    </div>
+
+    <form class="hv-filtros" method="get" action="{{ url_for('admin_historico_visitas') }}">
+      <div class="campo">
+        <label for="hv-usuario">Usuário</label>
+        <select id="hv-usuario" name="usuario">
+          <option value="">Todos os usuários</option>
+          {% for u in usuarios %}
+          <option value="{{ u.id }}" {{ 'selected' if filtros.usuario == u.id|string }}>{{ u.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="hv-de">De</label>
+        <input type="date" id="hv-de" name="de" value="{{ filtros.de }}">
+      </div>
+      <div class="campo">
+        <label for="hv-ate">Até</label>
+        <input type="date" id="hv-ate" name="ate" value="{{ filtros.ate }}">
+      </div>
+      <div class="campo">
+        <label for="hv-resultado">Resultado</label>
+        <select id="hv-resultado" name="resultado">
+          <option value="">Todos</option>
+          {% for chave, nome in resultados.items() %}
+          <option value="{{ chave }}" {{ 'selected' if filtros.resultado == chave }}>{{ nome }}</option>
+          {% endfor %}
+          <option value="sem_resultado" {{ 'selected' if filtros.resultado == 'sem_resultado' }}>Sem resultado informado</option>
+        </select>
+      </div>
+      <div class="hv-botoes">
+        <button type="submit" class="btn-primario">Filtrar</button>
+        <a class="btn-exportar-excel" href="{{ url_for('admin_historico_visitas_exportar', **filtros) }}" download>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4.5-4.5M12 15l4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          Exportar para Excel
+        </a>
+      </div>
+    </form>
+    <div class="hv-atalhos">
+      Período rápido:
+      <a href="#" data-dias="0">Hoje</a> ·
+      <a href="#" data-dias="6">7 dias</a> ·
+      <a href="#" data-dias="29">30 dias</a> ·
+      <a href="#" data-dias="mes">Este mês</a> ·
+      <a href="#" data-dias="89">90 dias</a>
+    </div>
+
+    <div class="hv-resumo">
+      <div class="stat-card"><div class="stat-label">Visitas no período</div><div class="stat-valor">{{ visitas|length }}{{ '+' if cortado }}</div></div>
+      <div class="stat-card"><div class="stat-label">Médicos diferentes</div><div class="stat-valor">{{ medicos_distintos }}</div></div>
+      <div class="stat-card"><div class="stat-label">Usuários que visitaram</div><div class="stat-valor">{{ resumo_usuarios|length }}</div></div>
+    </div>
+
+    {% if visitas %}
+    <div class="hv-duas-colunas">
+      {% if not filtros.usuario %}
+      <div>
+        <h3 class="modal-secao-titulo">Por usuário</h3>
+        <div class="tabela-scroll">
+        <table class="tabela-admin hv-tabela-resumo">
+          <thead><tr><th>Usuário</th><th class="num">Visitas</th><th class="num">Médicos</th></tr></thead>
+          <tbody>
+            {% for r in resumo_usuarios %}
+            <tr>
+              <td data-rotulo="Usuário"><a href="{{ url_for('admin_historico_visitas', usuario=r.id, de=filtros.de, ate=filtros.ate, resultado=filtros.resultado) }}">{{ r.nome }}</a></td>
+              <td class="num" data-rotulo="Visitas">{{ r.total }}</td>
+              <td class="num" data-rotulo="Médicos">{{ r.medicos }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+      {% endif %}
+      <div>
+        <h3 class="modal-secao-titulo">Por resultado</h3>
+        <ul class="hv-resultados">
+          {% for nome, total in por_resultado %}
+          <li><span>{{ nome }}</span><b>{{ total }}</b></li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    <h3 class="modal-secao-titulo">Visitas (mais recentes primeiro)</h3>
+    {% if cortado %}<p class="hv-aviso">Mostrando as 1.000 visitas mais recentes. Diminua o período ou exporte para o Excel para ver todas.</p>{% endif %}
+    <div class="tabela-scroll">
+    <table class="tabela-admin hv-tabela">
+      <thead>
+        <tr><th>Data</th><th>Usuário</th><th>Médico</th><th>Cidade</th><th>Resultado</th></tr>
+      </thead>
+      <tbody>
+        {% for v in visitas %}
+        <tr>
+          <td data-rotulo="Data" class="hv-data">{{ v.data_br }} <span>{{ v.hora_br }}</span></td>
+          <td data-rotulo="Usuário">{{ v.usuario_nome }}</td>
+          <td data-rotulo="Médico" class="hv-medico"><div>
+            <strong>{{ v.medico_nome }}</strong>{% if v.fora_do_painel %} <span class="hv-tag" title="Esse médico já saiu do painel do usuário, mas a visita continua registrada">fora do painel</span>{% endif %}
+            <small>{{ [v.medico_especialidade, v.medico_crm]|select|join(' · ') }}</small>
+          </div></td>
+          <td data-rotulo="Cidade" class="hv-cidade">{{ v.local or '-' }}</td>
+          <td data-rotulo="Resultado"><span class="hv-resultado hv-resultado-{{ v.resultado or 'nenhum' }}">{{ v.resultado_nome }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="hv-vazio">Nenhuma visita encontrada com esses filtros.</div>
+    {% endif %}
+  </div>
+  </main>
+
+<script>
+  // Atalhos de período: preenchem "De" e "Até" e já filtram.
+  document.querySelectorAll('.hv-atalhos a').forEach(function(link){
+    link.addEventListener('click', function(e){
+      e.preventDefault();
+      var hoje = new Date();
+      var fmt = function(d){ return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+      var inicio = new Date(hoje);
+      if(link.dataset.dias === 'mes'){ inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1); }
+      else { inicio.setDate(hoje.getDate() - Number(link.dataset.dias)); }
+      document.getElementById('hv-de').value = fmt(inicio);
+      document.getElementById('hv-ate').value = fmt(hoje);
+      link.closest('.card-flutuante').querySelector('.hv-filtros').submit();
+    });
+  });
+  document.getElementById('hv-usuario').addEventListener('change', function(){ this.form.submit(); });
+  document.getElementById('hv-resultado').addEventListener('change', function(){ this.form.submit(); });
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+  }
+</script>
+</body>
+</html>
