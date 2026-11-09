@@ -872,6 +872,33 @@ body.ui-novo .link-ver-visitas{ margin-left: 10px; }
   body.ui-novo .hv-tabela td::before{ content: attr(data-rotulo) ":"; font-weight: 600; color: var(--pedra); min-width: 96px; font-size: 12.5px; }
 }
 
+
+/* Médico "cliente" (já comprou do promotor) — marcado pelo admin, em vermelho */
+body.ui-novo{ --cliente: #D93636; --cliente-fundo: #FDEEEE; --cliente-borda: #F2B8B8; --cliente-texto: #A41F1F; }
+body.ui-novo.escuro{ --cliente: #F26B6B; --cliente-fundo: rgba(242,107,107,.10); --cliente-borda: rgba(242,107,107,.45); --cliente-texto: #FF9A9A; }
+body.ui-novo .painel-card.painel-card-cliente, body.ui-novo .modal-card.modal-card-cliente{
+  background: var(--cliente-fundo); border-color: var(--cliente-borda); box-shadow: inset 4px 0 0 var(--cliente);
+}
+body.ui-novo .painel-card-cliente .painel-card-topo strong, body.ui-novo .modal-card-cliente > strong{ color: var(--cliente-texto); }
+body.ui-novo .selo-cliente{
+  display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; width: fit-content;
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px; background: var(--cliente); color: #fff; margin-bottom: 4px;
+}
+body.ui-novo .painel-card span.selo-cliente, body.ui-novo .modal-card span.selo-cliente{ color: #fff; font-size: 11px; font-weight: 700; }
+body.ui-novo.escuro .painel-card span.selo-cliente, body.ui-novo.escuro .modal-card span.selo-cliente, body.ui-novo.escuro .selo-cliente{ color: #1A0A0A; }
+body.ui-novo .btn-marcar-cliente{
+  margin-top: 8px; align-self: flex-start; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  padding: 6px 10px; border-radius: 8px; border: 1px solid var(--cliente-borda); background: transparent; color: var(--cliente-texto);
+  transition: background-color .2s ease, color .2s ease;
+}
+body.ui-novo .btn-marcar-cliente:hover{ background: var(--cliente-fundo); }
+body.ui-novo .btn-marcar-cliente.ativo{ border-color: var(--linha-forte); color: var(--ardosia); }
+body.ui-novo .btn-marcar-cliente:disabled{ opacity: .6; cursor: wait; }
+body.ui-novo .notif-item-cliente .ponto-cliente{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--cliente); margin-right: 6px; vertical-align: 1px; }
+body.ui-novo .notif-item-cliente.nao-lida{ background: var(--cliente-fundo); }
+body.ui-novo .notif-item-cliente .notif-quando{ font-size: 12px; color: var(--pedra); }
+
 /* quem pediu "menos movimento" no aparelho: tudo parado e na hora */
 @media (prefers-reduced-motion: reduce){
   body.ui-novo *, body.ui-novo::after{ transition: none !important; animation: none !important; }
