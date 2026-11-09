@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i.cannal · Médicos clientes</title>
+<link rel="preload" href="/static/fontes/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fontes/montserrat.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="i.cannal">
+<link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
+</head>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
+  <div class="admin-header">
+    <svg class="logo-admin" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">
+      <polygon points="2,0 16,0 32,44 18,44" fill="#88AD36"/>
+      <polygon points="25,0 39,0 55,44 41,44" fill="#88AD36"/>
+      <text x="72" y="34" font-family="Montserrat, sans-serif" font-weight="900" font-size="34" textLength="204" lengthAdjust="spacing">
+        <tspan fill="#A8CC5A">I.</tspan><tspan fill="#FFFFFF">CANNAL</tspan>
+      </text>
+    </svg>
+    <div class="admin-header-direita">
+      {% include '_botao_tema.html' %}
+      <a href="{{ url_for('index') }}">Voltar ao i.cannal</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('perfil') }}">Meu Perfil</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('logout') }}">Sair</a>
+    </div>
+  </div>
+
+  <div class="hero-secao">
+    <div class="hero-secao-conteudo">
+      <h1>Médicos clientes</h1>
+      <p>Envie a planilha do sistema de pedidos: quem tem "Último pedido" vira cliente (vermelho) no painel do promotor responsável.</p>
+    </div>
+  </div>
+
+  <main class="admin-main">
+  <div class="card-flutuante">
+    <div class="admin-nav">
+      <a href="{{ url_for('admin') }}" class="admin-nav-link">Usuários</a>
+      <a href="{{ url_for('admin_dashboard') }}" class="admin-nav-link">Dashboard</a>
+      <a href="{{ url_for('admin_historico_visitas') }}" class="admin-nav-link">Visitas</a>
+      <a href="{{ url_for('admin_clientes') }}" class="admin-nav-link ativo">Clientes</a>
+      <a href="{{ url_for('admin_base_propria') }}" class="admin-nav-link">Base de médicos</a>
+    </div>
+
+    <div class="cli-passo">
+      <span class="cli-num">1</span>
+      <div class="cli-passo-corpo">
+        <h3>Escolha a planilha</h3>
+        <p class="cli-ajuda">A exportação de especialistas (.xlsx ou .csv) com as colunas <b>NOME</b>, <b>REGISTRO</b>, <b>CONSELHO</b>, <b>ESTADO</b>, <b>PROMOTOR</b> e <b>ULTIMO PEDIDO</b>. Nada é gravado antes da confirmação.</p>
+        <div class="cli-envio">
+          <input type="file" id="cli-arquivo" accept=".xlsx,.csv">
+          <button type="button" id="cli-previa" class="btn-primario">Ver prévia</button>
+        </div>
+        <div class="cli-msg" id="cli-msg" role="status" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div id="cli-resultado" hidden>
+      <div class="cli-passo">
+        <span class="cli-num">2</span>
+        <div class="cli-passo-corpo">
+          <h3>Confira os promotores</h3>
+          <p class="cli-ajuda">Cada promotor da planilha foi ligado ao usuário do i.cannal com o mesmo nome. Corrija onde precisar; quem ficar em “Não importar” é ignorado.</p>
+
+          <div class="cli-totais" id="cli-totais"></div>
+
+          <label class="cli-check"><input type="checkbox" id="cli-adicionar" checked> Adicionar ao painel do promotor os médicos que ainda não estão lá (já como cliente)</label>
+
+          <div class="tabela-scroll">
+            <table class="tabela-admin cli-tabela">
+              <thead><tr><th>Promotor na planilha</th><th class="num">Médicos</th><th>Usuário no i.cannal</th><th class="num">Marcar</th><th class="num">Adicionar</th><th class="num">Em outro painel</th></tr></thead>
+              <tbody id="cli-promotores"></tbody>
+            </table>
+          </div>
+
+          <details class="cli-conflitos" id="cli-conflitos-box" hidden>
+            <summary id="cli-conflitos-titulo"></summary>
+            <p class="cli-ajuda">Esses médicos já estão no painel de outro usuário e não serão mexidos (cada médico só fica em um painel). Se precisar, mova manualmente.</p>
+            <div class="tabela-scroll">
+              <table class="tabela-admin cli-tabela">
+                <thead><tr><th>Médico</th><th>Registro</th><th>Promotor na planilha</th><th>Está no painel de</th></tr></thead>
+                <tbody id="cli-conflitos"></tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <div class="cli-passo">
+        <span class="cli-num">3</span>
+        <div class="cli-passo-corpo">
+          <h3>Confirme</h3>
+          <button type="button" id="cli-aplicar" class="btn-primario">Marcar clientes</button>
+          <div class="cli-msg" id="cli-msg-final" role="status" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </main>
+
+<script>
+(function(){
+  const arquivo = document.getElementById('cli-arquivo');
+  const btnPrevia = document.getElementById('cli-previa');
+  const btnAplicar = document.getElementById('cli-aplicar');
+  const msg = document.getElementById('cli-msg');
+  const msgFinal = document.getElementById('cli-msg-final');
+  const caixa = document.getElementById('cli-resultado');
+  const chkAdicionar = document.getElementById('cli-adicionar');
+  let mapa = {};
+  let usuarios = [];
+
+  function esc(v){ return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  const fmt = n => Number(n || 0).toLocaleString('pt-BR');
+
+  function enviar(modo){
+    const f = arquivo.files[0];
+    if(!f){ msg.textContent = 'Escolha a planilha primeiro.'; return Promise.reject(); }
+    const dados = new FormData();
+    dados.append('arquivo', f);
+    dados.append('modo', modo);
+    dados.append('mapa', JSON.stringify(mapa));
+    dados.append('adicionar_ausentes', chkAdicionar.checked ? '1' : '0');
+    return fetch('/admin/clientes/importar', { method: 'POST', body: dados }).then(r => r.json());
+  }
+
+  function desenhar(d){
+    usuarios = d.usuarios;
+    const t = d.totais;
+    const add = chkAdicionar.checked;
+    document.getElementById('cli-totais').innerHTML = [
+      ['Médicos com pedido', t.com_pedido, ''],
+      ['Serão marcados (já estão no painel)', t.marcar, 'destaque'],
+      ['Já eram clientes', t.ja_cliente, ''],
+      [add ? 'Serão adicionados ao painel' : 'Não estão no painel (não serão adicionados)', add ? t.adicionar : t.ausente, add ? 'destaque' : ''],
+      ['No painel de outro usuário', t.outro_painel, t.outro_painel ? 'alerta' : ''],
+      ['Promotor sem usuário (ignorados)', t.sem_promotor, t.sem_promotor ? 'alerta' : ''],
+    ].map(([rot, val, cls]) => `<div class="stat-card cli-total ${cls}"><div class="stat-label">${esc(rot)}</div><div class="stat-valor">${fmt(val)}</div></div>`).join('');
+
+    const opcoes = id => '<option value="">Não importar</option>' + usuarios.map(u => `<option value="${u.id}" ${u.id === id ? 'selected' : ''}>${esc(u.nome)}</option>`).join('');
+    document.getElementById('cli-promotores').innerHTML = d.promotores.map(p => {
+      mapa[p.promotor] = p.usuario_id ? String(p.usuario_id) : '';
+      return `<tr class="${p.usuario_id ? '' : 'cli-sem-usuario'}">
+        <td data-rotulo="Promotor">${esc(p.promotor)}</td>
+        <td class="num" data-rotulo="Médicos">${fmt(p.medicos)}</td>
+        <td data-rotulo="Usuário"><select data-promotor="${esc(p.promotor)}">${opcoes(p.usuario_id)}</select></td>
+        <td class="num" data-rotulo="Marcar">${fmt(p.marcar + p.ja_cliente)}</td>
+        <td class="num" data-rotulo="Adicionar">${fmt(add ? p.adicionar : 0)}</td>
+        <td class="num" data-rotulo="Outro painel">${fmt(p.outro_painel)}</td>
+      </tr>`;
+    }).join('');
+    document.querySelectorAll('#cli-promotores select').forEach(sel => sel.addEventListener('change', () => {
+      mapa[sel.dataset.promotor] = sel.value;
+      previa();
+    }));
+
+    const box = document.getElementById('cli-conflitos-box');
+    box.hidden = !d.conflitos.length;
+    document.getElementById('cli-conflitos-titulo').textContent = `${fmt(t.outro_painel)} médico(s) estão no painel de outro usuário`;
+    document.getElementById('cli-conflitos').innerHTML = d.conflitos.map(c => `<tr>
+      <td data-rotulo="Médico">${esc(c.medico)}</td><td data-rotulo="Registro">${esc(c.registro)}</td>
+      <td data-rotulo="Na planilha">${esc(c.promotor_planilha)}</td><td data-rotulo="Está com">${esc(c.esta_com)}</td></tr>`).join('');
+    caixa.hidden = false;
+  }
+
+  function previa(){
+    msg.textContent = 'Lendo a planilha…';
+    btnPrevia.disabled = true;
+    enviar('previa').then(d => {
+      if(!d.ok){ msg.textContent = d.mensagem || 'Não foi possível ler a planilha.'; caixa.hidden = true; return; }
+      msg.textContent = '';
+      msgFinal.textContent = '';
+      desenhar(d);
+    }).catch(() => {}).finally(() => { btnPrevia.disabled = false; });
+  }
+
+  btnPrevia.addEventListener('click', () => { mapa = {}; previa(); });
+  arquivo.addEventListener('change', () => { mapa = {}; caixa.hidden = true; msg.textContent = ''; });
+  chkAdicionar.addEventListener('change', previa);
+
+  btnAplicar.addEventListener('click', () => {
+    if(!confirm('Marcar esses médicos como clientes nos painéis dos promotores?')) return;
+    btnAplicar.disabled = true;
+    btnAplicar.textContent = 'Marcando…';
+    enviar('aplicar').then(d => {
+      if(!d.ok){ msgFinal.textContent = d.mensagem || 'Não foi possível concluir.'; return; }
+      const f = d.feito;
+      msgFinal.innerHTML = `<b>Pronto!</b> ${fmt(f.marcados)} médico(s) marcados como cliente, ${fmt(f.adicionados)} adicionados aos painéis` +
+        (f.atualizados ? `, ${fmt(f.atualizados)} que já eram clientes tiveram o último pedido atualizado` : '') +
+        (f.pulados ? `, ${fmt(f.pulados)} pulados (entraram em outro painel no meio do caminho)` : '') + '.';
+      msgFinal.classList.add('ok');
+      desenhar(d);
+    }).catch(() => { msgFinal.textContent = 'Erro de conexão. Nada foi perdido: confira a prévia e tente de novo.'; })
+      .finally(() => { btnAplicar.disabled = false; btnAplicar.textContent = 'Marcar clientes'; });
+  });
+})();
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+  }
+</script>
+</body>
+</html>

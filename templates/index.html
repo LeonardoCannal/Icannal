@@ -1884,6 +1884,7 @@
       <span>${esc(item.crm || '')}</span>
       <span>${esc(linhaLocal)}</span>
       <span>${esc(item.endereco || '')}</span>
+      ${item.ja_comprou && item.ultimo_pedido_em ? `<span class="painel-tel"><b>Último pedido:</b> ${esc(item.ultimo_pedido_em.split('-').reverse().join('/'))}</span>` : ''}
       ${linhaTelefone('Clínica', item.telefone)}
       ${linhaTelefone('Pessoal', item.telefone_pessoal)}
       ${badgeAgenda}

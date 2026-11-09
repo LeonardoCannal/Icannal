@@ -85,6 +85,7 @@
         <a href="{{ url_for('admin') }}" class="admin-nav-link ativo">Usuários</a>
         <a href="{{ url_for('admin_dashboard') }}" class="admin-nav-link">Dashboard</a>
         <a href="{{ url_for('admin_historico_visitas') }}" class="admin-nav-link">Visitas</a>
+        <a href="{{ url_for('admin_clientes') }}" class="admin-nav-link">Clientes</a>
         <a href="{{ url_for('admin_base_propria') }}" class="admin-nav-link">Base de médicos</a>
       </div>
 
@@ -340,6 +341,7 @@
         <span>${esc(item.endereco)}</span>
         <span>${item.telefone && item.telefone.replace(/\D/g, '').length >= 8 ? 'Clínica: ' + esc(item.telefone) : ''}</span>
         <span>${item.telefone_pessoal ? 'Pessoal: ' + esc(item.telefone_pessoal) : ''}</span>
+        ${item.ja_comprou && item.ultimo_pedido_em ? `<span>Último pedido: ${esc(item.ultimo_pedido_em.split('-').reverse().join('/'))}</span>` : ''}
         ${badge}
         <button type="button" class="btn-marcar-cliente${item.ja_comprou ? ' ativo' : ''}" aria-pressed="${item.ja_comprou ? 'true' : 'false'}">
           ${item.ja_comprou ? 'Desmarcar cliente' : 'Marcar como cliente (já comprou)'}
