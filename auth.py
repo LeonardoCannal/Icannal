@@ -1186,7 +1186,7 @@ def listar_painel_todos_completo():
         cursor = conn.cursor()
         cursor.execute("""
             SELECT p.id, p.usuario_id, u.nome AS usuario_nome, p.nome, p.crm, p.especialidade, p.cidade, p.uf,
-                   p.telefone, p.telefone_pessoal, p.status, p.ja_comprou, p.adicionado_em, p.visitado_em
+                   p.endereco, p.telefone, p.telefone_pessoal, p.status, p.ja_comprou, p.adicionado_em, p.visitado_em
             FROM painel_medicos p LEFT JOIN usuarios u ON u.id = p.usuario_id
         """)
         return [dict(l) for l in cursor.fetchall()]

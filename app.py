@@ -1113,7 +1113,7 @@ def admin_revisao():
         analise["grupos"] = [g for g in analise["grupos"] if any(i["usuario_id"] == pid for i in g["itens"])]
         analise["incompletos"] = [i for i in analise["incompletos"] if i["usuario_id"] == pid]
     tipo = request.args.get("tipo", "")
-    if tipo in ("mesmo_registro", "numero_parecido", "mesmo_nome"):
+    if tipo in ("mesmo_registro", "numero_parecido", "mesmo_nome", "nome_parecido", "telefone", "endereco"):
         analise["grupos"] = [g for g in analise["grupos"] if g["tipo"] == tipo]
         analise["incompletos"] = []
     elif tipo == "incompletos":

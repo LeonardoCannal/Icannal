@@ -934,7 +934,7 @@ body.ui-novo .cli-conflitos summary{ cursor: pointer; font-weight: 600; font-siz
 
 
 /* Admin: revisão dos painéis (duplicados) */
-body.ui-novo .rv-totais{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 6px 0 14px; }
+body.ui-novo .rv-totais{ display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 6px 0 14px; }
 body.ui-novo a.rv-total{ text-decoration: none; color: inherit; transition: border-color .2s ease, transform .35s var(--suave, ease); }
 body.ui-novo a.rv-total:hover{ border-color: var(--linha-forte); transform: translateY(-1px); }
 body.ui-novo a.rv-total.ativo{ border-color: var(--verde); box-shadow: 0 0 0 3px rgba(136,173,54,.18); }
@@ -955,7 +955,7 @@ body.ui-novo .rv-grupo-topo strong{ display: block; margin-top: 4px; font-size: 
 body.ui-novo .rv-motivo{ display: block; font-size: 13px; color: var(--ardosia); }
 body.ui-novo .rv-selo{ display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--superficie); color: var(--ardosia); border: 1px solid var(--linha); }
 body.ui-novo .rv-mesmo_registro .rv-selo{ background: #FBEAEA; color: #A03030; border-color: #F0C8C8; }
-body.ui-novo .rv-numero_parecido .rv-selo{ background: var(--alerta-fundo); color: var(--alerta-texto); border-color: #F1DDB0; }
+body.ui-novo .rv-nome_parecido .rv-selo, body.ui-novo .rv-numero_parecido .rv-selo{ background: var(--alerta-fundo); color: var(--alerta-texto); border-color: #F1DDB0; }
 body.ui-novo.escuro .rv-mesmo_registro .rv-selo{ background: rgba(242,139,130,.1); color: #F28B82; border-color: rgba(242,139,130,.3); }
 body.ui-novo .rv-sugestao{ font: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap; padding: 6px 10px; border-radius: 8px; cursor: pointer;
   background: transparent; border: 1px solid var(--linha-forte); color: var(--tinta); }
