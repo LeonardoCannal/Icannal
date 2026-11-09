@@ -1,3 +1,5 @@
+import clientes_import
+import json
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, redirect, url_for, has_request_context, got_request_exception
 from flask.sessions import SecureCookieSessionInterface
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -36,6 +38,8 @@ from auth import (
     listar_alertas_clientes,
     contar_alertas_clientes_nao_lidos,
     marcar_alertas_clientes_lidos,
+    listar_painel_todos_resumo,
+    aplicar_importacao_clientes,
     listar_usuarios,
     resumo_painel_por_usuario,
     usuario_logado,
@@ -1023,6 +1027,69 @@ def admin_alertas_clientes():
 def admin_alertas_clientes_lidos():
     marcar_alertas_clientes_lidos()
     return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Admin: marcar médicos "cliente" a partir da planilha do sistema de pedidos
+# ---------------------------------------------------------------------------
+@app.route("/admin/clientes")
+@admin_required
+def admin_clientes():
+    return render_template("admin_clientes.html")
+
+
+@app.route("/admin/clientes/importar", methods=["POST"])
+@admin_required
+def admin_clientes_importar():
+    """modo=previa (padrão): só mostra o que vai acontecer. modo=aplicar: grava."""
+    arquivo = request.files.get("arquivo")
+    if not arquivo or not arquivo.filename:
+        return jsonify({"ok": False, "mensagem": "Escolha a planilha (.xlsx ou .csv)."}), 400
+    linhas, erro = clientes_import.ler_planilha(arquivo.read(), arquivo.filename)
+    if erro:
+        return jsonify({"ok": False, "mensagem": erro}), 400
+
+    usuarios = sorted(({"id": u["id"], "nome": u["nome"]} for u in listar_usuarios() if u["aprovado"]),
+                      key=lambda u: u["nome"].lower())
+    ids_validos = {u["id"] for u in usuarios}
+    try:
+        escolhido = json.loads(request.form.get("mapa") or "{}")
+    except ValueError:
+        escolhido = {}
+
+    promotores = sorted({(l.get("promotor") or "").strip() or "(sem promotor)"
+                         for l in linhas if (l.get("ultimo_pedido") or "").strip()})
+    mapa = {}
+    for p in promotores:
+        if p in escolhido:  # o admin escolheu na tela (vazio = não importar)
+            valor = str(escolhido[p] or "")
+            mapa[p] = int(valor) if valor.isdigit() and int(valor) in ids_validos else None
+        else:
+            mapa[p] = clientes_import.sugerir_usuario(p, usuarios)
+
+    adicionar = request.form.get("adicionar_ausentes", "1") == "1"
+    acoes, resumo, totais = clientes_import.planejar(linhas, mapa, listar_painel_todos_resumo(), adicionar)
+
+    nomes_usuarios = {u["id"]: u["nome"] for u in usuarios}
+    nomes_todos = {u["id"]: u["nome"] for u in listar_usuarios()}
+    conflitos = [{
+        "medico": a["linha"]["nome"],
+        "registro": clientes_import.texto_registro(a["registro"]) if a["registro"] else "",
+        "promotor_planilha": a["promotor"],
+        "esta_com": nomes_todos.get(a["entrada"]["usuario_id"], "outro usuário"),
+    } for a in acoes if a["tipo"] == "outro_painel"][:300]
+
+    if request.form.get("modo") != "aplicar":
+        return jsonify({"ok": True, "modo": "previa", "usuarios": usuarios, "promotores": resumo,
+                        "totais": totais, "conflitos": conflitos})
+
+    feito = aplicar_importacao_clientes(acoes, clientes_import.medico_para_painel)
+    _avisar_acao_de_outro_admin(
+        f"🔴 i.cannal — {usuario_logado()['nome']} importou clientes da planilha de pedidos: "
+        f"{feito['marcados']} marcados, {feito['adicionados']} adicionados aos painéis."
+    )
+    return jsonify({"ok": True, "modo": "aplicado", "feito": feito, "totais": totais,
+                    "promotores": resumo, "usuarios": usuarios, "conflitos": conflitos})
 
 
 @app.route("/admin/estatisticas/<int:user_id>")

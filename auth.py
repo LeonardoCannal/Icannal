@@ -349,6 +349,7 @@ def inicializar_auth(app, sqlite_path):
     # em vermelho no painel e gera alerta pro admin quando é agendado/visitado.
     _adicionar_coluna_se_faltar("painel_medicos", "ja_comprou", "INTEGER DEFAULT 0")
     _adicionar_coluna_se_faltar("painel_medicos", "marcado_cliente_em", "TEXT")
+    _adicionar_coluna_se_faltar("painel_medicos", "ultimo_pedido_em", "TEXT")  # da planilha de pedidos (AAAA-MM-DD)
     _adicionar_coluna_se_faltar("visitas_log", "resultado", "TEXT")
     _adicionar_coluna_se_faltar("usuarios", "telefone", "TEXT")
     # DEFAULT verdadeiro é de propósito: ninguém que já tinha conta fica
@@ -1167,6 +1168,55 @@ def marcar_medico_cliente(usuario_id: int, entrada_id: int, cliente: bool) -> bo
             (1 if cliente else 0, datetime.utcnow().isoformat() if cliente else None, entrada_id, usuario_id),
         )
         return cursor.rowcount > 0
+
+
+def listar_painel_todos_resumo():
+    """Todos os médicos de todos os painéis (só o necessário pra casar com a
+    planilha de pedidos)."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, usuario_id, nome, crm, ja_comprou FROM painel_medicos")
+        return [dict(l) for l in cursor.fetchall()]
+
+
+def aplicar_importacao_clientes(acoes: list, medico_para_painel):
+    """Grava o plano da importação de clientes numa transação só:
+    - 'marcar' / 'ja_cliente': marca como cliente e atualiza o último pedido;
+    - 'adicionar': coloca o médico no painel do promotor, já como cliente.
+    Devolve {"marcados", "atualizados", "adicionados", "pulados"}."""
+    agora = datetime.utcnow().isoformat()
+    resultado = {"marcados": 0, "atualizados": 0, "adicionados": 0, "pulados": 0}
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        for acao in acoes:
+            if acao["tipo"] in ("marcar", "ja_cliente"):
+                cursor.execute(
+                    _q("""UPDATE painel_medicos
+                          SET ja_comprou = 1,
+                              marcado_cliente_em = COALESCE(marcado_cliente_em, ?),
+                              ultimo_pedido_em = COALESCE(?, ultimo_pedido_em)
+                          WHERE id = ? AND usuario_id = ?"""),
+                    (agora, acao["ultimo_pedido"], acao["entrada"]["id"], acao["usuario_id"]),
+                )
+                resultado["marcados" if acao["tipo"] == "marcar" else "atualizados"] += 1
+            elif acao["tipo"] == "adicionar":
+                medico = medico_para_painel(acao["linha"], acao["registro"])
+                chave = computar_chave_medico(medico)
+                cursor.execute(_q("SELECT 1 FROM painel_medicos WHERE chave_medico = ? LIMIT 1"), (chave,))
+                if cursor.fetchone():
+                    resultado["pulados"] += 1
+                    continue
+                cursor.execute(
+                    _q("""INSERT INTO painel_medicos
+                          (usuario_id, chave_medico, nome, crm, especialidade, cidade, uf, endereco, telefone,
+                           telefone_pessoal, status, adicionado_em, ja_comprou, marcado_cliente_em, ultimo_pedido_em)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', 'prospectado', ?, 1, ?, ?)"""),
+                    (acao["usuario_id"], chave, medico["nome"], medico["crm"], medico["especialidade"],
+                     medico["cidade"], medico["uf"], medico["endereco"], medico["telefone"],
+                     agora, agora, acao["ultimo_pedido"]),
+                )
+                resultado["adicionados"] += 1
+    return resultado
 
 
 def listar_alertas_clientes(limite: int = 30):
