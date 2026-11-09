@@ -1179,6 +1179,33 @@ def listar_painel_todos_resumo():
         return [dict(l) for l in cursor.fetchall()]
 
 
+def listar_painel_todos_completo():
+    """Todos os médicos de todos os painéis, com o nome do dono (pra revisão
+    de duplicados do admin)."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT p.id, p.usuario_id, u.nome AS usuario_nome, p.nome, p.crm, p.especialidade, p.cidade, p.uf,
+                   p.telefone, p.telefone_pessoal, p.status, p.ja_comprou, p.adicionado_em, p.visitado_em
+            FROM painel_medicos p LEFT JOIN usuarios u ON u.id = p.usuario_id
+        """)
+        return [dict(l) for l in cursor.fetchall()]
+
+
+def apagar_medicos_paineis_admin(ids: list) -> int:
+    """Admin apaga médicos de qualquer painel (revisão de duplicados). As
+    visitas já feitas continuam no histórico. Devolve quantos apagou."""
+    apagados = 0
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        for entrada_id in ids:
+            cursor.execute(_q("SELECT id FROM painel_medicos WHERE id = ?"), (entrada_id,))
+            if cursor.fetchone():
+                _excluir_medico_do_painel(cursor, entrada_id)
+                apagados += 1
+    return apagados
+
+
 def aplicar_importacao_clientes(acoes: list, medico_para_painel):
     """Grava o plano da importação de clientes numa transação só:
     - 'marcar' / 'ja_cliente': marca como cliente e atualiza o último pedido;
