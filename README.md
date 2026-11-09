@@ -23,9 +23,28 @@ Painel Médico pessoal por usuário (controle de prospecção/visita).
 - Administradores veem um link "Painel Admin" no menu, com a lista de
   todo mundo que já se cadastrou (nome, e-mail, CPF, data de cadastro,
   último login e quantos médicos tem no Painel Médico de cada um).
-- Pra promover outra pessoa a admin depois, ainda não tem uma tela pra
-  isso — é preciso editar o banco de dados diretamente. Avise se quiser
-  que eu monte essa tela também.
+- Pra promover outra pessoa a admin (ou tirar), use o botão na lista de
+  usuários do Painel Admin.
+
+## Ferramentas do admin (menu do Painel Admin)
+
+- **Usuários** — aprovar cadastros, ver/editar o painel de cada promotor,
+  marcar médicos como **cliente** (ficam em vermelho pro promotor) e
+  exportar a base de usuários para Excel (prospectados, agendados,
+  visitados e a revisitar).
+- **Dashboard** — números gerais, gráficos dos últimos 6 meses e ranking.
+- **Visitas** — histórico permanente de visitas por usuário, com filtro e
+  exportação para Excel.
+- **Clientes** — importa a planilha de especialistas (coluna ULTIMO
+  PEDIDO) e marca/adiciona os médicos clientes no painel de cada promotor.
+  Mostra uma prévia antes de gravar.
+- **Revisão** — procura duplicados e dados estranhos em todos os painéis
+  (mesmo CRM, CRM parecido, nome igual/parecido, mesmo telefone, mesmo
+  endereço, sem registro) e permite apagar os escolhidos.
+- **Base de médicos** — base própria importada por planilha.
+- **Sino** — cadastros pendentes, pedidos de senha e o alerta de quando um
+  médico cliente é agendado ou visitado.
+- Médicos **não** saem mais do painel por inatividade: só se alguém tirar.
 
 ## Painel Médico (por usuário)
 
@@ -36,8 +55,10 @@ Painel Médico pessoal por usuário (controle de prospecção/visita).
   usuário), em vez do botão aparece a marca **"Presente no painel
   médico"** — a identificação é feita pelo CRM (ou por nome+cidade,
   quando o CRM não foi encontrado).
-- Na aba Painel Médico, cada card tem um botão pra mover o médico entre
-  as colunas **Prospectados** e **Visitados**.
+- Na aba Painel Médico, o médico passa por **Prospectados → Agendados →
+  Visitados** (e cai em "Revisitar" depois de um tempo). Dá pra editar
+  endereço, cidade e os 2 telefones (clínica e pessoal) de cada médico.
+- A busca pode ser por especialidade + cidade ou só pelo **nome** do médico.
 - O painel é individual — cada usuário só vê e mexe no seu próprio.
 - **Só administradores** podem exportar o painel de qualquer usuário
   pra Excel, direto pela tela de Painel Admin (botão "Exportar" ao lado

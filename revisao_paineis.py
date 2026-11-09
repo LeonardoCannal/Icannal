@@ -11,6 +11,8 @@ Grupos que aparecem:
     digitação.
   - mesmo_nome: mesmo nome (sem acento, sem "Dr./Dra."), CRM diferente ou
     ausente. Pode ser duplicado ou homônimo — por isso só "possível".
+  - nome_parecido: nomes quase iguais (erro de digitação, nome a mais/menos).
+  - telefone / endereco: o mesmo telefone ou endereço em médicos diferentes.
   - incompletos: sem CRM/registro, ou com número curto/longo demais.
 
 Em cada grupo vai uma sugestão de qual manter (cliente > visitado/agendado >
@@ -20,16 +22,24 @@ tem telefone > mais antigo); apagar é sempre escolha do admin.
 import re
 import unicodedata
 from difflib import SequenceMatcher
+from functools import lru_cache
 
 from clientes_import import registro_do_painel
 
 TITULOS = re.compile(r"^(dr|dra|doutor|doutora)\.?\s+")
+_NAO_LETRA = re.compile(r"[^a-z ]")
+_ESPACOS = re.compile(r"\s+")
 
 
-def nome_normalizado(nome: str) -> str:
-    texto = unicodedata.normalize("NFKD", str(nome or "")).encode("ascii", "ignore").decode("ascii")
-    texto = re.sub(r"[^a-z ]", " ", texto.lower())
-    texto = re.sub(r"\s+", " ", texto).strip()
+def nome_normalizado(nome) -> str:
+    return _nome_normalizado(str(nome or ""))
+
+
+@lru_cache(maxsize=20000)
+def _nome_normalizado(nome: str) -> str:  # o mesmo nome é comparado várias vezes
+    texto = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode("ascii")
+    texto = _NAO_LETRA.sub(" ", texto.lower())
+    texto = _ESPACOS.sub(" ", texto).strip()
     return TITULOS.sub("", texto)
 
 

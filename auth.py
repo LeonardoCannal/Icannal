@@ -327,6 +327,12 @@ def inicializar_auth(app, sqlite_path):
         ("idx_historico_usuario_data", "historico_visitas", "usuario_id, visitado_em"),
         ("idx_historico_data", "historico_visitas", "visitado_em"),
         ("idx_alertas_lida", "alertas_clientes", "lida, criado_em"),
+        # apagar/desfazer visita e excluir médico procuram por essas colunas
+        ("idx_historico_visita_log", "historico_visitas", "visita_log_id"),
+        ("idx_historico_painel", "historico_visitas", "painel_medico_id"),
+        ("idx_alertas_visita_log", "alertas_clientes", "visita_log_id"),
+        ("idx_alertas_painel", "alertas_clientes", "painel_medico_id"),
+        ("idx_agenda_usuario_data", "agenda_compromissos", "usuario_id, data"),
         ("idx_agenda_painel", "agenda_compromissos", "painel_medico_id"),
         ("idx_agenda_data", "agenda_compromissos", "data"),
         ("idx_buscas_usuario_data", "buscas_log", "usuario_id, criado_em"),
@@ -1393,11 +1399,8 @@ def listar_painel_usuario(usuario_id: int):
 
 
 # ---------------------------------------------------------------------------
-# Remover médico do painel — manual (botão "x") e automático (inatividade)
+# Remover médico do painel (botão "x" ou admin)
 # ---------------------------------------------------------------------------
-
-DIAS_PARADO_EM_REVISITAR_PARA_REMOVER = 30  # some dias DEPOIS de cair em Revisitar
-DIAS_PROSPECTADO_PARA_REMOVER = 90          # dias parado em Prospectados, sem agendar nem visitar
 
 
 def _excluir_medico_do_painel(cursor, entrada_id: int):
@@ -1425,130 +1428,6 @@ def remover_medico_painel(usuario_id: int, entrada_id: int) -> bool:
             return False
         _excluir_medico_do_painel(cursor, entrada_id)
         return True
-
-
-REMOCAO_POR_INATIVIDADE_ATIVA = False  # desligada a pedido do admin (nov/2026): médico só sai do painel se alguém tirar
-
-
-def limpar_medicos_inativos(usuario_id: int, agora_utc=None):
-    """[DESLIGADA — ver REMOCAO_POR_INATIVIDADE_ATIVA] Roda a limpeza por inatividade no painel de UM usuário:
-    - Prospectado há 90+ dias sem virar agendamento nem visita -> remove.
-    - Visitado, e já tomando pó em Revisitar por 30+ dias (ou seja, 90+ dias
-      desde a última visita) -> remove.
-    Cada remoção vira um registro em medicos_removidos_inatividade, que
-    também serve de notificação (começa como não lida) pro usuário ver.
-    Devolve quantos médicos foram removidos."""
-    if not REMOCAO_POR_INATIVIDADE_ATIVA:
-        return 0
-    agora = agora_utc or datetime.utcnow()
-    limite_prospectado = (agora - timedelta(days=DIAS_PROSPECTADO_PARA_REMOVER)).isoformat()
-    limite_revisitar_parado = (agora - timedelta(days=DIAS_PARA_REVISITAR + DIAS_PARADO_EM_REVISITAR_PARA_REMOVER)).isoformat()
-    agora_iso = agora.isoformat()
-    removidos = 0
-
-    with _conexao() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            _q("""SELECT * FROM painel_medicos WHERE usuario_id = ?
-                  AND ((status = 'prospectado' AND adicionado_em < ?)
-                       OR (status = 'visitado' AND visitado_em < ?))"""),
-            (usuario_id, limite_prospectado, limite_revisitar_parado),
-        )
-        candidatos = cursor.fetchall()
-
-        for medico in candidatos:
-            motivo = (
-                f"{DIAS_PROSPECTADO_PARA_REMOVER} dias parado em Prospectados"
-                if medico["status"] == "prospectado"
-                else f"{DIAS_PARADO_EM_REVISITAR_PARA_REMOVER} dias parado em Revisitar"
-            )
-            cursor.execute(
-                _q("""INSERT INTO medicos_removidos_inatividade
-                      (usuario_id, nome, crm, especialidade, cidade, uf, motivo, removido_em, lida)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"""),
-                (
-                    usuario_id, medico["nome"], medico["crm"], medico["especialidade"],
-                    medico["cidade"], medico["uf"], motivo, agora_iso,
-                    False if USANDO_POSTGRES else 0,
-                ),
-            )
-            _excluir_medico_do_painel(cursor, medico["id"])
-            removidos += 1
-
-    return removidos
-
-
-def limpar_medicos_inativos_todos_usuarios(agora_utc=None) -> int:
-    """Mesma limpeza, varrendo todos os usuários de uma vez — chamada a
-    partir do dashboard geral, pra manter os dados em dia mesmo pra quem
-    não loga há um tempo."""
-    with _conexao() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM usuarios")
-        ids = [row["id"] for row in cursor.fetchall()]
-
-    total = 0
-    for usuario_id in ids:
-        total += limpar_medicos_inativos(usuario_id, agora_utc)
-    return total
-
-
-def listar_notificacoes_usuario(usuario_id: int, limite: int = 20):
-    with _conexao() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            _q("""SELECT * FROM medicos_removidos_inatividade
-                  WHERE usuario_id = ? ORDER BY removido_em DESC LIMIT ?"""),
-            (usuario_id, limite),
-        )
-        return cursor.fetchall()
-
-
-def contar_notificacoes_nao_lidas(usuario_id: int) -> int:
-    with _conexao() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            _q("SELECT COUNT(*) AS total FROM medicos_removidos_inatividade WHERE usuario_id = ? AND lida = ?"),
-            (usuario_id, False if USANDO_POSTGRES else 0),
-        )
-        return cursor.fetchone()["total"]
-
-
-def marcar_notificacoes_lidas(usuario_id: int):
-    with _conexao() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            _q("UPDATE medicos_removidos_inatividade SET lida = ? WHERE usuario_id = ?"),
-            (True if USANDO_POSTGRES else 1, usuario_id),
-        )
-
-
-def listar_medicos_removidos_usuario(usuario_id: int, limite: int = 50):
-    """Pro dashboard individual: médicos removidos por inatividade desse
-    usuário, mais recentes primeiro."""
-    with _conexao() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            _q("""SELECT * FROM medicos_removidos_inatividade
-                  WHERE usuario_id = ? ORDER BY removido_em DESC LIMIT ?"""),
-            (usuario_id, limite),
-        )
-        return cursor.fetchall()
-
-
-def listar_medicos_removidos_geral(limite: int = 50):
-    """Pro dashboard geral: médicos removidos por inatividade de todo mundo,
-    já com o nome de quem era o dono do painel."""
-    with _conexao() as conn:
-        cursor = conn.cursor()
-        cursor.execute(_q("""
-            SELECT r.*, u.nome AS usuario_nome
-            FROM medicos_removidos_inatividade r
-            JOIN usuarios u ON u.id = r.usuario_id
-            ORDER BY r.removido_em DESC
-            LIMIT ?
-        """), (limite,))
-        return cursor.fetchall()
 
 
 # ---------------------------------------------------------------------------
@@ -1832,15 +1711,12 @@ def dias_sem_visitar(usuario_id: int, agora_utc=None):
     with _conexao() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            _q("SELECT MAX(visitado_em) AS ultima FROM visitas_log WHERE usuario_id = ?"),
-            (usuario_id,),
+            _q("SELECT (SELECT MAX(visitado_em) FROM visitas_log WHERE usuario_id = ?) AS ultima, "
+               "(SELECT MIN(adicionado_em) FROM painel_medicos WHERE usuario_id = ?) AS primeira"),
+            (usuario_id, usuario_id),
         )
-        ultima = (cursor.fetchone() or {"ultima": None})["ultima"]
-        cursor.execute(
-            _q("SELECT MIN(adicionado_em) AS primeira FROM painel_medicos WHERE usuario_id = ?"),
-            (usuario_id,),
-        )
-        primeira = (cursor.fetchone() or {"primeira": None})["primeira"]
+        linha = cursor.fetchone()
+        ultima, primeira = linha["ultima"], linha["primeira"]
 
     referencia = ultima or primeira
     if not referencia:
@@ -2175,49 +2051,54 @@ def estatisticas_dashboard():
     with _conexao() as conn:
         cursor = conn.cursor()
 
-        def contar(sql, params=()):
-            cursor.execute(_q(sql), params)
-            return cursor.fetchone()["total"]
-
-        prospectados = contar("SELECT COUNT(*) AS total FROM painel_medicos WHERE status = 'prospectado'")
-        agendados = contar("SELECT COUNT(*) AS total FROM painel_medicos WHERE status = 'agendado'")
-        visitados = contar("SELECT COUNT(*) AS total FROM painel_medicos WHERE status = 'visitado'")
-        usuarios_total = contar("SELECT COUNT(*) AS total FROM usuarios")
-
+        # Todos os números soltos numa ida só ao banco (subconsultas escalares):
+        # no Postgres cada consulta é uma viagem de rede, então 30 COUNTs
+        # separados deixavam o Dashboard lento.
         limite_revisitar_str = (agora - timedelta(days=60)).isoformat()
-        revisitar_total = contar(
-            "SELECT COUNT(*) AS total FROM painel_medicos WHERE status = 'visitado' AND visitado_em < ?",
-            (limite_revisitar_str,),
+        contagens = [
+            ("prospectados", "SELECT COUNT(*) FROM painel_medicos WHERE status = 'prospectado'", ()),
+            ("agendados", "SELECT COUNT(*) FROM painel_medicos WHERE status = 'agendado'", ()),
+            ("visitados", "SELECT COUNT(*) FROM painel_medicos WHERE status = 'visitado'", ()),
+            ("usuarios_total", "SELECT COUNT(*) FROM usuarios", ()),
+            ("revisitar_total", "SELECT COUNT(*) FROM painel_medicos WHERE status = 'visitado' AND visitado_em < ?", (limite_revisitar_str,)),
+            ("medicos_base", "SELECT COUNT(DISTINCT chave_medico) FROM painel_medicos", ()),
+            ("medicos_semana", "SELECT COUNT(DISTINCT chave_medico) FROM painel_medicos WHERE adicionado_em >= ?", (d7_str,)),
+            ("medicos_mes", "SELECT COUNT(DISTINCT chave_medico) FROM painel_medicos WHERE adicionado_em >= ?", (d30_str,)),
+            ("visitados_mes_atual", "SELECT COUNT(*) FROM visitas_log WHERE visitado_em >= ?", (inicio_mes_atual_str,)),
+            ("visitados_mes_anterior", "SELECT COUNT(*) FROM visitas_log WHERE visitado_em >= ? AND visitado_em < ?", (inicio_mes_anterior_str, inicio_mes_atual_str)),
+            ("buscas_hoje", "SELECT COUNT(*) FROM buscas_log WHERE criado_em >= ?", (hoje_ts,)),
+            ("buscas_7d", "SELECT COUNT(*) FROM buscas_log WHERE criado_em >= ?", (d7_str,)),
+            ("buscas_30d", "SELECT COUNT(*) FROM buscas_log WHERE criado_em >= ?", (d30_str,)),
+            ("ativos_hoje", "SELECT COUNT(*) FROM usuarios WHERE ultimo_login >= ?", (hoje_ts,)),
+            ("ativos_7d", "SELECT COUNT(*) FROM usuarios WHERE ultimo_login >= ?", (d7_str,)),
+            ("ativos_30d", "SELECT COUNT(*) FROM usuarios WHERE ultimo_login >= ?", (d30_str,)),
+        ]
+        for i, (inicio, fim) in enumerate(zip(inicios_meses, fins_meses)):
+            faixa = (inicio.isoformat(), fim.isoformat())
+            contagens.append((f"novos_{i}", "SELECT COUNT(DISTINCT chave_medico) FROM painel_medicos WHERE adicionado_em >= ? AND adicionado_em < ?", faixa))
+            contagens.append((f"visit_{i}", "SELECT COUNT(*) FROM visitas_log WHERE visitado_em >= ? AND visitado_em < ?", faixa))
+        cursor.execute(
+            _q("SELECT " + ", ".join(f"({sql}) AS {nome}" for nome, sql, _ in contagens)),
+            tuple(p for _, _, params in contagens for p in params),
         )
+        linha = dict(cursor.fetchone())
+        n = {nome: int(linha[nome] or 0) for nome, _, _ in contagens}
 
-        medicos_base = contar("SELECT COUNT(DISTINCT chave_medico) AS total FROM painel_medicos")
-        medicos_semana = contar(
-            "SELECT COUNT(DISTINCT chave_medico) AS total FROM painel_medicos WHERE adicionado_em >= ?", (d7_str,)
-        )
-        medicos_mes = contar(
-            "SELECT COUNT(DISTINCT chave_medico) AS total FROM painel_medicos WHERE adicionado_em >= ?", (d30_str,)
-        )
-
-        visitados_mes_atual = contar(
-            "SELECT COUNT(*) AS total FROM visitas_log WHERE visitado_em >= ?",
-            (inicio_mes_atual_str,),
-        )
-        visitados_mes_anterior = contar(
-            "SELECT COUNT(*) AS total FROM visitas_log WHERE visitado_em >= ? AND visitado_em < ?",
-            (inicio_mes_anterior_str, inicio_mes_atual_str),
-        )
+        prospectados, agendados, visitados = n["prospectados"], n["agendados"], n["visitados"]
+        usuarios_total, revisitar_total = n["usuarios_total"], n["revisitar_total"]
+        medicos_base, medicos_semana, medicos_mes = n["medicos_base"], n["medicos_semana"], n["medicos_mes"]
+        visitados_mes_atual, visitados_mes_anterior = n["visitados_mes_atual"], n["visitados_mes_anterior"]
         if visitados_mes_anterior > 0:
             variacao_visitados_pct = round((visitados_mes_atual - visitados_mes_anterior) / visitados_mes_anterior * 100)
         else:
             variacao_visitados_pct = 100 if visitados_mes_atual > 0 else 0
-
-        buscas_hoje = contar("SELECT COUNT(*) AS total FROM buscas_log WHERE criado_em >= ?", (hoje_ts,))
-        buscas_7d = contar("SELECT COUNT(*) AS total FROM buscas_log WHERE criado_em >= ?", (d7_str,))
-        buscas_30d = contar("SELECT COUNT(*) AS total FROM buscas_log WHERE criado_em >= ?", (d30_str,))
-
-        ativos_hoje = contar("SELECT COUNT(*) AS total FROM usuarios WHERE ultimo_login >= ?", (hoje_ts,))
-        ativos_7d = contar("SELECT COUNT(*) AS total FROM usuarios WHERE ultimo_login >= ?", (d7_str,))
-        ativos_30d = contar("SELECT COUNT(*) AS total FROM usuarios WHERE ultimo_login >= ?", (d30_str,))
+        buscas_hoje, buscas_7d, buscas_30d = n["buscas_hoje"], n["buscas_7d"], n["buscas_30d"]
+        ativos_hoje, ativos_7d, ativos_30d = n["ativos_hoje"], n["ativos_7d"], n["ativos_30d"]
+        serie_meses = [
+            {"label": f"{_MESES_ABREV[inicio.month - 1]}/{str(inicio.year)[2:]}",
+             "novos": n[f"novos_{i}"], "visitados": n[f"visit_{i}"]}
+            for i, inicio in enumerate(inicios_meses)
+        ]
 
         cursor.execute(_q("""
             SELECT especialidade, COUNT(*) AS total
@@ -2258,24 +2139,6 @@ def estatisticas_dashboard():
             LIMIT 15
         """), (hoje_data,))
         proximos_agendamentos = [dict(r) for r in cursor.fetchall()]
-
-        serie_meses = []
-        for inicio, fim in zip(inicios_meses, fins_meses):
-            inicio_str = inicio.isoformat()
-            fim_str = fim.isoformat()
-            novos = contar(
-                "SELECT COUNT(DISTINCT chave_medico) AS total FROM painel_medicos WHERE adicionado_em >= ? AND adicionado_em < ?",
-                (inicio_str, fim_str),
-            )
-            visitados_no_mes = contar(
-                "SELECT COUNT(*) AS total FROM visitas_log WHERE visitado_em >= ? AND visitado_em < ?",
-                (inicio_str, fim_str),
-            )
-            serie_meses.append({
-                "label": f"{_MESES_ABREV[inicio.month - 1]}/{str(inicio.year)[2:]}",
-                "novos": novos,
-                "visitados": visitados_no_mes,
-            })
 
     return {
         "prospectados": prospectados,

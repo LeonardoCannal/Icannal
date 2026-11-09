@@ -8,7 +8,7 @@
 //
 // Se aumentar a versão aqui embaixo (v1 -> v2), o navegador troca o cache
 // antigo pelo novo sozinho na próxima visita.
-const CACHE_VERSAO = 'icannal-v4';
+const CACHE_VERSAO = 'icannal-v5';
 
 const ARQUIVOS_ESTATICOS = [
   '/static/auth.css',
