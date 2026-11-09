@@ -28,6 +28,7 @@
     </svg>
     <div class="admin-header-direita">
       {% include '_botao_tema.html' %}
+      {% include '_sino_clientes.html' %}
       <a href="{{ url_for('index') }}">Voltar ao i.cannal</a>
       &nbsp;&nbsp;·&nbsp;&nbsp;
       <a href="{{ url_for('perfil') }}">Meu Perfil</a>
@@ -199,5 +200,6 @@
     window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
   }
 </script>
+{% include '_sino_clientes_js.html' %}
 </body>
 </html>

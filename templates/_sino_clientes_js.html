@@ -1,0 +1,11 @@
+<script>
+  (function(){
+    const btn = document.getElementById('btn-notif');
+    const painel = document.getElementById('notif-painel');
+    if(!btn || !painel) return;
+    btn.addEventListener('click', (e) => { e.stopPropagation(); painel.classList.toggle('aberto'); });
+    document.addEventListener('click', (e) => { if(!painel.contains(e.target) && !btn.contains(e.target)) painel.classList.remove('aberto'); });
+    document.addEventListener('keydown', (e) => { if(e.key === 'Escape') painel.classList.remove('aberto'); });
+  })();
+</script>
+<script src="{{ url_for('static', filename='alertas_clientes.js') }}" defer></script>

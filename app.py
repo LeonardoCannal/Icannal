@@ -59,7 +59,6 @@ from auth import (
     chaves_no_painel_todos,
     registrar_solicitacao_senha,
     listar_solicitacoes_senha_pendentes,
-    contar_solicitacoes_senha_pendentes,
     marcar_solicitacao_atendida,
     buscar_solicitacao_senha_por_id,
     definir_senha,
@@ -87,15 +86,7 @@ from auth import (
     remover_admin,
     remover_medico_painel,
     listar_cadastros_pendentes,
-    contar_cadastros_pendentes,
     aprovar_usuario,
-    limpar_medicos_inativos,
-    limpar_medicos_inativos_todos_usuarios,
-    listar_notificacoes_usuario,
-    contar_notificacoes_nao_lidas,
-    marcar_notificacoes_lidas,
-    listar_medicos_removidos_usuario,
-    listar_medicos_removidos_geral,
     data_valida,
 )
 import re
@@ -1501,22 +1492,6 @@ def api_painel_remover(entrada_id):
     usuario = usuario_logado()
     ok = remover_medico_painel(usuario["id"], entrada_id)
     return jsonify({"ok": ok})
-
-
-@app.route("/api/notificacoes")
-@login_required
-def api_notificacoes():
-    usuario = usuario_logado()
-    notificacoes = listar_notificacoes_usuario(usuario["id"])
-    return jsonify({"notificacoes": [dict(n) for n in notificacoes]})
-
-
-@app.route("/api/notificacoes/marcar-lidas", methods=["POST"])
-@login_required
-def api_notificacoes_marcar_lidas():
-    usuario = usuario_logado()
-    marcar_notificacoes_lidas(usuario["id"])
-    return jsonify({"ok": True})
 
 
 @app.route("/api/painel/mover", methods=["POST"])
