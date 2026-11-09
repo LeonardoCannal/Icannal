@@ -195,7 +195,7 @@
 
 <main>
   <div class="hero">
-    <h1>Meu perfil</h1>
+    <h1>Meu <span class="t-p">perfil</span></h1>
     <p>Confira seus dados de cadastro e altere sua senha quando quiser.</p>
   </div>
 
@@ -292,6 +292,61 @@
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     });
   }
+</script>
+<script>
+  (function(){
+    const a = document.querySelector('.t-p');
+    if(!a) return;
+    const N = 20, P = 700;
+    let n = 0, u = 0, f = null;
+    a.style.userSelect = 'none';
+    a.style.webkitUserSelect = 'none';
+
+    function cf(){
+      if(f) return f;
+      f = new Promise((ok) => {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = "{{ url_for('static', filename='tema-v.css') }}";
+        link.onload = ok; link.onerror = ok;
+        document.head.appendChild(link);
+      });
+      return f;
+    }
+
+    function ap(l){
+      document.body.classList.toggle('tv', l);
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if(meta) meta.setAttribute('content', l ? '#7631B2' : (document.body.classList.contains('escuro') ? '#0E1116' : '#FFFFFF'));
+    }
+
+    function tr(){
+      const l = !document.body.classList.contains('tv');
+      const c = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if(!document.startViewTransition || c){ ap(l); return; }
+      const r = a.getBoundingClientRect();
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      const raio = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+      const t = document.startViewTransition(() => ap(l));
+      t.ready.then(() => {
+        document.documentElement.animate(
+          { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${raio}px at ${x}px ${y}px)`] },
+          { duration: 900, easing: 'cubic-bezier(.65,0,.35,1)', pseudoElement: '::view-transition-new(root)' }
+        );
+      }).catch(() => {});
+    }
+
+    a.addEventListener('click', () => {
+      const agora = Date.now();
+      n = (agora - u <= P) ? n + 1 : 1;
+      u = agora;
+      if(n === 5) cf();
+      if(n >= N){
+        n = 0;
+        cf().then(tr);
+      }
+    });
+  })();
 </script>
 {% with aba_mobile='perfil' %}{% include '_barra_mobile.html' %}{% endwith %}
 </body>
