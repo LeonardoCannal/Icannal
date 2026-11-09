@@ -1132,16 +1132,15 @@
   </div>
   <div class="header-direita">
     {% include '_botao_tema.html' %}
+    {% if current_user.is_admin %}
     <div class="notif-wrapper">
       <button type="button" id="btn-notif" class="btn-notif" aria-label="Notificações">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         <span class="notif-badge" id="notif-badge" style="display:none;">0</span>
       </button>
-      <div class="notif-painel" id="notif-painel">
-        <div class="notif-cabecalho">Médicos removidos por inatividade</div>
-        <div class="notif-lista" id="notif-lista"></div>
-      </div>
+      <div class="notif-painel" id="notif-painel" data-so-clientes="1"></div>
     </div>
+    {% endif %}
     <nav>
       <button id="tab-buscar" class="ativo">Buscar</button>
       <button id="tab-painel">Painel Médico</button>
@@ -1849,7 +1848,7 @@
 
   function criarCardPainel(item, coluna){
     const div = document.createElement('div');
-    div.className = 'painel-card';
+    div.className = 'painel-card' + (item.ja_comprou ? ' painel-card-cliente' : '');
 
     const linhaLocal = [item.cidade, item.uf].filter(Boolean).join(' - ');
     const classeNome = (coluna === 'visitados' || coluna === 'revisitar') ? ' class="nome-visitado"' : '';
@@ -1865,6 +1864,7 @@
 
     div.innerHTML = `
       <button type="button" class="painel-btn-remover-x" title="Remover do painel" aria-label="Remover ${esc(item.nome)} do painel" data-id="${item.id}" data-nome="${esc(item.nome)}">&times;</button>
+      ${item.ja_comprou ? '<span class="selo-cliente" title="Esse médico já comprou de você (marcado pelo admin)">Cliente</span>' : ''}
       <div class="painel-card-topo">
         <strong${classeNome}>${esc(item.nome)}</strong>
         <div class="painel-card-icones">
@@ -2385,67 +2385,6 @@
   window.addEventListener('hashchange', abrirAbaDaUrl);
   abrirAbaDaUrl();
 
-  // ===== Sino de notificações (médicos removidos por inatividade) =====
-  const btnNotif = document.getElementById('btn-notif');
-  const notifPainel = document.getElementById('notif-painel');
-  const notifBadge = document.getElementById('notif-badge');
-  const notifLista = document.getElementById('notif-lista');
-
-  function atualizarBadgeNotif(total){
-    if(total > 0){
-      notifBadge.style.display = 'flex';
-      notifBadge.textContent = total;
-    } else {
-      notifBadge.style.display = 'none';
-    }
-  }
-
-  atualizarBadgeNotif({{ notificacoes_nao_lidas }});
-
-  function criarItemNotif(n){
-    const div = document.createElement('div');
-    div.className = 'notif-item';
-    div.innerHTML = `
-      <strong>${esc(n.nome)}</strong>
-      <span>${esc(n.especialidade || '')}</span>
-      <span>Removido por inatividade — ${esc(n.motivo)}</span>
-    `;
-    return div;
-  }
-
-  function carregarNotificacoes(){
-    fetch('/api/notificacoes')
-      .then(res => res.json())
-      .then(dados => {
-        notifLista.innerHTML = '';
-        if(dados.notificacoes.length === 0){
-          notifLista.innerHTML = '<div class="notif-vazio">Nenhum médico removido por inatividade.</div>';
-        } else {
-          dados.notificacoes.forEach(n => notifLista.appendChild(criarItemNotif(n)));
-        }
-      })
-      .catch(() => {
-        notifLista.innerHTML = '<div class="notif-vazio">Não foi possível carregar.</div>';
-      });
-  }
-
-  btnNotif.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const vaiAbrir = !notifPainel.classList.contains('aberto');
-    notifPainel.classList.toggle('aberto');
-    if(vaiAbrir){
-      carregarNotificacoes();
-      fetch('/api/notificacoes/marcar-lidas', { method: 'POST' })
-        .then(() => atualizarBadgeNotif(0))
-        .catch(() => {});
-    }
-  });
-
-  document.addEventListener('click', (e) => {
-    if(!notifPainel.contains(e.target) && e.target !== btnNotif){
-      notifPainel.classList.remove('aberto');
-    }
-  });
 </script>
 
 <script>
@@ -2459,5 +2398,17 @@
   }
 </script>
 {% with aba_mobile='buscar' %}{% include '_barra_mobile.html' %}{% endwith %}
+{% if current_user.is_admin %}
+<script>
+  (function(){
+    const btn = document.getElementById('btn-notif');
+    const painel = document.getElementById('notif-painel');
+    if(!btn || !painel) return;
+    btn.addEventListener('click', (e) => { e.stopPropagation(); painel.classList.toggle('aberto'); });
+    document.addEventListener('click', (e) => { if(!painel.contains(e.target) && !btn.contains(e.target)) painel.classList.remove('aberto'); });
+  })();
+</script>
+<script src="{{ url_for('static', filename='alertas_clientes.js') }}"></script>
+{% endif %}
 </body>
 </html>

@@ -221,9 +221,6 @@
       <h3 class="modal-secao-titulo">Próximos agendamentos</h3>
       <div class="modal-lista" id="dash-proximos-agendamentos"></div>
 
-      <h3 class="modal-secao-titulo">Médicos removidos por inatividade</h3>
-      <div class="modal-lista" id="dash-medicos-removidos"></div>
-
       <h3 class="modal-secao-titulo">Médicos na base por período</h3>
       <table class="tabela-periodos">
         <thead>
@@ -325,7 +322,7 @@
 
     function criarCardModal(item, coluna){
       const div = document.createElement('div');
-      div.className = 'modal-card';
+      div.className = 'modal-card' + (item.ja_comprou ? ' modal-card-cliente' : '');
       const linhaLocal = [item.cidade, item.uf].filter(Boolean).join(' - ');
       const classeNome = (coluna === 'visitados' || coluna === 'revisitar') ? ' class="nome-visitado"' : '';
       let badge = '';
@@ -335,6 +332,7 @@
       }
       div.innerHTML = `
         <button type="button" class="modal-btn-remover-x" title="Remover do painel">&times;</button>
+        ${item.ja_comprou ? '<span class="selo-cliente">Cliente</span>' : ''}
         <strong${classeNome}>${esc(item.nome)}</strong>
         <span>${esc(item.especialidade)}</span>
         <span>${esc(item.crm)}</span>
@@ -343,7 +341,25 @@
         <span>${item.telefone && item.telefone.replace(/\D/g, '').length >= 8 ? 'Clínica: ' + esc(item.telefone) : ''}</span>
         <span>${item.telefone_pessoal ? 'Pessoal: ' + esc(item.telefone_pessoal) : ''}</span>
         ${badge}
+        <button type="button" class="btn-marcar-cliente${item.ja_comprou ? ' ativo' : ''}" aria-pressed="${item.ja_comprou ? 'true' : 'false'}">
+          ${item.ja_comprou ? 'Desmarcar cliente' : 'Marcar como cliente (já comprou)'}
+        </button>
       `;
+      div.querySelector('.btn-marcar-cliente').addEventListener('click', (e) => {
+        if(painelAbertoUsuarioId === null) return;
+        const botao = e.currentTarget;
+        botao.disabled = true;
+        fetch(`/admin/usuarios/${painelAbertoUsuarioId}/painel/${item.id}/cliente`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cliente: !item.ja_comprou })
+        })
+          .then(res => res.json())
+          .then(resp => {
+            if(resp.ok){ abrirPainelDoUsuario(painelAbertoUsuarioId, painelAbertoUsuarioNome); }
+            else { botao.disabled = false; mostrarAvisoNotif(resp.mensagem || 'Não foi possível marcar esse médico.'); }
+          })
+          .catch(() => { botao.disabled = false; mostrarAvisoNotif('Erro de conexão. Tente de novo.'); });
+      });
       div.querySelector('.modal-btn-remover-x').addEventListener('click', () => {
         if(painelAbertoUsuarioId === null) return;
         if(!confirm(`Remover ${item.nome} do painel de ${painelAbertoUsuarioNome}? Essa ação não pode ser desfeita.`)) return;
@@ -638,23 +654,6 @@
             }).join('');
           }
 
-          const listaRemovidos = document.getElementById('dash-medicos-removidos');
-          if(!dados.medicos_removidos || dados.medicos_removidos.length === 0){
-            listaRemovidos.innerHTML = '<div class="modal-vazio">Nenhum médico removido por inatividade.</div>';
-          } else {
-            listaRemovidos.innerHTML = dados.medicos_removidos.map(m => {
-              const dataFmt = (m.removido_em || '').slice(0, 10).split('-').reverse().join('/');
-              const local = [m.cidade, m.uf].filter(Boolean).join(' - ');
-              return `
-                <div class="modal-card">
-                  <strong>${esc(m.nome)}</strong>
-                  <span>${esc(m.especialidade || '')}${local ? ' · ' + esc(local) : ''}</span>
-                  <span>Removido em ${esc(dataFmt)} — ${esc(m.motivo)}</span>
-                </div>
-              `;
-            }).join('');
-          }
-
           document.getElementById('dash-buscas-hoje').textContent = dados.buscas_hoje;
           document.getElementById('dash-buscas-7d').textContent = dados.buscas_7d;
           document.getElementById('dash-buscas-30d').textContent = dados.buscas_30d;
@@ -938,5 +937,6 @@
     });
   }
 </script>
+<script src="{{ url_for('static', filename='alertas_clientes.js') }}"></script>
 </body>
 </html>

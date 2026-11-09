@@ -289,6 +289,20 @@ def inicializar_auth(app, sqlite_path):
                 medico_uf TEXT
             )
         """)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS alertas_clientes (
+                id {"SERIAL PRIMARY KEY" if USANDO_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
+                usuario_id INTEGER NOT NULL,
+                painel_medico_id INTEGER,
+                visita_log_id INTEGER,
+                tipo TEXT NOT NULL,
+                detalhe TEXT,
+                medico_nome TEXT NOT NULL,
+                medico_crm TEXT,
+                criado_em TEXT NOT NULL,
+                lida INTEGER NOT NULL DEFAULT 0
+            )
+        """)
         cursor.execute(sql_base_propria)
         cursor.execute(sql_removidos)
         # Traduções de artigos (Google Cloud Translation): cada texto é
@@ -312,6 +326,7 @@ def inicializar_auth(app, sqlite_path):
         ("idx_visitas_painel", "visitas_log", "painel_medico_id"),
         ("idx_historico_usuario_data", "historico_visitas", "usuario_id, visitado_em"),
         ("idx_historico_data", "historico_visitas", "visitado_em"),
+        ("idx_alertas_lida", "alertas_clientes", "lida, criado_em"),
         ("idx_agenda_painel", "agenda_compromissos", "painel_medico_id"),
         ("idx_agenda_data", "agenda_compromissos", "data"),
         ("idx_buscas_usuario_data", "buscas_log", "usuario_id, criado_em"),
@@ -330,6 +345,10 @@ def inicializar_auth(app, sqlite_path):
     # 2 telefones por médico: "telefone" = da clínica/consultório (o que vem
     # das buscas) e "telefone_pessoal" = celular do próprio médico.
     _adicionar_coluna_se_faltar("painel_medicos", "telefone_pessoal", "TEXT")
+    # Médico "cliente" (já comprou desse promotor): marcado pelo admin, fica
+    # em vermelho no painel e gera alerta pro admin quando é agendado/visitado.
+    _adicionar_coluna_se_faltar("painel_medicos", "ja_comprou", "INTEGER DEFAULT 0")
+    _adicionar_coluna_se_faltar("painel_medicos", "marcado_cliente_em", "TEXT")
     _adicionar_coluna_se_faltar("visitas_log", "resultado", "TEXT")
     _adicionar_coluna_se_faltar("usuarios", "telefone", "TEXT")
     # DEFAULT verdadeiro é de propósito: ninguém que já tinha conta fica
@@ -1119,6 +1138,64 @@ RESULTADOS_VISITA = {
 }
 
 
+def _alertar_se_cliente(cursor, usuario_id: int, entrada_id: int, tipo: str, detalhe: str = "", visita_log_id=None):
+    """Se o médico é "cliente" (marcado pelo admin), registra um alerta pro
+    admin: o promotor agendou ou visitou esse médico."""
+    cursor.execute(
+        _q("SELECT nome, crm, ja_comprou FROM painel_medicos WHERE id = ? AND usuario_id = ?"),
+        (entrada_id, usuario_id),
+    )
+    medico = cursor.fetchone()
+    if not medico or not medico["ja_comprou"]:
+        return
+    cursor.execute(
+        _q("""INSERT INTO alertas_clientes (usuario_id, painel_medico_id, visita_log_id, tipo, detalhe,
+                  medico_nome, medico_crm, criado_em, lida)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)"""),
+        (usuario_id, entrada_id, visita_log_id, tipo, detalhe or "", medico["nome"], medico["crm"] or "",
+         datetime.utcnow().isoformat()),
+    )
+
+
+def marcar_medico_cliente(usuario_id: int, entrada_id: int, cliente: bool) -> bool:
+    """Admin marca/desmarca um médico do painel do promotor como "cliente"
+    (já comprou dele)."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            _q("UPDATE painel_medicos SET ja_comprou = ?, marcado_cliente_em = ? WHERE id = ? AND usuario_id = ?"),
+            (1 if cliente else 0, datetime.utcnow().isoformat() if cliente else None, entrada_id, usuario_id),
+        )
+        return cursor.rowcount > 0
+
+
+def listar_alertas_clientes(limite: int = 30):
+    """Alertas pro sino do admin (mais recentes primeiro), com o nome do promotor."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""
+            SELECT a.*, u.nome AS usuario_nome
+            FROM alertas_clientes a
+            LEFT JOIN usuarios u ON u.id = a.usuario_id
+            ORDER BY a.criado_em DESC, a.id DESC
+            LIMIT ?
+        """), (limite,))
+        return [dict(l) for l in cursor.fetchall()]
+
+
+def contar_alertas_clientes_nao_lidos() -> int:
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) AS total FROM alertas_clientes WHERE lida = 0")
+        return cursor.fetchone()["total"]
+
+
+def marcar_alertas_clientes_lidos():
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE alertas_clientes SET lida = 1 WHERE lida = 0")
+
+
 def mover_no_painel(usuario_id: int, entrada_id: int, novo_status: str, resultado: str = None) -> bool:
     """Move o médico entre prospectado/visitado (o 'agendado' só nasce pelo
     botão Agendar). Cada visita fica registrada no histórico (visitas_log),
@@ -1163,6 +1240,8 @@ def mover_no_painel(usuario_id: int, entrada_id: int, novo_status: str, resultad
                       SELECT ?, ?, id, ?, ?, nome, crm, especialidade, cidade, uf FROM painel_medicos WHERE id = ?"""),
                 (log_id, usuario_id, agora, resultado, entrada_id),
             )
+            _alertar_se_cliente(cursor, usuario_id, entrada_id, "visitado",
+                                RESULTADOS_VISITA.get(resultado or "", ""), visita_log_id=log_id)
             return True
 
         # Desfazer uma visita (voltar pra Prospectados): tira a visita mais
@@ -1175,6 +1254,7 @@ def mover_no_painel(usuario_id: int, entrada_id: int, novo_status: str, resultad
             ultima = cursor.fetchone()
             if ultima:
                 cursor.execute(_q("DELETE FROM historico_visitas WHERE visita_log_id = ?"), (ultima["id"],))
+                cursor.execute(_q("DELETE FROM alertas_clientes WHERE visita_log_id = ?"), (ultima["id"],))
                 cursor.execute(_q("DELETE FROM visitas_log WHERE id = ?"), (ultima["id"],))
             cursor.execute(
                 _q("""SELECT visitado_em, resultado FROM visitas_log
@@ -1249,6 +1329,7 @@ def _excluir_medico_do_painel(cursor, entrada_id: int):
     decide se guarda algum registro antes (pro caso da exclusão automática)."""
     cursor.execute(_q("DELETE FROM agenda_compromissos WHERE painel_medico_id = ?"), (entrada_id,))
     cursor.execute(_q("UPDATE historico_visitas SET painel_medico_id = NULL, visita_log_id = NULL WHERE painel_medico_id = ?"), (entrada_id,))
+    cursor.execute(_q("UPDATE alertas_clientes SET painel_medico_id = NULL, visita_log_id = NULL WHERE painel_medico_id = ?"), (entrada_id,))
     cursor.execute(_q("DELETE FROM visitas_log WHERE painel_medico_id = ?"), (entrada_id,))
     cursor.execute(_q("DELETE FROM painel_medicos WHERE id = ?"), (entrada_id,))
 
@@ -1269,14 +1350,19 @@ def remover_medico_painel(usuario_id: int, entrada_id: int) -> bool:
         return True
 
 
+REMOCAO_POR_INATIVIDADE_ATIVA = False  # desligada a pedido do admin (nov/2026): médico só sai do painel se alguém tirar
+
+
 def limpar_medicos_inativos(usuario_id: int, agora_utc=None):
-    """Roda a limpeza por inatividade no painel de UM usuário:
+    """[DESLIGADA — ver REMOCAO_POR_INATIVIDADE_ATIVA] Roda a limpeza por inatividade no painel de UM usuário:
     - Prospectado há 90+ dias sem virar agendamento nem visita -> remove.
     - Visitado, e já tomando pó em Revisitar por 30+ dias (ou seja, 90+ dias
       desde a última visita) -> remove.
     Cada remoção vira um registro em medicos_removidos_inatividade, que
     também serve de notificação (começa como não lida) pro usuário ver.
     Devolve quantos médicos foram removidos."""
+    if not REMOCAO_POR_INATIVIDADE_ATIVA:
+        return 0
     agora = agora_utc or datetime.utcnow()
     limite_prospectado = (agora - timedelta(days=DIAS_PROSPECTADO_PARA_REMOVER)).isoformat()
     limite_revisitar_parado = (agora - timedelta(days=DIAS_PARA_REVISITAR + DIAS_PARADO_EM_REVISITAR_PARA_REMOVER)).isoformat()
@@ -1535,6 +1621,9 @@ def agendar_medico(usuario_id: int, entrada_id: int, data: str, horario: str, ag
             _q("UPDATE painel_medicos SET status = 'agendado' WHERE id = ? AND usuario_id = ?"),
             (entrada_id, usuario_id),
         )
+        ano, mes, dia = data.split("-")
+        _alertar_se_cliente(cursor, usuario_id, entrada_id, "reagendado" if antigo_id is not None else "agendado",
+                            f"{dia}/{mes}/{ano} às {horario}")
 
     return True, "Visita agendada com sucesso."
 
@@ -1820,6 +1909,7 @@ def excluir_usuario(usuario_id: int) -> bool:
         cursor.execute(_q("DELETE FROM agenda_compromissos WHERE usuario_id = ?"), (usuario_id,))
         cursor.execute(_q("DELETE FROM visitas_log WHERE usuario_id = ?"), (usuario_id,))
         cursor.execute(_q("DELETE FROM historico_visitas WHERE usuario_id = ?"), (usuario_id,))
+        cursor.execute(_q("DELETE FROM alertas_clientes WHERE usuario_id = ?"), (usuario_id,))
         # agenda/visitas ligadas aos médicos do painel dele (garantia extra)
         cursor.execute(_q("DELETE FROM agenda_compromissos WHERE painel_medico_id IN (SELECT id FROM painel_medicos WHERE usuario_id = ?)"), (usuario_id,))
         cursor.execute(_q("DELETE FROM visitas_log WHERE painel_medico_id IN (SELECT id FROM painel_medicos WHERE usuario_id = ?)"), (usuario_id,))

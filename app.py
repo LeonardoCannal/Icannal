@@ -32,6 +32,10 @@ from auth import (
     buscar_base_propria_por_nome,
     editar_dados_medico_painel,
     listar_historico_visitas,
+    marcar_medico_cliente,
+    listar_alertas_clientes,
+    contar_alertas_clientes_nao_lidos,
+    marcar_alertas_clientes_lidos,
     listar_usuarios,
     resumo_painel_por_usuario,
     usuario_logado,
@@ -985,6 +989,42 @@ def admin_painel_usuario(user_id):
     })
 
 
+@app.route("/admin/usuarios/<int:user_id>/painel/<int:entrada_id>/cliente", methods=["POST"])
+@admin_required
+def admin_marcar_cliente(user_id, entrada_id):
+    """Marca/desmarca um médico do painel do promotor como "cliente" (já comprou dele)."""
+    cliente = bool(_corpo_json().get("cliente"))
+    if not marcar_medico_cliente(user_id, entrada_id, cliente):
+        return jsonify({"ok": False, "mensagem": "Médico não encontrado no painel desse usuário."}), 404
+    return jsonify({"ok": True, "cliente": cliente})
+
+
+@app.route("/admin/alertas-clientes")
+@admin_required
+def admin_alertas_clientes():
+    alertas = []
+    for a in listar_alertas_clientes():
+        quando = _utc_para_br(a["criado_em"])
+        alertas.append({
+            "id": a["id"],
+            "tipo": a["tipo"],
+            "detalhe": a["detalhe"] or "",
+            "medico_nome": a["medico_nome"],
+            "medico_crm": a["medico_crm"] or "",
+            "usuario_nome": a["usuario_nome"] or "(usuário excluído)",
+            "quando": quando.strftime("%d/%m às %H:%M") if quando else "",
+            "lida": bool(a["lida"]),
+        })
+    return jsonify({"alertas": alertas, "nao_lidos": contar_alertas_clientes_nao_lidos()})
+
+
+@app.route("/admin/alertas-clientes/lidos", methods=["POST"])
+@admin_required
+def admin_alertas_clientes_lidos():
+    marcar_alertas_clientes_lidos()
+    return jsonify({"ok": True})
+
+
 @app.route("/admin/estatisticas/<int:user_id>")
 @admin_required
 def admin_estatisticas_usuario(user_id):
@@ -994,7 +1034,6 @@ def admin_estatisticas_usuario(user_id):
 
     stats = estatisticas_usuario(user_id)
     stats["usuario"] = {"nome": usuario["nome"], "email": usuario["email"]}
-    stats["medicos_removidos"] = [dict(m) for m in listar_medicos_removidos_usuario(user_id)]
     return jsonify(stats)
 
 
@@ -1003,8 +1042,10 @@ def admin_estatisticas_usuario(user_id):
 def admin_notificacoes():
     pendentes = listar_solicitacoes_senha_pendentes()
     cadastros = listar_cadastros_pendentes()
+    alertas_nao_lidos = contar_alertas_clientes_nao_lidos()
     return jsonify({
-        "total": len(pendentes) + len(cadastros),
+        "total": len(pendentes) + len(cadastros) + alertas_nao_lidos,
+        "alertas_clientes_nao_lidos": alertas_nao_lidos,
         "solicitacoes": [
             {
                 "id": s["id"],
@@ -1074,19 +1115,13 @@ def admin_notificacao_redefinir(solicitacao_id):
 @app.route("/admin/dashboard")
 @admin_required
 def admin_dashboard():
-    limpar_medicos_inativos_todos_usuarios()  # mantém em dia mesmo quem não loga há um tempo
-    return render_template(
-        "dashboard.html",
-        stats=estatisticas_dashboard(),
-        medicos_removidos_geral=listar_medicos_removidos_geral(),
-    )
+    return render_template("dashboard.html", stats=estatisticas_dashboard())
 
 
 @app.route("/")
 @login_required
 def index():
     usuario = usuario_logado()
-    limpar_medicos_inativos(usuario["id"])  # roda a cada visita — é barato e mantém o painel em dia
     dias_inativo = dias_sem_visitar(usuario["id"])
     visitas_amanha = contar_visitas_amanha(usuario["id"])
     return render_template(
@@ -1097,7 +1132,6 @@ def index():
         dias_inativo=dias_inativo,
         visitas_amanha=visitas_amanha,
         resultados_visita=RESULTADOS_VISITA,
-        notificacoes_nao_lidas=contar_notificacoes_nao_lidas(usuario["id"]),
     )
 
 
