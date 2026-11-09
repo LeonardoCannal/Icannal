@@ -56,14 +56,10 @@
 
     {% set t = analise.totais %}
     <div class="rv-totais">
-      <a class="stat-card rv-total {{ 'ativo' if filtro_tipo == 'mesmo_registro' }}" href="{{ url_for('admin_revisao', tipo='mesmo_registro', promotor=filtro_promotor) }}">
-        <div class="stat-label">Mesmo CRM duplicado</div><div class="stat-valor">{{ t.mesmo_registro }}</div></a>
-      <a class="stat-card rv-total {{ 'ativo' if filtro_tipo == 'numero_parecido' }}" href="{{ url_for('admin_revisao', tipo='numero_parecido', promotor=filtro_promotor) }}">
-        <div class="stat-label">CRM quase igual</div><div class="stat-valor">{{ t.numero_parecido }}</div></a>
-      <a class="stat-card rv-total {{ 'ativo' if filtro_tipo == 'mesmo_nome' }}" href="{{ url_for('admin_revisao', tipo='mesmo_nome', promotor=filtro_promotor) }}">
-        <div class="stat-label">Mesmo nome</div><div class="stat-valor">{{ t.mesmo_nome }}</div></a>
-      <a class="stat-card rv-total {{ 'ativo' if filtro_tipo == 'incompletos' }}" href="{{ url_for('admin_revisao', tipo='incompletos', promotor=filtro_promotor) }}">
-        <div class="stat-label">Sem CRM / CRM estranho</div><div class="stat-valor">{{ t.incompletos }}</div></a>
+      {% for chave, rotulo in [('mesmo_registro', 'Mesmo CRM'), ('numero_parecido', 'CRM quase igual'), ('mesmo_nome', 'Mesmo nome'), ('nome_parecido', 'Nome parecido'), ('telefone', 'Telefone igual/parecido'), ('endereco', 'Endereço igual/parecido'), ('incompletos', 'Sem CRM / CRM estranho')] %}
+      <a class="stat-card rv-total {{ 'ativo' if filtro_tipo == chave }}" href="{{ url_for('admin_revisao', tipo=chave, promotor=filtro_promotor) }}">
+        <div class="stat-label">{{ rotulo }}</div><div class="stat-valor">{{ t[chave] }}</div></a>
+      {% endfor %}
     </div>
 
     <form class="rv-filtros" method="get">
@@ -90,22 +86,28 @@
     <section class="rv-grupo rv-{{ g.tipo }}">
       <header class="rv-grupo-topo">
         <div>
-          <span class="rv-selo">{{ {'mesmo_registro': 'Duplicado', 'numero_parecido': 'CRM quase igual', 'mesmo_nome': 'Possível duplicado'}[g.tipo] }}</span>
+          <span class="rv-selo">{{ {'mesmo_registro': 'Duplicado', 'numero_parecido': 'CRM quase igual', 'mesmo_nome': 'Possível duplicado', 'nome_parecido': 'Nome parecido', 'telefone': 'Telefone', 'endereco': 'Endereço'}[g.tipo] }}</span>
           <strong>{{ g.titulo }}</strong>
           <span class="rv-motivo">{{ g.motivo }}{% if g.paineis > 1 %} · em {{ g.paineis }} painéis{% else %} · no mesmo painel{% endif %}</span>
         </div>
-        <button type="button" class="rv-sugestao">Marcar todos menos o sugerido</button>
+        {% if g.tipo not in ('telefone', 'endereco') %}<button type="button" class="rv-sugestao">Marcar todos menos o sugerido</button>{% endif %}
       </header>
       <div class="tabela-scroll">
       <table class="tabela-admin rv-tabela">
-        <thead><tr><th></th><th>Médico</th><th>CRM</th><th>Cidade</th><th>Painel de</th><th>Situação</th><th>Adicionado</th></tr></thead>
+        <thead><tr><th></th><th>Médico</th><th>CRM</th><th>{{ 'Telefone' if g.tipo == 'telefone' else ('Endereço' if g.tipo == 'endereco' else 'Cidade') }}</th><th>Painel de</th><th>Situação</th><th>Adicionado</th></tr></thead>
         <tbody>
         {% for m in g.itens %}
         <tr class="{{ 'rv-manter' if m.id == g.manter }}">
           <td><input type="checkbox" class="rv-check" value="{{ m.id }}" aria-label="Selecionar {{ m.nome }}" {{ 'data-manter=1' if m.id == g.manter }}></td>
           <td data-rotulo="Médico"><strong>{{ m.nome }}</strong>{% if m.ja_comprou %} <span class="selo-cliente">Cliente</span>{% endif %}{% if m.id == g.manter %} <span class="rv-tag-manter">sugerido manter</span>{% endif %}</td>
           <td data-rotulo="CRM">{{ m.crm or '-' }}</td>
+          {% if g.tipo == 'telefone' %}
+          <td data-rotulo="Telefone">{{ [m.telefone if (m.telefone or '')[:3] != 'Não' else '', m.telefone_pessoal]|select|join(' · ') or '-' }}</td>
+          {% elif g.tipo == 'endereco' %}
+          <td data-rotulo="Endereço">{{ m.endereco or '-' }}{% if m.cidade %} — {{ m.cidade }}{% endif %}</td>
+          {% else %}
           <td data-rotulo="Cidade">{{ [m.cidade, m.uf]|select|join(' - ') or '-' }}</td>
+          {% endif %}
           <td data-rotulo="Painel de">{{ m.usuario_nome }}</td>
           <td data-rotulo="Situação">{{ rotulos_status.get(m.status, m.status) }}</td>
           <td data-rotulo="Adicionado">{{ m.adicionado_br }}</td>
