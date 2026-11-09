@@ -1,4 +1,5 @@
 import clientes_import
+import revisao_paineis
 import json
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, redirect, url_for, has_request_context, got_request_exception
 from flask.sessions import SecureCookieSessionInterface
@@ -40,6 +41,8 @@ from auth import (
     marcar_alertas_clientes_lidos,
     listar_painel_todos_resumo,
     aplicar_importacao_clientes,
+    listar_painel_todos_completo,
+    apagar_medicos_paineis_admin,
     listar_usuarios,
     resumo_painel_por_usuario,
     usuario_logado,
@@ -1090,6 +1093,46 @@ def admin_clientes_importar():
     )
     return jsonify({"ok": True, "modo": "aplicado", "feito": feito, "totais": totais,
                     "promotores": resumo, "usuarios": usuarios, "conflitos": conflitos})
+
+
+# ---------------------------------------------------------------------------
+# Admin: revisão dos painéis (duplicados e dados estranhos)
+# ---------------------------------------------------------------------------
+@app.route("/admin/revisao")
+@admin_required
+def admin_revisao():
+    entradas = listar_painel_todos_completo()
+    for e in entradas:
+        e["usuario_nome"] = e["usuario_nome"] or "(sem dono)"
+        quando = (e.get("adicionado_em") or "")[:10]
+        e["adicionado_br"] = "/".join(reversed(quando.split("-"))) if quando else ""
+    analise = revisao_paineis.analisar(entradas)
+    promotor = request.args.get("promotor", "")
+    if promotor.isdigit():
+        pid = int(promotor)
+        analise["grupos"] = [g for g in analise["grupos"] if any(i["usuario_id"] == pid for i in g["itens"])]
+        analise["incompletos"] = [i for i in analise["incompletos"] if i["usuario_id"] == pid]
+    tipo = request.args.get("tipo", "")
+    if tipo in ("mesmo_registro", "numero_parecido", "mesmo_nome"):
+        analise["grupos"] = [g for g in analise["grupos"] if g["tipo"] == tipo]
+        analise["incompletos"] = []
+    elif tipo == "incompletos":
+        analise["grupos"] = []
+    usuarios = sorted(({"id": u["id"], "nome": u["nome"]} for u in listar_usuarios()), key=lambda u: u["nome"].lower())
+    return render_template("admin_revisao.html", analise=analise, usuarios=usuarios,
+                           filtro_promotor=promotor, filtro_tipo=tipo, rotulos_status={
+                               "prospectado": "Prospectado", "agendado": "Agendado", "visitado": "Visitado"})
+
+
+@app.route("/admin/revisao/apagar", methods=["POST"])
+@admin_required
+def admin_revisao_apagar():
+    ids = [int(i) for i in (_corpo_json().get("ids") or []) if str(i).isdigit()][:2000]
+    if not ids:
+        return jsonify({"ok": False, "mensagem": "Selecione pelo menos um médico."}), 400
+    apagados = apagar_medicos_paineis_admin(ids)
+    _avisar_acao_de_outro_admin(f"🧹 i.cannal — {usuario_logado()['nome']} apagou {apagados} médico(s) na revisão de duplicados.")
+    return jsonify({"ok": True, "apagados": apagados})
 
 
 @app.route("/admin/estatisticas/<int:user_id>")

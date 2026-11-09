@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i.cannal · Revisão dos painéis</title>
+<link rel="preload" href="/static/fontes/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fontes/montserrat.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="i.cannal">
+<link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
+</head>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
+  <div class="admin-header">
+    <svg class="logo-admin" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">
+      <polygon points="2,0 16,0 32,44 18,44" fill="#88AD36"/>
+      <polygon points="25,0 39,0 55,44 41,44" fill="#88AD36"/>
+      <text x="72" y="34" font-family="Montserrat, sans-serif" font-weight="900" font-size="34" textLength="204" lengthAdjust="spacing">
+        <tspan fill="#A8CC5A">I.</tspan><tspan fill="#FFFFFF">CANNAL</tspan>
+      </text>
+    </svg>
+    <div class="admin-header-direita">
+      {% include '_botao_tema.html' %}
+      <a href="{{ url_for('index') }}">Voltar ao i.cannal</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('perfil') }}">Meu Perfil</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('logout') }}">Sair</a>
+    </div>
+  </div>
+
+  <div class="hero-secao">
+    <div class="hero-secao-conteudo">
+      <h1>Revisão dos painéis</h1>
+      <p>Médicos possivelmente duplicados e dados estranhos em todos os painéis. Marque os que quer apagar.</p>
+    </div>
+  </div>
+
+  <main class="admin-main">
+  <div class="card-flutuante">
+    <div class="admin-nav">
+      <a href="{{ url_for('admin') }}" class="admin-nav-link">Usuários</a>
+      <a href="{{ url_for('admin_dashboard') }}" class="admin-nav-link">Dashboard</a>
+      <a href="{{ url_for('admin_historico_visitas') }}" class="admin-nav-link">Visitas</a>
+      <a href="{{ url_for('admin_clientes') }}" class="admin-nav-link">Clientes</a>
+      <a href="{{ url_for('admin_revisao') }}" class="admin-nav-link ativo">Revisão</a>
+      <a href="{{ url_for('admin_base_propria') }}" class="admin-nav-link">Base de médicos</a>
+    </div>
+
+    {% set t = analise.totais %}
+    <div class="rv-totais">
+      <a class="stat-card rv-total {{ 'ativo' if filtro_tipo == 'mesmo_registro' }}" href="{{ url_for('admin_revisao', tipo='mesmo_registro', promotor=filtro_promotor) }}">
+        <div class="stat-label">Mesmo CRM duplicado</div><div class="stat-valor">{{ t.mesmo_registro }}</div></a>
+      <a class="stat-card rv-total {{ 'ativo' if filtro_tipo == 'numero_parecido' }}" href="{{ url_for('admin_revisao', tipo='numero_parecido', promotor=filtro_promotor) }}">
+        <div class="stat-label">CRM quase igual</div><div class="stat-valor">{{ t.numero_parecido }}</div></a>
+      <a class="stat-card rv-total {{ 'ativo' if filtro_tipo == 'mesmo_nome' }}" href="{{ url_for('admin_revisao', tipo='mesmo_nome', promotor=filtro_promotor) }}">
+        <div class="stat-label">Mesmo nome</div><div class="stat-valor">{{ t.mesmo_nome }}</div></a>
+      <a class="stat-card rv-total {{ 'ativo' if filtro_tipo == 'incompletos' }}" href="{{ url_for('admin_revisao', tipo='incompletos', promotor=filtro_promotor) }}">
+        <div class="stat-label">Sem CRM / CRM estranho</div><div class="stat-valor">{{ t.incompletos }}</div></a>
+    </div>
+
+    <form class="rv-filtros" method="get">
+      <label for="rv-promotor">Promotor</label>
+      <select id="rv-promotor" name="promotor" onchange="this.form.submit()">
+        <option value="">Todos os painéis</option>
+        {% for u in usuarios %}<option value="{{ u.id }}" {{ 'selected' if filtro_promotor == u.id|string }}>{{ u.nome }}</option>{% endfor %}
+      </select>
+      <input type="hidden" name="tipo" value="{{ filtro_tipo }}">
+      {% if filtro_tipo or filtro_promotor %}<a href="{{ url_for('admin_revisao') }}" class="rv-limpar">Ver tudo</a>{% endif %}
+      <span class="rv-analisados">{{ t.medicos }} médicos analisados</span>
+    </form>
+
+    <div class="rv-barra" id="rv-barra">
+      <span id="rv-contagem">Nenhum médico selecionado</span>
+      <button type="button" id="rv-apagar" class="rv-btn-apagar" disabled>Apagar selecionados</button>
+    </div>
+
+    {% if not analise.grupos and not analise.incompletos %}
+    <div class="hv-vazio">Nada para revisar aqui. 🎉</div>
+    {% endif %}
+
+    {% for g in analise.grupos %}
+    <section class="rv-grupo rv-{{ g.tipo }}">
+      <header class="rv-grupo-topo">
+        <div>
+          <span class="rv-selo">{{ {'mesmo_registro': 'Duplicado', 'numero_parecido': 'CRM quase igual', 'mesmo_nome': 'Possível duplicado'}[g.tipo] }}</span>
+          <strong>{{ g.titulo }}</strong>
+          <span class="rv-motivo">{{ g.motivo }}{% if g.paineis > 1 %} · em {{ g.paineis }} painéis{% else %} · no mesmo painel{% endif %}</span>
+        </div>
+        <button type="button" class="rv-sugestao">Marcar todos menos o sugerido</button>
+      </header>
+      <div class="tabela-scroll">
+      <table class="tabela-admin rv-tabela">
+        <thead><tr><th></th><th>Médico</th><th>CRM</th><th>Cidade</th><th>Painel de</th><th>Situação</th><th>Adicionado</th></tr></thead>
+        <tbody>
+        {% for m in g.itens %}
+        <tr class="{{ 'rv-manter' if m.id == g.manter }}">
+          <td><input type="checkbox" class="rv-check" value="{{ m.id }}" aria-label="Selecionar {{ m.nome }}" {{ 'data-manter=1' if m.id == g.manter }}></td>
+          <td data-rotulo="Médico"><strong>{{ m.nome }}</strong>{% if m.ja_comprou %} <span class="selo-cliente">Cliente</span>{% endif %}{% if m.id == g.manter %} <span class="rv-tag-manter">sugerido manter</span>{% endif %}</td>
+          <td data-rotulo="CRM">{{ m.crm or '-' }}</td>
+          <td data-rotulo="Cidade">{{ [m.cidade, m.uf]|select|join(' - ') or '-' }}</td>
+          <td data-rotulo="Painel de">{{ m.usuario_nome }}</td>
+          <td data-rotulo="Situação">{{ rotulos_status.get(m.status, m.status) }}</td>
+          <td data-rotulo="Adicionado">{{ m.adicionado_br }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </section>
+    {% endfor %}
+
+    {% if analise.incompletos %}
+    <section class="rv-grupo rv-incompletos">
+      <header class="rv-grupo-topo">
+        <div>
+          <span class="rv-selo">Dados incompletos</span>
+          <strong>{{ analise.incompletos|length }} médico(s) sem CRM ou com CRM estranho</strong>
+          <span class="rv-motivo">Não são necessariamente erros: confira e corrija pelo painel, ou apague se não servirem.</span>
+        </div>
+      </header>
+      <div class="tabela-scroll">
+      <table class="tabela-admin rv-tabela">
+        <thead><tr><th></th><th>Médico</th><th>Problema</th><th>CRM</th><th>Cidade</th><th>Painel de</th><th>Situação</th></tr></thead>
+        <tbody>
+        {% for m in analise.incompletos %}
+        <tr>
+          <td><input type="checkbox" class="rv-check" value="{{ m.id }}" aria-label="Selecionar {{ m.nome }}"></td>
+          <td data-rotulo="Médico"><strong>{{ m.nome }}</strong>{% if m.ja_comprou %} <span class="selo-cliente">Cliente</span>{% endif %}</td>
+          <td data-rotulo="Problema">{{ m.problema }}</td>
+          <td data-rotulo="CRM">{{ m.crm or '-' }}</td>
+          <td data-rotulo="Cidade">{{ [m.cidade, m.uf]|select|join(' - ') or '-' }}</td>
+          <td data-rotulo="Painel de">{{ m.usuario_nome }}</td>
+          <td data-rotulo="Situação">{{ rotulos_status.get(m.status, m.status) }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </section>
+    {% endif %}
+  </div>
+  </main>
+
+<script>
+(function(){
+  const checks = () => [...document.querySelectorAll('.rv-check')];
+  const btn = document.getElementById('rv-apagar');
+  const contagem = document.getElementById('rv-contagem');
+  function atualizar(){
+    const marcados = [...new Set(checks().filter(c => c.checked).map(c => c.value))];
+    btn.disabled = marcados.length === 0;
+    contagem.textContent = marcados.length ? `${marcados.length} médico(s) selecionado(s)` : 'Nenhum médico selecionado';
+    document.querySelectorAll('.rv-tabela tr').forEach(tr => {
+      const c = tr.querySelector('.rv-check'); if(c) tr.classList.toggle('rv-marcado', c.checked);
+    });
+    return marcados;
+  }
+  // o mesmo médico pode aparecer em mais de um grupo: marcar num marca nos outros
+  document.addEventListener('change', e => {
+    if(!e.target.classList.contains('rv-check')) return;
+    checks().filter(c => c.value === e.target.value).forEach(c => c.checked = e.target.checked);
+    atualizar();
+  });
+  document.querySelectorAll('.rv-sugestao').forEach(b => b.addEventListener('click', () => {
+    b.closest('.rv-grupo').querySelectorAll('.rv-check').forEach(c => {
+      const marcar = !c.dataset.manter;
+      checks().filter(o => o.value === c.value).forEach(o => o.checked = marcar);
+    });
+    atualizar();
+  }));
+  btn.addEventListener('click', () => {
+    const ids = atualizar();
+    if(!ids.length) return;
+    if(!confirm(`Apagar ${ids.length} médico(s) dos painéis? Isso não pode ser desfeito (as visitas já feitas continuam no histórico).`)) return;
+    btn.disabled = true; btn.textContent = 'Apagando…';
+    fetch('/admin/revisao/apagar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ids.map(Number) }) })
+      .then(r => r.json())
+      .then(d => {
+        if(d.ok){ location.reload(); }
+        else { alert(d.mensagem || 'Não foi possível apagar.'); btn.disabled = false; btn.textContent = 'Apagar selecionados'; }
+      })
+      .catch(() => { alert('Erro de conexão. Nada foi apagado.'); btn.disabled = false; btn.textContent = 'Apagar selecionados'; });
+  });
+  atualizar();
+})();
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+  }
+</script>
+</body>
+</html>

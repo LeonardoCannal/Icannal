@@ -932,6 +932,52 @@ body.ui-novo .cli-conflitos summary{ cursor: pointer; font-weight: 600; font-siz
   body.ui-novo .cli-tabela td::before{ content: attr(data-rotulo) ":"; font-weight: 600; color: var(--pedra); min-width: 92px; font-size: 12.5px; }
 }
 
+
+/* Admin: revisão dos painéis (duplicados) */
+body.ui-novo .rv-totais{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 6px 0 14px; }
+body.ui-novo a.rv-total{ text-decoration: none; color: inherit; transition: border-color .2s ease, transform .35s var(--suave, ease); }
+body.ui-novo a.rv-total:hover{ border-color: var(--linha-forte); transform: translateY(-1px); }
+body.ui-novo a.rv-total.ativo{ border-color: var(--verde); box-shadow: 0 0 0 3px rgba(136,173,54,.18); }
+body.ui-novo .rv-filtros{ display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; font-size: 14px; }
+body.ui-novo .rv-filtros select{ min-height: 38px; min-width: 220px; }
+body.ui-novo .rv-limpar{ color: var(--verde-acao); font-weight: 600; text-decoration: none; }
+body.ui-novo.escuro .rv-limpar{ color: var(--verde-texto); }
+body.ui-novo .rv-analisados{ margin-left: auto; color: var(--pedra); font-size: 13px; }
+body.ui-novo .rv-barra{ position: sticky; top: 64px; z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 10px 14px; margin-bottom: 14px; border-radius: 12px; background: var(--tela); border: 1px solid var(--linha); box-shadow: var(--sombra-2); font-size: 14px; }
+body.ui-novo .rv-btn-apagar{ font: inherit; font-weight: 600; font-size: 14px; min-height: 38px; padding: 0 16px; border-radius: 10px; cursor: pointer;
+  border: 1px solid #C13B3B; background: #C13B3B; color: #fff; transition: opacity .2s ease, transform .3s var(--suave, ease); }
+body.ui-novo .rv-btn-apagar:disabled{ opacity: .4; cursor: not-allowed; }
+body.ui-novo .rv-btn-apagar:not(:disabled):hover{ transform: translateY(-1px); }
+body.ui-novo .rv-grupo{ border: 1px solid var(--linha); border-radius: 14px; padding: 12px 14px; margin-bottom: 12px; background: var(--tela); }
+body.ui-novo .rv-grupo-topo{ display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 6px; }
+body.ui-novo .rv-grupo-topo strong{ display: block; margin-top: 4px; font-size: 15px; }
+body.ui-novo .rv-motivo{ display: block; font-size: 13px; color: var(--ardosia); }
+body.ui-novo .rv-selo{ display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--superficie); color: var(--ardosia); border: 1px solid var(--linha); }
+body.ui-novo .rv-mesmo_registro .rv-selo{ background: #FBEAEA; color: #A03030; border-color: #F0C8C8; }
+body.ui-novo .rv-numero_parecido .rv-selo{ background: var(--alerta-fundo); color: var(--alerta-texto); border-color: #F1DDB0; }
+body.ui-novo.escuro .rv-mesmo_registro .rv-selo{ background: rgba(242,139,130,.1); color: #F28B82; border-color: rgba(242,139,130,.3); }
+body.ui-novo .rv-sugestao{ font: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap; padding: 6px 10px; border-radius: 8px; cursor: pointer;
+  background: transparent; border: 1px solid var(--linha-forte); color: var(--tinta); }
+body.ui-novo .rv-sugestao:hover{ background: var(--superficie); }
+body.ui-novo table.tabela-admin.rv-tabela{ min-width: 0; width: 100%; }
+body.ui-novo .rv-tabela td{ white-space: normal; vertical-align: middle; font-size: 13.5px; }
+body.ui-novo .rv-tabela td:first-child, body.ui-novo .rv-tabela th:first-child{ width: 34px; }
+body.ui-novo .rv-check{ width: 18px; height: 18px; accent-color: #C13B3B; cursor: pointer; }
+body.ui-novo .rv-tabela tr.rv-marcado td{ background: #FBEAEA; text-decoration: line-through; text-decoration-color: rgba(160,48,48,.5); }
+body.ui-novo.escuro .rv-tabela tr.rv-marcado td{ background: rgba(242,139,130,.08); }
+body.ui-novo .rv-tag-manter{ display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--verde-suave); color: var(--verde-texto); margin-left: 4px; }
+body.ui-novo .rv-tabela span.selo-cliente{ font-size: 10px; padding: 1px 6px; margin: 0 0 0 4px; vertical-align: 1px; }
+@media (max-width: 760px){
+  body.ui-novo .rv-totais{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  body.ui-novo .rv-grupo-topo{ flex-direction: column; }
+  body.ui-novo .rv-analisados{ margin-left: 0; width: 100%; }
+  body.ui-novo .rv-tabela thead{ display: none; }
+  body.ui-novo .rv-tabela tr{ display: block; border: 1px solid var(--linha); border-radius: 10px; margin-bottom: 8px; padding: 8px 10px; }
+  body.ui-novo .rv-tabela td{ display: flex; gap: 8px; border: none; padding: 2px 0; }
+  body.ui-novo .rv-tabela td[data-rotulo]::before{ content: attr(data-rotulo) ":"; font-weight: 600; color: var(--pedra); min-width: 84px; font-size: 12.5px; }
+}
+
 /* quem pediu "menos movimento" no aparelho: tudo parado e na hora */
 @media (prefers-reduced-motion: reduce){
   body.ui-novo *, body.ui-novo::after{ transition: none !important; animation: none !important; }
