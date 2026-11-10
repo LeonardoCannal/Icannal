@@ -1069,3 +1069,27 @@ body.ui-novo .rs-tabela th{ white-space: normal; vertical-align: bottom; line-he
   body.ui-novo .rs-tabela td::before, body.ui-novo .rg-tabela td::before{ text-align: left; }
   body.ui-novo .rs-tabela td.rs-pos{ display: none; }
 }
+
+/* Notas por voz (ditado) */
+body.ui-novo .ditado-barra{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; min-height: 36px; }
+body.ui-novo .btn-ditado{
+  display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px 0 11px;
+  border-radius: 999px; border: 1px solid var(--linha-forte); background: var(--tela); color: var(--tinta);
+  font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; touch-action: manipulation;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+body.ui-novo .btn-ditado svg{ width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+body.ui-novo .btn-ditado:hover{ border-color: var(--verde); color: var(--verde-texto); }
+body.ui-novo .btn-ditado:focus-visible{ outline: 2px solid var(--verde); outline-offset: 2px; }
+body.ui-novo .btn-ditado.gravando{ background: var(--cliente); border-color: var(--cliente); color: #fff; animation: ditado-pulso 1.4s ease-out infinite; }
+body.ui-novo.escuro .btn-ditado.gravando{ color: #1A0B0B; }
+@keyframes ditado-pulso{ 0%{ box-shadow: 0 0 0 0 rgba(217,54,54,.45); } 100%{ box-shadow: 0 0 0 12px rgba(217,54,54,0); } }
+@media (prefers-reduced-motion: reduce){ body.ui-novo .btn-ditado.gravando{ animation: none; } }
+body.ui-novo .ditado-status{ font-size: 13px; color: var(--ardosia); min-width: 0; overflow-wrap: anywhere; flex: 1 1 160px; }
+body.ui-novo .ditado-status.erro{ color: var(--cliente-texto); }
+body.ui-novo .ditado-dica{ font-size: 12.5px; color: var(--pedra); }
+body.ui-novo .resultado-nota{ margin: 16px 0 6px; }
+body.ui-novo .resultado-nota label{ display: block; font-size: 13px; font-weight: 600; color: var(--tinta); margin-bottom: 6px; }
+body.ui-novo .resultado-nota label span{ font-weight: 400; color: var(--pedra); }
+body.ui-novo .resultado-nota .obs-textarea{ min-height: 0; }
+body.ui-novo .modal-resultado-painel .resultado-nota{ margin: 4px 0 16px; }

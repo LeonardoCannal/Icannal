@@ -1374,7 +1374,7 @@
       <h2 id="obs-titulo">Observações</h2>
       <button type="button" id="obs-fechar" class="modal-fechar" aria-label="Fechar">&times;</button>
     </div>
-    <textarea id="obs-texto" class="obs-textarea" rows="7" placeholder="Anote aqui informações e observações sobre esse médico…"></textarea>
+    <textarea id="obs-texto" class="obs-textarea" rows="7" data-ditado placeholder="Anote aqui informações e observações sobre esse médico…"></textarea>
     <button type="button" id="obs-salvar" class="btn-buscar" style="margin-top:14px;">Salvar observações</button>
   </div>
 </div>
@@ -1422,6 +1422,10 @@
     <div class="modal-cabecalho">
       <h2 id="resultado-titulo">Como foi a visita?</h2>
       <button type="button" id="resultado-fechar" class="modal-fechar" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="resultado-nota">
+      <label for="resultado-nota-texto">Nota da visita <span>(opcional) — fale ou escreva antes de escolher o resultado</span></label>
+      <textarea id="resultado-nota-texto" class="obs-textarea" rows="3" maxlength="2000" data-ditado placeholder="Ex.: pediu material sobre CBD, voltar em 15 dias…"></textarea>
     </div>
     <div class="resultado-opcoes">
       {% for chave, rotulo in resultados_visita.items() %}
@@ -2004,7 +2008,7 @@
       });
   }
 
-  function moverNoPainel(id, novoStatus, resultado){
+  function moverNoPainel(id, novoStatus, resultado, nota){
     const corpo = { id, status: novoStatus };
     if(resultado) corpo.resultado = resultado;
     fetch('/api/painel/mover', {
@@ -2013,6 +2017,14 @@
       body: JSON.stringify(corpo)
     })
       .then(res => res.json())
+      .then(() => {
+        if(!nota) return;
+        return fetch(`/api/painel/${id}/nota`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ texto: nota })
+        }).then(r => r.json()).then(r => { if(!r.ok) mostrarAviso('A visita foi marcada, mas a nota não foi salva.'); });
+      })
       .then(() => carregarPainel())
       .catch(() => mostrarAviso('Não foi possível mover o médico agora.'));
   }
@@ -2021,23 +2033,31 @@
   const modalResultado = document.getElementById('modal-resultado');
   const resultadoTitulo = document.getElementById('resultado-titulo');
   let resultadoEntradaId = null;
+  const resultadoNota = document.getElementById('resultado-nota-texto');
+  function pegarNota(){
+    if(window.icannalDitado) window.icannalDitado.pararTudo();
+    return resultadoNota.value.trim();
+  }
 
   function abrirModalResultado(entradaId, nomeMedico){
     resultadoEntradaId = entradaId;
     resultadoTitulo.textContent = `Como foi a visita a ${nomeMedico}?`;
+    resultadoNota.value = '';
     modalResultado.classList.add('aberto');
   }
 
   document.getElementById('resultado-fechar').addEventListener('click', () => modalResultado.classList.remove('aberto'));
   modalResultado.addEventListener('click', (e) => { if(e.target === modalResultado) modalResultado.classList.remove('aberto'); });
   document.getElementById('resultado-pular').addEventListener('click', () => {
+    const nota = pegarNota();
     modalResultado.classList.remove('aberto');
-    moverNoPainel(resultadoEntradaId, 'visitado');
+    moverNoPainel(resultadoEntradaId, 'visitado', null, nota);
   });
   document.querySelectorAll('.btn-resultado-opcao').forEach(botao => {
     botao.addEventListener('click', () => {
+      const nota = pegarNota();
       modalResultado.classList.remove('aberto');
-      moverNoPainel(resultadoEntradaId, 'visitado', botao.dataset.resultado);
+      moverNoPainel(resultadoEntradaId, 'visitado', botao.dataset.resultado, nota);
     });
   });
 
@@ -2398,6 +2418,7 @@
     });
   }
 </script>
+<script src="{{ url_for('static', filename='ditado.js') }}" defer></script>
 {% with aba_mobile='buscar' %}{% include '_barra_mobile.html' %}{% endwith %}
 {% if current_user.is_admin %}
 {% include '_sino_clientes_js.html' %}

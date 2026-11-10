@@ -38,6 +38,7 @@ from auth import (
     ACOES_ADMIN,
     registrar_acao_admin,
     buscar_entrada_painel,
+    acrescentar_observacao,
     listar_acoes_admin,
     listar_admins_do_registro,
     calcular_resumo_semana,
@@ -1718,6 +1719,17 @@ def api_painel_observacoes(entrada_id):
 
     ok = salvar_observacoes(usuario["id"], entrada_id, texto)
     return jsonify({"ok": ok})
+
+
+@app.route("/api/painel/<int:entrada_id>/nota", methods=["POST"])
+@login_required
+def api_painel_nota(entrada_id):
+    """Nota rápida (digitada ou falada) que entra no fim das observações."""
+    usuario = usuario_logado()
+    ok, observacoes = acrescentar_observacao(usuario["id"], entrada_id, (_corpo_json().get("texto") or "")[:2000])
+    if not ok:
+        return jsonify({"ok": False, "mensagem": "Não foi possível salvar a nota."}), 400
+    return jsonify({"ok": True, "observacoes": observacoes})
 
 
 @app.route("/api/painel/<int:entrada_id>/editar", methods=["POST"])

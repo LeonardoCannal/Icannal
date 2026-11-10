@@ -1689,6 +1689,30 @@ def salvar_observacoes(usuario_id: int, entrada_id: int, texto: str) -> bool:
         return cursor.rowcount > 0
 
 
+def acrescentar_observacao(usuario_id: int, entrada_id: int, texto: str):
+    """Junta uma nota nova no FIM das observações, com a data (Brasília) na
+    frente — usado pela nota rápida depois da visita. Se passar do limite,
+    as notas mais antigas (do começo) é que saem."""
+    texto = " ".join((texto or "").split()) if "\n" not in (texto or "") else (texto or "").strip()
+    if not texto:
+        return False, None
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("SELECT observacoes FROM painel_medicos WHERE id = ? AND usuario_id = ?"),
+                       (entrada_id, usuario_id))
+        linha = cursor.fetchone()
+        if not linha:
+            return False, None
+        atual = (linha["observacoes"] or "").rstrip()
+        nota = f"{agora_brasil().strftime('%d/%m/%Y')} — {texto}"
+        novo = (atual + "\n\n" + nota) if atual else nota
+        if len(novo) > LIMITE_OBSERVACOES:
+            novo = novo[-LIMITE_OBSERVACOES:]
+        cursor.execute(_q("UPDATE painel_medicos SET observacoes = ? WHERE id = ? AND usuario_id = ?"),
+                       (novo, entrada_id, usuario_id))
+        return True, novo
+
+
 UFS_VALIDAS = {"AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA",
                "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"}
 
