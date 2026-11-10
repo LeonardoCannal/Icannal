@@ -1879,17 +1879,27 @@ def excluir_usuario(usuario_id: int) -> bool:
 
 
 def listar_usuarios_com_contagem_painel():
-    """Pra tela de admin: cada usuário com quantos médicos tem no painel dele."""
+    """Pra tela de admin: cada usuário com os números do painel dele (total,
+    por coluna e quantos são clientes) — base dos filtros e da ordenação."""
+    limite = (datetime.utcnow() - timedelta(days=DIAS_PARA_REVISITAR)).isoformat()
     with _conexao() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT u.id, u.nome, u.email, u.cpf, u.criado_em, u.ultimo_login, u.is_admin,
-                   COUNT(p.id) AS total_painel
+        cursor.execute(_q("""
+            SELECT u.id, u.nome, u.email, u.cpf, u.criado_em, u.ultimo_login, u.is_admin, u.aprovado,
+                   COUNT(p.id) AS total_painel,
+                   COALESCE(SUM(CASE WHEN p.status = 'prospectado' THEN 1 ELSE 0 END), 0) AS prospectados,
+                   COALESCE(SUM(CASE WHEN p.status = 'agendado' THEN 1 ELSE 0 END), 0) AS agendados,
+                   COALESCE(SUM(CASE WHEN p.status = 'visitado'
+                                      AND (p.visitado_em IS NULL OR p.visitado_em = '' OR p.visitado_em >= ?)
+                                     THEN 1 ELSE 0 END), 0) AS visitados,
+                   COALESCE(SUM(CASE WHEN p.status = 'visitado' AND p.visitado_em <> '' AND p.visitado_em < ?
+                                     THEN 1 ELSE 0 END), 0) AS revisitar,
+                   COALESCE(SUM(CASE WHEN p.ja_comprou = 1 THEN 1 ELSE 0 END), 0) AS clientes
             FROM usuarios u
             LEFT JOIN painel_medicos p ON p.usuario_id = u.id
-            GROUP BY u.id, u.nome, u.email, u.cpf, u.criado_em, u.ultimo_login, u.is_admin
+            GROUP BY u.id, u.nome, u.email, u.cpf, u.criado_em, u.ultimo_login, u.is_admin, u.aprovado
             ORDER BY u.criado_em DESC
-        """)
+        """), (limite, limite))
         return cursor.fetchall()
 
 

@@ -703,6 +703,15 @@ def admin():
             "is_admin": bool(u["is_admin"]),
             "eh_mestre": eh_admin_mestre(u),
             "total_painel": u["total_painel"],
+            "prospectados": u["prospectados"],
+            "agendados": u["agendados"],
+            "visitados": u["visitados"],
+            "revisitar": u["revisitar"],
+            "clientes": u["clientes"],
+            "aprovado": bool(u["aprovado"]),
+            # datas cruas (ISO, UTC) só pra ordenar/filtrar na tela
+            "criado_em_iso": str(u["criado_em"] or ""),
+            "ultimo_login_iso": str(u["ultimo_login"] or ""),
         }
         for u in listar_usuarios_com_contagem_painel()
     ]
