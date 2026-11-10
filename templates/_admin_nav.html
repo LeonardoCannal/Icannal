@@ -1,0 +1,11 @@
+{# Menu do admin. Use: {% with aba='usuarios' %}{% include '_admin_nav.html' %}{% endwith %} #}
+<nav class="admin-nav" aria-label="Menu do admin">
+  <a href="{{ url_for('admin') }}" class="admin-nav-link{{ ' ativo' if aba == 'usuarios' }}">Usuários</a>
+  <a href="{{ url_for('admin_dashboard') }}" class="admin-nav-link{{ ' ativo' if aba == 'dashboard' }}">Dashboard</a>
+  <a href="{{ url_for('admin_resumo_semanal') }}" class="admin-nav-link{{ ' ativo' if aba == 'resumo' }}">Resumo semanal</a>
+  <a href="{{ url_for('admin_historico_visitas') }}" class="admin-nav-link{{ ' ativo' if aba == 'visitas' }}">Visitas</a>
+  <a href="{{ url_for('admin_clientes') }}" class="admin-nav-link{{ ' ativo' if aba == 'clientes' }}">Clientes</a>
+  <a href="{{ url_for('admin_revisao') }}" class="admin-nav-link{{ ' ativo' if aba == 'revisao' }}">Revisão</a>
+  <a href="{{ url_for('admin_base_propria') }}" class="admin-nav-link{{ ' ativo' if aba == 'base' }}">Base de médicos</a>
+  <a href="{{ url_for('admin_registro') }}" class="admin-nav-link{{ ' ativo' if aba == 'registro' }}">Registro</a>
+</nav>

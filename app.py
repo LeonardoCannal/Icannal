@@ -35,6 +35,17 @@ from auth import (
     buscar_base_propria_por_nome,
     editar_dados_medico_painel,
     listar_historico_visitas,
+    ACOES_ADMIN,
+    registrar_acao_admin,
+    buscar_entrada_painel,
+    listar_acoes_admin,
+    listar_admins_do_registro,
+    calcular_resumo_semana,
+    ultima_semana_fechada,
+    inicio_da_semana_br,
+    guardar_resumo_semana,
+    buscar_resumo_semana,
+    listar_semanas_com_resumo,
     marcar_medico_cliente,
     listar_alertas_clientes,
     contar_alertas_clientes_nao_lidos,
@@ -103,7 +114,7 @@ import io
 import csv
 import secrets
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
@@ -443,6 +454,20 @@ def _avisar_acao_de_outro_admin(mensagem: str):
         notificar_admin(mensagem)
 
 
+def _descrever_medico(medico):
+    if not medico:
+        return ""
+    medico = dict(medico)
+    nome = medico.get("nome") or ""
+    crm = medico.get("crm") or ""
+    return f"{nome} ({crm})" if crm and crm != "Não encontrado" else nome
+
+
+def _registrar(acao, alvo=None, detalhe=""):
+    """Anota no Registro do admin (quem fez, o quê, com quem)."""
+    registrar_acao_admin(usuario_logado(), acao, alvo, detalhe)
+
+
 # Fonte de busca (Doctoralia, Sechat, APEPI...) com problema: uma falha
 # isolada é normal (o site demorou, caiu por um segundo). Só avisa quando a
 # mesma fonte falha 3 vezes em 20 minutos, e no máximo 1 aviso a cada 6 horas.
@@ -618,12 +643,11 @@ def login():
 
 
 def formatar_data_br(valor_iso):
+    """Datas do banco estão em UTC; na tela, horário de Brasília."""
     if not valor_iso:
         return "Nunca"
-    try:
-        return datetime.fromisoformat(valor_iso).strftime("%d/%m/%Y %H:%M")
-    except ValueError:
-        return valor_iso
+    quando = _utc_para_br(str(valor_iso))
+    return quando.strftime("%d/%m/%Y %H:%M") if quando else str(valor_iso)
 
 
 @app.route("/perfil", methods=["GET", "POST"])
@@ -781,6 +805,7 @@ def admin_exportar_usuarios():
     arquivo = io.BytesIO()
     wb.save(arquivo)
     arquivo.seek(0)
+    _registrar("exportar", None, "Planilha de usuários (números dos painéis)")
     return send_file(
         arquivo,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -910,6 +935,8 @@ def admin_historico_visitas_exportar():
     wb.save(arquivo)
     arquivo.seek(0)
     sufixo = f"{filtros['de']}_a_{filtros['ate']}"
+    _registrar("exportar", buscar_usuario_por_id(int(filtros["usuario"])) if str(filtros.get("usuario") or "").isdigit() else None,
+               f"Histórico de visitas de {filtros['de']} a {filtros['ate']} ({len(linhas)} visita(s))")
     return send_file(
         arquivo,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -965,6 +992,7 @@ def admin_exportar_painel(user_id):
     nome_usuario_arquivo = usuario["nome"].strip().replace(" ", "_")
     nome_arquivo = f"painel_{nome_usuario_arquivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
 
+    _registrar("exportar", usuario, "Painel médico completo")
     return send_file(
         arquivo,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1003,6 +1031,9 @@ def admin_marcar_cliente(user_id, entrada_id):
     cliente = bool(_corpo_json().get("cliente"))
     if not marcar_medico_cliente(user_id, entrada_id, cliente):
         return jsonify({"ok": False, "mensagem": "Médico não encontrado no painel desse usuário."}), 404
+    medico = buscar_entrada_painel(user_id, entrada_id)
+    _registrar("marcar_cliente" if cliente else "desmarcar_cliente", buscar_usuario_por_id(user_id),
+               _descrever_medico(medico))
     return jsonify({"ok": True, "cliente": cliente})
 
 
@@ -1087,6 +1118,8 @@ def admin_clientes_importar():
                         "totais": totais, "conflitos": conflitos})
 
     feito = aplicar_importacao_clientes(acoes, clientes_import.medico_para_painel)
+    _registrar("importar_clientes", None, f"{arquivo.filename}: {feito['marcados']} marcado(s) como cliente, "
+                                          f"{feito['adicionados']} adicionado(s) aos painéis")
     _avisar_acao_de_outro_admin(
         f"🔴 i.cannal — {usuario_logado()['nome']} importou clientes da planilha de pedidos: "
         f"{feito['marcados']} marcados, {feito['adicionados']} adicionados aos painéis."
@@ -1131,6 +1164,7 @@ def admin_revisao_apagar():
     if not ids:
         return jsonify({"ok": False, "mensagem": "Selecione pelo menos um médico."}), 400
     apagados = apagar_medicos_paineis_admin(ids)
+    _registrar("apagar_revisao", None, f"{apagados} médico(s) apagado(s) dos painéis")
     _avisar_acao_de_outro_admin(f"🧹 i.cannal — {usuario_logado()['nome']} apagou {apagados} médico(s) na revisão de duplicados.")
     return jsonify({"ok": True, "apagados": apagados})
 
@@ -1188,6 +1222,7 @@ def admin_cadastro_aprovar(usuario_id):
     ok = aprovar_usuario(usuario_id)
     if ok:
         alvo = buscar_usuario_por_id(usuario_id)
+        _registrar("aprovar_cadastro", alvo)
         _avisar_acao_de_outro_admin(f"✅ i.cannal — cadastro de {alvo['nome'] if alvo else usuario_id} "
                                     f"aprovado por {usuario_logado()['nome']}.")
     return jsonify({"ok": ok})
@@ -1196,7 +1231,11 @@ def admin_cadastro_aprovar(usuario_id):
 @app.route("/admin/notificacoes/<int:solicitacao_id>/atender", methods=["POST"])
 @admin_required
 def admin_notificacao_atender(solicitacao_id):
+    solicitacao = buscar_solicitacao_senha_por_id(solicitacao_id)
     ok = marcar_solicitacao_atendida(solicitacao_id)
+    if ok and solicitacao:
+        dono = buscar_usuario_por_cpf(solicitacao["cpf"])
+        _registrar("atender_senha", dono, "" if dono else f"CPF {formatar_cpf(solicitacao['cpf'])} (sem conta)")
     return jsonify({"ok": ok})
 
 
@@ -1219,7 +1258,152 @@ def admin_notificacao_redefinir(solicitacao_id):
 
     definir_senha(usuario["id"], nova_senha)
     marcar_solicitacao_atendida(solicitacao_id)
+    _registrar("redefinir_senha", usuario)
     return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Admin: resumo semanal automático
+# ---------------------------------------------------------------------------
+SITE_URL = (os.environ.get("SITE_URL") or "https://icannal.com.br").rstrip("/")
+HORA_RESUMO_SEMANAL = 7  # segunda-feira, a partir das 7h (Brasília)
+
+
+def _semana_rotulo(dados):
+    ini = date.fromisoformat(dados["semana_inicio"])
+    fim = date.fromisoformat(dados["semana_fim"])
+    return f"{ini.strftime('%d/%m')} a {fim.strftime('%d/%m/%Y')}"
+
+
+def _texto_resumo_semanal(dados):
+    t = dados["totais"]
+    var = dados.get("variacao_visitas_pct")
+    comparacao = "" if var is None else f" ({'+' if var >= 0 else ''}{var}% vs semana anterior)"
+    linhas = [
+        f"📊 i.cannal — resumo da semana {_semana_rotulo(dados)}",
+        f"• {t['visitas']} visita(s){comparacao}",
+        f"• {t['novos_medicos']} médico(s) novo(s) nos painéis",
+        f"• {t['agendamentos']} agendamento(s) criado(s)",
+        f"• {t['clientes_visitados']} visita(s) a médicos clientes",
+    ]
+    top = [p for p in dados["promotores"] if p["visitas"] > 0][:3]
+    if top:
+        linhas.append("🏆 " + ", ".join(f"{p['nome'].split()[0]} ({p['visitas']})" for p in top))
+    sem = dados.get("sem_visitas") or []
+    if sem:
+        nomes = ", ".join(n.split()[0] for n in sem[:8]) + (f" e mais {len(sem) - 8}" if len(sem) > 8 else "")
+        linhas.append(f"⚠️ Sem visitas: {nomes}")
+    linhas.append(f"Ver tudo: {SITE_URL}/admin/resumo")
+    return "\n".join(linhas)
+
+
+def verificar_resumo_semanal(agora_utc=None):
+    """Gera (uma vez só) o resumo da última semana fechada e avisa o admin.
+    Roda sozinho de tempos em tempos e também quando o admin abre a tela."""
+    agora_utc = agora_utc or datetime.utcnow()
+    agora_br = agora_utc - timedelta(hours=3)
+    segunda = ultima_semana_fechada(agora_utc)
+    # na própria segunda-feira, só depois das 7h
+    if agora_br.weekday() == 0 and agora_br.hour < HORA_RESUMO_SEMANAL:
+        segunda -= timedelta(days=7)
+    if buscar_resumo_semana(segunda):
+        return False
+    dados = calcular_resumo_semana(segunda, agora_utc)
+    if guardar_resumo_semana(segunda, dados):
+        notificar_admin(_texto_resumo_semanal(dados))
+        return True
+    return False
+
+
+def _tarefa_resumo_semanal():
+    time.sleep(90)  # deixa o servidor subir primeiro
+    while True:
+        try:
+            verificar_resumo_semanal()
+        except Exception:
+            pass  # tenta de novo na próxima volta
+        time.sleep(30 * 60)
+
+
+_TAREFA_INICIADA = {"pid": None}
+
+
+@app.before_request
+def _iniciar_tarefa_resumo():
+    """Liga a tarefa do resumo uma vez por processo, no 1º acesso (funciona
+    igual com 1 ou vários workers do gunicorn; o banco garante 1 aviso só)."""
+    if _TAREFA_INICIADA["pid"] == os.getpid() or os.environ.get("ICANNAL_SEM_TAREFAS") == "1":
+        return
+    _TAREFA_INICIADA["pid"] = os.getpid()
+    threading.Thread(target=_tarefa_resumo_semanal, daemon=True, name="resumo-semanal").start()
+
+
+@app.route("/admin/resumo")
+@admin_required
+def admin_resumo_semanal():
+    try:
+        verificar_resumo_semanal()
+    except Exception:
+        pass
+    semanas = listar_semanas_com_resumo()
+    pedida = request.args.get("semana", "")
+    atual = inicio_da_semana_br((datetime.utcnow() - timedelta(hours=3)).date())
+    if pedida == "atual" or not semanas:
+        dados = calcular_resumo_semana(atual)
+        escolhida = "atual"
+    else:
+        try:
+            segunda = date.fromisoformat(pedida) if pedida else date.fromisoformat(semanas[0])
+        except ValueError:
+            segunda = date.fromisoformat(semanas[0])
+        dados = buscar_resumo_semana(segunda) or calcular_resumo_semana(segunda)
+        escolhida = segunda.isoformat()
+    opcoes = [{"valor": "atual", "rotulo": f"Semana atual (até agora) — desde {atual.strftime('%d/%m')}"}]
+    for sem in semanas:
+        ini = date.fromisoformat(sem)
+        opcoes.append({"valor": sem, "rotulo": f"{ini.strftime('%d/%m')} a {(ini + timedelta(days=6)).strftime('%d/%m/%Y')}"})
+    for c in dados["clientes_visitados"]:
+        quando = _utc_para_br(c["criado_em"])
+        c["quando"] = quando.strftime("%d/%m %H:%M") if quando else ""
+    gerado = _utc_para_br(dados.get("gerado_em"))
+    return render_template(
+        "admin_resumo.html", dados=dados, opcoes=opcoes, escolhida=escolhida,
+        rotulo_semana=_semana_rotulo(dados), parcial=(escolhida == "atual"),
+        gerado_em=gerado.strftime("%d/%m/%Y às %H:%M") if gerado else "",
+        avisos_ligados=bool(os.environ.get("TELEGRAM_USUARIO")
+                            or (os.environ.get("WHATSAPP_TELEFONE") and os.environ.get("WHATSAPP_APIKEY"))),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Admin: registro do que os admins fizeram
+# ---------------------------------------------------------------------------
+@app.route("/admin/registro")
+@admin_required
+def admin_registro():
+    admin_id = request.args.get("admin", "")
+    acao = request.args.get("acao", "")
+    de = request.args.get("de", "")
+    ate = request.args.get("ate", "")
+    acoes = listar_acoes_admin(
+        admin_id=int(admin_id) if admin_id.isdigit() else None,
+        acao=acao if acao in ACOES_ADMIN else None,
+        de_utc=_dia_br_para_utc(de) if de else None,
+        ate_utc=_dia_br_para_utc(ate, fim=True) if ate else None,
+        limite=500,
+    )
+    cortado = len(acoes) > 500
+    acoes = acoes[:500]
+    for a in acoes:
+        quando = _utc_para_br(a["criado_em"])
+        a["data_br"] = quando.strftime("%d/%m/%Y") if quando else ""
+        a["hora_br"] = quando.strftime("%H:%M") if quando else ""
+        a["acao_nome"] = ACOES_ADMIN.get(a["acao"], a["acao"])
+    return render_template(
+        "admin_registro.html", acoes=acoes, cortado=cortado, tipos=ACOES_ADMIN,
+        admins=listar_admins_do_registro(),
+        filtros={"admin": admin_id, "acao": acao, "de": de, "ate": ate},
+    )
 
 
 @app.route("/admin/dashboard")
@@ -1747,6 +1931,7 @@ def admin_base_propria_importar():
 
     usuario = usuario_logado()
     resultado = importar_base_propria(usuario["id"], linhas, set(ESPECIALIDADES.keys()))
+    _registrar("importar_base", None, f"{arquivo.filename}: {len(linhas)} linha(s)")
     return jsonify({"ok": True, **resultado})
 
 
@@ -1761,6 +1946,8 @@ def admin_painel_adicionar(user_id):
         return jsonify({"ok": False, "mensagem": "Dados do médico incompletos."}), 400
 
     ok, mensagem = adicionar_ao_painel(user_id, medico)
+    if ok:
+        _registrar("adicionar_medico", buscar_usuario_por_id(user_id), _descrever_medico(medico))
     return jsonify({"ok": ok, "mensagem": mensagem})
 
 
@@ -1770,7 +1957,10 @@ def admin_painel_remover(user_id, entrada_id):
     if not buscar_usuario_por_id(user_id):
         return jsonify({"ok": False, "mensagem": "Usuário não encontrado."}), 404
 
+    medico = buscar_entrada_painel(user_id, entrada_id)
     ok = remover_medico_painel(user_id, entrada_id)
+    if ok:
+        _registrar("remover_medico", buscar_usuario_por_id(user_id), _descrever_medico(medico))
     return jsonify({"ok": ok})
 
 
@@ -1813,6 +2003,7 @@ def admin_painel_importar(user_id):
         return jsonify({"ok": False, "mensagem": "O arquivo está vazio."}), 400
 
     resultado = admin_importar_painel_usuario(user_id, linhas)
+    _registrar("importar_painel", buscar_usuario_por_id(user_id), f"{arquivo.filename}: {len(linhas)} linha(s)")
     return jsonify({"ok": True, **resultado})
 
 
@@ -1825,6 +2016,7 @@ def admin_tornar_admin(user_id):
     ok = tornar_admin(user_id)
     if ok:
         alvo = buscar_usuario_por_id(user_id)
+        _registrar("tornar_admin", alvo)
         _avisar_acao_de_outro_admin(f"⭐ i.cannal — {alvo['nome']} agora é ADMIN "
                                     f"(feito por {usuario_logado()['nome']}).")
     return jsonify({"ok": ok})
@@ -1844,6 +2036,8 @@ def admin_remover_admin(user_id):
         return jsonify({"ok": False, "mensagem": "Você não pode remover o próprio acesso de admin."}), 400
 
     ok = remover_admin(user_id)
+    if ok:
+        _registrar("remover_admin", alvo)
     return jsonify({"ok": ok})
 
 
@@ -1863,6 +2057,7 @@ def admin_excluir_usuario(user_id):
 
     ok = excluir_usuario(user_id)
     if ok:
+        _registrar("excluir_usuario", alvo, alvo["email"] or "")
         _avisar_acao_de_outro_admin(f"🗑️ i.cannal — a conta de {alvo['nome']} ({alvo['email']}) foi "
                                     f"EXCLUÍDA por {usuario_atual['nome']}.")
     return jsonify({"ok": ok})

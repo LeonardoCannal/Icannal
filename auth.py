@@ -303,6 +303,30 @@ def inicializar_auth(app, sqlite_path):
                 lida INTEGER NOT NULL DEFAULT 0
             )
         """)
+        # Registro do que os admins fizeram. Guarda os nomes do momento, então
+        # continua legível mesmo se a conta (de quem fez ou de quem sofreu a
+        # ação) for excluída depois.
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS acoes_admin (
+                id {"SERIAL PRIMARY KEY" if USANDO_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
+                admin_id INTEGER,
+                admin_nome TEXT NOT NULL,
+                acao TEXT NOT NULL,
+                alvo_usuario_id INTEGER,
+                alvo_nome TEXT,
+                detalhe TEXT,
+                criado_em TEXT NOT NULL
+            )
+        """)
+        # Resumo semanal: uma linha por semana (segunda-feira, horário de
+        # Brasília), com os números congelados no momento em que foi gerado.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS resumos_semanais (
+                semana_inicio TEXT PRIMARY KEY,
+                criado_em TEXT NOT NULL,
+                dados TEXT NOT NULL
+            )
+        """)
         cursor.execute(sql_base_propria)
         cursor.execute(sql_removidos)
         # Traduções de artigos (Google Cloud Translation): cada texto é
@@ -327,6 +351,9 @@ def inicializar_auth(app, sqlite_path):
         ("idx_historico_usuario_data", "historico_visitas", "usuario_id, visitado_em"),
         ("idx_historico_data", "historico_visitas", "visitado_em"),
         ("idx_alertas_lida", "alertas_clientes", "lida, criado_em"),
+        ("idx_acoes_admin_data", "acoes_admin", "criado_em"),
+        ("idx_agenda_criado", "agenda_compromissos", "criado_em"),
+        ("idx_painel_adicionado", "painel_medicos", "adicionado_em"),
         # apagar/desfazer visita e excluir médico procuram por essas colunas
         ("idx_historico_visita_log", "historico_visitas", "visita_log_id"),
         ("idx_historico_painel", "historico_visitas", "painel_medico_id"),
@@ -2319,3 +2346,210 @@ def guardar_traducoes(novas: dict):
         cursor = conn.cursor()
         for chave, traducao in novas.items():
             cursor.execute(_q(sql), (chave, traducao, agora))
+
+
+# ---------------------------------------------------------------------------
+# Registro do que os admins fizeram
+# ---------------------------------------------------------------------------
+ACOES_ADMIN = {
+    "aprovar_cadastro": "Aprovou cadastro",
+    "tornar_admin": "Deu acesso de admin",
+    "remover_admin": "Tirou acesso de admin",
+    "excluir_usuario": "Excluiu conta",
+    "redefinir_senha": "Redefiniu senha",
+    "atender_senha": "Marcou pedido de senha como atendido",
+    "marcar_cliente": "Marcou médico como cliente",
+    "desmarcar_cliente": "Desmarcou médico cliente",
+    "adicionar_medico": "Adicionou médico ao painel",
+    "remover_medico": "Tirou médico do painel",
+    "importar_painel": "Importou médicos para um painel",
+    "importar_clientes": "Importou planilha de clientes",
+    "apagar_revisao": "Apagou médicos na Revisão",
+    "importar_base": "Importou base de médicos",
+    "exportar": "Exportou dados",
+}
+
+
+def buscar_entrada_painel(usuario_id, entrada_id):
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("SELECT id, nome, crm, ja_comprou FROM painel_medicos WHERE id = ? AND usuario_id = ?"),
+                       (entrada_id, usuario_id))
+        linha = cursor.fetchone()
+    return dict(linha) if linha else None
+
+
+def registrar_acao_admin(admin, acao, alvo=None, detalhe=""):
+    """`admin` e `alvo` são linhas de usuário (ou None). Nunca derruba a ação
+    que está sendo registrada: se der erro aqui, só não fica registrado."""
+    try:
+        with _conexao() as conn:
+            cursor = conn.cursor()
+            cursor.execute(_q("""
+                INSERT INTO acoes_admin (admin_id, admin_nome, acao, alvo_usuario_id, alvo_nome, detalhe, criado_em)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """), (
+                admin["id"] if admin else None, (admin["nome"] if admin else "Sistema"), acao,
+                alvo["id"] if alvo else None, alvo["nome"] if alvo else None,
+                (detalhe or "")[:500], datetime.utcnow().isoformat(),
+            ))
+        return True
+    except Exception:
+        return False
+
+
+def listar_acoes_admin(admin_id=None, acao=None, de_utc=None, ate_utc=None, limite=1000):
+    filtros, params = [], []
+    if admin_id:
+        filtros.append("admin_id = ?"); params.append(admin_id)
+    if acao:
+        filtros.append("acao = ?"); params.append(acao)
+    if de_utc:
+        filtros.append("criado_em >= ?"); params.append(de_utc)
+    if ate_utc:
+        filtros.append("criado_em < ?"); params.append(ate_utc)
+    where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q(f"""
+            SELECT id, admin_id, admin_nome, acao, alvo_usuario_id, alvo_nome, detalhe, criado_em
+            FROM acoes_admin {where}
+            ORDER BY criado_em DESC, id DESC
+            LIMIT {int(limite) + 1}
+        """), tuple(params))
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def listar_admins_do_registro():
+    """Quem aparece no registro (inclusive quem já não é admin ou foi excluído)."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT admin_id, MAX(admin_nome) AS admin_nome, COUNT(*) AS total
+            FROM acoes_admin WHERE admin_id IS NOT NULL
+            GROUP BY admin_id ORDER BY MAX(admin_nome)
+        """)
+        return [dict(r) for r in cursor.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# Resumo semanal (segunda a domingo, horário de Brasília)
+# ---------------------------------------------------------------------------
+DIAS_CLIENTE_SEM_VISITA = 60
+
+
+def inicio_da_semana_br(dia):
+    """Segunda-feira da semana de `dia` (date)."""
+    return dia - timedelta(days=dia.weekday())
+
+
+def _br_para_utc_iso(dia):
+    """Meia-noite (Brasília) desse dia → ISO em UTC, igual ao que o banco guarda."""
+    return (datetime(dia.year, dia.month, dia.day) + FUSO_BRASIL).isoformat()
+
+
+def calcular_resumo_semana(segunda, agora_utc=None):
+    """Números da semana que começa em `segunda` (date, horário de Brasília).
+    Tudo em poucas consultas (cada uma é uma viagem ao banco no Postgres)."""
+    agora_utc = agora_utc or datetime.utcnow()
+    ini = _br_para_utc_iso(segunda)
+    fim = _br_para_utc_iso(segunda + timedelta(days=7))
+    ini_ant = _br_para_utc_iso(segunda - timedelta(days=7))
+    prox_ini = (segunda + timedelta(days=7)).isoformat()
+    prox_fim = (segunda + timedelta(days=13)).isoformat()
+    limite_cliente = (agora_utc - timedelta(days=DIAS_CLIENTE_SEM_VISITA)).isoformat()
+
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""
+            SELECT
+              (SELECT COUNT(*) FROM historico_visitas WHERE visitado_em >= ? AND visitado_em < ?) AS visitas,
+              (SELECT COUNT(*) FROM historico_visitas WHERE visitado_em >= ? AND visitado_em < ?) AS visitas_anterior,
+              (SELECT COUNT(*) FROM painel_medicos WHERE adicionado_em >= ? AND adicionado_em < ?) AS novos_medicos,
+              (SELECT COUNT(*) FROM agenda_compromissos WHERE criado_em >= ? AND criado_em < ?) AS agendamentos,
+              (SELECT COUNT(*) FROM alertas_clientes WHERE tipo = 'visitado' AND criado_em >= ? AND criado_em < ?) AS clientes_visitados,
+              (SELECT COUNT(*) FROM usuarios WHERE criado_em >= ? AND criado_em < ?) AS novos_usuarios,
+              (SELECT COUNT(*) FROM buscas_log WHERE criado_em >= ? AND criado_em < ?) AS buscas,
+              (SELECT COUNT(*) FROM agenda_compromissos WHERE data >= ? AND data <= ?) AS agenda_proxima
+        """), (ini, fim, ini_ant, ini, ini, fim, ini, fim, ini, fim, ini, fim, ini, fim, prox_ini, prox_fim))
+        totais = {k: int(v or 0) for k, v in dict(cursor.fetchone()).items()}
+
+        # Por promotor (todo usuário aprovado que não é admin, mesmo sem nada na semana)
+        cursor.execute(_q("""
+            SELECT u.id, u.nome,
+              (SELECT COUNT(*) FROM historico_visitas h WHERE h.usuario_id = u.id AND h.visitado_em >= ? AND h.visitado_em < ?) AS visitas,
+              (SELECT COUNT(*) FROM painel_medicos p WHERE p.usuario_id = u.id AND p.adicionado_em >= ? AND p.adicionado_em < ?) AS novos_medicos,
+              (SELECT COUNT(*) FROM agenda_compromissos a WHERE a.usuario_id = u.id AND a.criado_em >= ? AND a.criado_em < ?) AS agendamentos,
+              (SELECT COUNT(*) FROM alertas_clientes c WHERE c.usuario_id = u.id AND c.tipo = 'visitado' AND c.criado_em >= ? AND c.criado_em < ?) AS clientes_visitados,
+              (SELECT COUNT(*) FROM agenda_compromissos a WHERE a.usuario_id = u.id AND a.data >= ? AND a.data <= ?) AS agenda_proxima,
+              (SELECT COUNT(*) FROM painel_medicos p WHERE p.usuario_id = u.id AND p.ja_comprou = 1
+                  AND (p.visitado_em IS NULL OR p.visitado_em = '' OR p.visitado_em < ?)) AS clientes_esquecidos
+            FROM usuarios u
+            WHERE u.aprovado = ? AND u.is_admin = ?
+        """), (ini, fim, ini, fim, ini, fim, ini, fim, prox_ini, prox_fim, limite_cliente,
+               True if USANDO_POSTGRES else 1, False if USANDO_POSTGRES else 0))
+        promotores = [{k: (int(v or 0) if k not in ("nome",) else v) for k, v in dict(r).items()}
+                      for r in cursor.fetchall()]
+
+        cursor.execute(_q("""
+            SELECT c.medico_nome, c.medico_crm, c.criado_em, u.nome AS usuario_nome
+            FROM alertas_clientes c LEFT JOIN usuarios u ON u.id = c.usuario_id
+            WHERE c.tipo = 'visitado' AND c.criado_em >= ? AND c.criado_em < ?
+            ORDER BY c.criado_em DESC LIMIT 50
+        """), (ini, fim))
+        lista_clientes = [dict(r) for r in cursor.fetchall()]
+
+    promotores.sort(key=lambda p: (-p["visitas"], -p["novos_medicos"], (p["nome"] or "").lower()))
+    ant = totais["visitas_anterior"]
+    variacao = None if ant == 0 else round((totais["visitas"] - ant) / ant * 100)
+    return {
+        "semana_inicio": segunda.isoformat(),
+        "semana_fim": (segunda + timedelta(days=6)).isoformat(),
+        "gerado_em": agora_utc.isoformat(),
+        "totais": totais,
+        "variacao_visitas_pct": variacao,
+        "promotores": promotores,
+        "sem_visitas": [p["nome"] for p in promotores if p["visitas"] == 0],
+        "clientes_visitados": [
+            {"medico_nome": c["medico_nome"], "medico_crm": c["medico_crm"] or "",
+             "usuario_nome": c["usuario_nome"] or "(usuário excluído)", "criado_em": c["criado_em"]}
+            for c in lista_clientes
+        ],
+        "dias_cliente_sem_visita": DIAS_CLIENTE_SEM_VISITA,
+    }
+
+
+def ultima_semana_fechada(agora_utc=None):
+    """Segunda-feira da última semana completa (que já terminou no domingo)."""
+    hoje_br = agora_brasil(agora_utc).date()
+    return inicio_da_semana_br(hoje_br) - timedelta(days=7)
+
+
+def guardar_resumo_semana(segunda, dados):
+    """Grava o resumo da semana se ainda não existir. Devolve True só para
+    quem gravou primeiro (com 2 processos no servidor, só um avisa)."""
+    import json
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""
+            INSERT INTO resumos_semanais (semana_inicio, criado_em, dados) VALUES (?, ?, ?)
+            ON CONFLICT (semana_inicio) DO NOTHING
+        """), (segunda.isoformat(), datetime.utcnow().isoformat(), json.dumps(dados, ensure_ascii=False)))
+        return cursor.rowcount == 1
+
+
+def buscar_resumo_semana(segunda):
+    import json
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("SELECT dados FROM resumos_semanais WHERE semana_inicio = ?"), (segunda.isoformat(),))
+        linha = cursor.fetchone()
+    return json.loads(linha["dados"]) if linha else None
+
+
+def listar_semanas_com_resumo(limite=52):
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT semana_inicio FROM resumos_semanais ORDER BY semana_inicio DESC LIMIT {int(limite)}")
+        return [r["semana_inicio"] for r in cursor.fetchall()]
+
