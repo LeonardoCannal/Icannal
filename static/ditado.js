@@ -54,6 +54,18 @@
     campo.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
+  // Passo a passo pra liberar o microfone quando ele foi bloqueado antes.
+  function comoLiberar() {
+    const ua = navigator.userAgent;
+    if (/iPhone|iPad/.test(ua)) {
+      return 'Microfone bloqueado. No iPhone: Ajustes → Safari → Microfone → "Perguntar" ou "Permitir". Depois recarregue a página.';
+    }
+    if (/Android/.test(ua)) {
+      return 'Microfone bloqueado. Toque no cadeado (ou nos ajustes) ao lado do endereço icannal.com.br → Permissões → Microfone → Permitir. Depois recarregue a página.';
+    }
+    return 'Microfone bloqueado. Clique no cadeado ao lado do endereço do site → Microfone → Permitir. Depois recarregue a página.';
+  }
+
   const ICONE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
 
   function preparar(campo) {
@@ -112,8 +124,10 @@
         if (e.error === 'aborted') return;
         ligado = false;
         const msgs = {
-          'not-allowed': 'Libere o microfone para o i.cannal (no cadeado ao lado do endereço do site).',
-          'service-not-allowed': 'O navegador bloqueou o ditado. Libere o microfone nas configurações.',
+          'not-allowed': comoLiberar(),
+          'service-not-allowed': /iPhone|iPad/.test(navigator.userAgent)
+            ? 'O iPhone bloqueou o ditado. Em Ajustes → Geral → Teclado, ligue "Ditado" e tente de novo.'
+            : comoLiberar(),
           'audio-capture': 'Nenhum microfone encontrado.',
           'network': 'O ditado precisa de internet. Confira a conexão e tente de novo.',
           'language-not-supported': 'Este navegador não entende português no ditado.',
