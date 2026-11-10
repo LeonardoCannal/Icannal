@@ -203,7 +203,7 @@ def _cabecalhos_de_seguranca(resposta):
     h.setdefault("X-Content-Type-Options", "nosniff")
     h.setdefault("X-Frame-Options", "DENY")
     h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+    h.setdefault("Permissions-Policy", "camera=(), microphone=(self), geolocation=(), payment=()")
     h.setdefault("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'")
     if request.is_secure:
         h.setdefault("Strict-Transport-Security", "max-age=31536000")
