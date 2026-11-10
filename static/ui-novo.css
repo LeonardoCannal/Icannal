@@ -1013,3 +1013,59 @@ body.ui-novo tr.us-linha[hidden], body.ui-novo tr.us-vazio[hidden]{ display: non
   body.ui-novo .us-filtros{ grid-template-columns: minmax(0,1fr); }
   body.ui-novo .us-painel-detalhe{ white-space: normal; }
 }
+
+/* Resumo semanal */
+body.ui-novo .rs-topo{ display: grid; grid-template-columns: minmax(220px, 340px) minmax(0, 1fr); gap: 16px; align-items: end; margin: 6px 0 18px; }
+body.ui-novo .rs-topo .campo{ margin: 0; }
+body.ui-novo .rs-topo select{ width: 100%; min-height: 42px; background-color: var(--tela); color: var(--tinta); }
+body.ui-novo .rs-nota{ margin: 0; font-size: 13px; color: var(--ardosia); line-height: 1.5; }
+body.ui-novo .rs-numeros{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+body.ui-novo .rs-variacao{ font-size: 12.5px; color: var(--pedra); margin-top: 4px; font-variant-numeric: tabular-nums; }
+body.ui-novo .rs-variacao.sobe{ color: #157A3E; }
+body.ui-novo .rs-variacao.desce{ color: #B42318; }
+body.ui-novo.escuro .rs-variacao.sobe{ color: #5FD08F; }
+body.ui-novo.escuro .rs-variacao.desce{ color: #F97066; }
+body.ui-novo .rs-card-cliente .stat-valor{ color: var(--cliente-texto); }
+body.ui-novo .rs-alerta{ background: var(--alerta-fundo); color: var(--alerta-texto); border-radius: 10px; padding: 12px 14px; font-size: 13.5px; line-height: 1.5; margin-bottom: 20px; }
+body.ui-novo table.tabela-admin.rs-tabela, body.ui-novo table.tabela-admin.rg-tabela{ min-width: 0; width: 100%; }
+body.ui-novo .rs-tabela a{ color: var(--tinta); font-weight: 600; text-decoration: none; }
+body.ui-novo .rs-tabela a:hover{ color: var(--verde-acao); text-decoration: underline; }
+body.ui-novo .rs-tabela tr.rs-zerado td{ color: var(--pedra); }
+body.ui-novo .rs-esquecidos{ color: var(--cliente-texto); font-weight: 700; }
+body.ui-novo .rs-clientes{ list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 6px; }
+body.ui-novo .rs-clientes li{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid var(--cliente-borda); background: var(--cliente-fundo); border-radius: 10px; font-size: 13.5px; min-width: 0; }
+body.ui-novo .rs-crm{ color: var(--pedra); font-size: 12.5px; }
+body.ui-novo .rs-quem{ margin-left: auto; color: var(--ardosia); font-size: 12.5px; }
+body.ui-novo .rs-vazio{ color: var(--ardosia); font-size: 14px; padding: 8px 0 4px; }
+body.ui-novo .modal-secao-titulo{ margin-top: 8px; }
+
+/* Registro do admin */
+body.ui-novo .rg-filtros{ grid-template-columns: minmax(0,1.2fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr) auto; }
+body.ui-novo .rg-limpar{ display: inline-flex; align-items: center; min-height: 42px; padding: 0 8px; text-decoration: none; }
+body.ui-novo .rg-acao{ display: inline-block; font-size: 12.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--superficie); color: var(--tinta); border: 1px solid var(--linha); white-space: nowrap; }
+body.ui-novo .rg-acao-excluir_usuario, body.ui-novo .rg-acao-apagar_revisao, body.ui-novo .rg-acao-remover_admin{ background: #FDECEC; color: #A41F1F; border-color: #F5C2C2; }
+body.ui-novo.escuro .rg-acao-excluir_usuario, body.ui-novo.escuro .rg-acao-apagar_revisao, body.ui-novo.escuro .rg-acao-remover_admin{ background: rgba(242,107,107,.12); color: #FF9A9A; border-color: rgba(242,107,107,.35); }
+body.ui-novo .rg-acao-tornar_admin, body.ui-novo .rg-acao-aprovar_cadastro{ background: var(--verde-suave); color: var(--verde-texto); border-color: transparent; }
+body.ui-novo .rg-acao-exportar{ background: var(--alerta-fundo); color: var(--alerta-texto); border-color: transparent; }
+body.ui-novo .rg-detalhe{ color: var(--ardosia); font-size: 13px; max-width: 420px; overflow-wrap: anywhere; }
+@media (max-width: 900px){
+  body.ui-novo .rs-topo{ grid-template-columns: minmax(0,1fr); }
+  body.ui-novo .rs-numeros{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body.ui-novo .rg-filtros{ grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  body.ui-novo .rg-filtros .hv-botoes{ grid-column: 1 / -1; }
+}
+@media (max-width: 640px){
+  body.ui-novo .rs-tabela thead, body.ui-novo .rg-tabela thead{ display: none; }
+  body.ui-novo .rs-tabela tr, body.ui-novo .rg-tabela tr{ display: block; border: 1px solid var(--linha); border-radius: 12px; margin-bottom: 10px; padding: 10px 12px; background: var(--tela); }
+  body.ui-novo .rs-tabela td, body.ui-novo .rg-tabela td{ display: flex; gap: 8px; border: none; padding: 3px 0; text-align: left; }
+  body.ui-novo .rs-tabela td::before, body.ui-novo .rg-tabela td::before{ content: attr(data-rotulo) ":"; font-weight: 600; color: var(--pedra); min-width: 120px; font-size: 12.5px; }
+  body.ui-novo .rs-quem{ margin-left: 0; width: 100%; }
+  body.ui-novo .rg-filtros{ grid-template-columns: minmax(0,1fr); }
+}
+body.ui-novo .rs-clientes .ponto-cliente{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--cliente); flex: none; }
+body.ui-novo .rs-tabela th{ white-space: normal; vertical-align: bottom; line-height: 1.3; max-width: 120px; }
+@media (max-width: 640px){
+  body.ui-novo .rs-tabela td, body.ui-novo .rg-tabela td{ justify-content: flex-start; }
+  body.ui-novo .rs-tabela td::before, body.ui-novo .rg-tabela td::before{ text-align: left; }
+  body.ui-novo .rs-tabela td.rs-pos{ display: none; }
+}

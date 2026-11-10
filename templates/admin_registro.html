@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i.cannal · Registro do admin</title>
+<link rel="preload" href="/static/fontes/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fontes/montserrat.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="i.cannal">
+<link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
+</head>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
+  <div class="admin-header">
+    <svg class="logo-admin" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">
+      <polygon points="2,0 16,0 32,44 18,44" fill="#88AD36"/>
+      <polygon points="25,0 39,0 55,44 41,44" fill="#88AD36"/>
+      <text x="72" y="34" font-family="Montserrat, sans-serif" font-weight="900" font-size="34" textLength="204" lengthAdjust="spacing">
+        <tspan fill="#A8CC5A">I.</tspan><tspan fill="#FFFFFF">CANNAL</tspan>
+      </text>
+    </svg>
+    <div class="admin-header-direita">
+      {% include '_botao_tema.html' %}
+      {% include '_sino_clientes.html' %}
+      <a href="{{ url_for('index') }}">Voltar ao i.cannal</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('perfil') }}">Meu Perfil</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('logout') }}">Sair</a>
+    </div>
+  </div>
+
+  <div class="hero-secao">
+    <div class="hero-secao-conteudo">
+      <h1>Registro do admin</h1>
+      <p>Tudo o que os admins fizeram no i.cannal: quem, o quê, com quem e quando.</p>
+    </div>
+  </div>
+
+  <main class="admin-main">
+  <div class="card-flutuante">
+    {% with aba='registro' %}{% include '_admin_nav.html' %}{% endwith %}
+
+    <form class="hv-filtros rg-filtros" method="get" action="{{ url_for('admin_registro') }}">
+      <div class="campo">
+        <label for="rg-admin">Quem fez</label>
+        <select id="rg-admin" name="admin">
+          <option value="">Todos os admins</option>
+          {% for a in admins %}
+          <option value="{{ a.admin_id }}" {{ 'selected' if filtros.admin == a.admin_id|string }}>{{ a.admin_nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="rg-acao">Ação</label>
+        <select id="rg-acao" name="acao">
+          <option value="">Todas</option>
+          {% for chave, nome in tipos.items() %}
+          <option value="{{ chave }}" {{ 'selected' if filtros.acao == chave }}>{{ nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="rg-de">De</label>
+        <input type="date" id="rg-de" name="de" value="{{ filtros.de }}">
+      </div>
+      <div class="campo">
+        <label for="rg-ate">Até</label>
+        <input type="date" id="rg-ate" name="ate" value="{{ filtros.ate }}">
+      </div>
+      <div class="hv-botoes">
+        <button type="submit" class="btn-primario">Filtrar</button>
+        {% if filtros.admin or filtros.acao or filtros.de or filtros.ate %}
+        <a class="us-limpar rg-limpar" href="{{ url_for('admin_registro') }}">Limpar</a>
+        {% endif %}
+      </div>
+    </form>
+
+    {% if acoes %}
+    <div class="tabela-scroll">
+    <table class="tabela-admin rg-tabela">
+      <thead><tr><th>Quando</th><th>Quem fez</th><th>Ação</th><th>Com quem</th><th>Detalhe</th></tr></thead>
+      <tbody>
+        {% for a in acoes %}
+        <tr>
+          <td data-rotulo="Quando" class="hv-data">{{ a.data_br }} <span>{{ a.hora_br }}</span></td>
+          <td data-rotulo="Quem fez"><strong>{{ a.admin_nome }}</strong></td>
+          <td data-rotulo="Ação"><span class="rg-acao rg-acao-{{ a.acao }}">{{ a.acao_nome }}</span></td>
+          <td data-rotulo="Com quem">{{ a.alvo_nome or '—' }}</td>
+          <td data-rotulo="Detalhe" class="rg-detalhe">{{ a.detalhe or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if cortado %}<p class="hv-aviso">Mostrando as 500 ações mais recentes. Use os filtros para ver as mais antigas.</p>{% endif %}
+    {% else %}
+    <p class="rs-vazio">{% if filtros.admin or filtros.acao or filtros.de or filtros.ate %}Nenhuma ação com esses filtros.{% else %}Nada registrado ainda. A partir de agora, tudo o que um admin fizer (aprovar cadastro, dar acesso de admin, excluir conta, marcar cliente, apagar médicos, importar planilhas, exportar dados…) aparece aqui.{% endif %}</p>
+    {% endif %}
+  </div>
+  </main>
+<script>
+  ['rg-admin', 'rg-acao'].forEach(function(id){ document.getElementById(id).addEventListener('change', function(){ this.form.submit(); }); });
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+  }
+</script>
+{% include '_sino_clientes_js.html' %}
+</body>
+</html>

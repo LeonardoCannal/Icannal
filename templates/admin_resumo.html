@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i.cannal · Resumo semanal</title>
+<link rel="preload" href="/static/fontes/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fontes/montserrat.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="i.cannal">
+<link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
+</head>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
+  <div class="admin-header">
+    <svg class="logo-admin" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">
+      <polygon points="2,0 16,0 32,44 18,44" fill="#88AD36"/>
+      <polygon points="25,0 39,0 55,44 41,44" fill="#88AD36"/>
+      <text x="72" y="34" font-family="Montserrat, sans-serif" font-weight="900" font-size="34" textLength="204" lengthAdjust="spacing">
+        <tspan fill="#A8CC5A">I.</tspan><tspan fill="#FFFFFF">CANNAL</tspan>
+      </text>
+    </svg>
+    <div class="admin-header-direita">
+      {% include '_botao_tema.html' %}
+      {% include '_sino_clientes.html' %}
+      <a href="{{ url_for('index') }}">Voltar ao i.cannal</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('perfil') }}">Meu Perfil</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('logout') }}">Sair</a>
+    </div>
+  </div>
+
+  <div class="hero-secao">
+    <div class="hero-secao-conteudo">
+      <h1>Resumo semanal</h1>
+      <p>Como foi a semana da equipe: visitas, médicos novos, agendamentos e clientes.</p>
+    </div>
+  </div>
+
+  <main class="admin-main">
+  <div class="card-flutuante">
+    {% with aba='resumo' %}{% include '_admin_nav.html' %}{% endwith %}
+
+    <form class="rs-topo" method="get" action="{{ url_for('admin_resumo_semanal') }}">
+      <div class="campo">
+        <label for="rs-semana">Semana</label>
+        <select id="rs-semana" name="semana">
+          {% for o in opcoes %}
+          <option value="{{ o.valor }}" {{ 'selected' if o.valor == escolhida }}>{{ o.rotulo }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <noscript><button type="submit" class="btn-primario">Ver</button></noscript>
+      <p class="rs-nota">
+        {% if parcial %}
+          Números da semana em andamento, até agora. O resumo fechado sai na segunda-feira às 7h.
+        {% else %}
+          Semana de {{ rotulo_semana }} · gerado em {{ gerado_em }}.
+        {% endif %}
+        {% if avisos_ligados %}Todo resumo novo também chega no seu WhatsApp/Telegram.{% else %}Os avisos por WhatsApp/Telegram não estão configurados no servidor, então o resumo fica só aqui.{% endif %}
+      </p>
+    </form>
+
+    {% set t = dados.totais %}
+    <div class="rs-numeros">
+      <div class="stat-card">
+        <div class="stat-label">Visitas</div>
+        <div class="stat-valor">{{ t.visitas }}</div>
+        {% if dados.variacao_visitas_pct is not none and not parcial %}
+        <div class="rs-variacao {{ 'sobe' if dados.variacao_visitas_pct > 0 else ('desce' if dados.variacao_visitas_pct < 0 else '') }}">
+          {{ '+' if dados.variacao_visitas_pct > 0 }}{{ dados.variacao_visitas_pct }}% vs semana anterior ({{ t.visitas_anterior }})
+        </div>
+        {% elif not parcial %}<div class="rs-variacao">semana anterior: {{ t.visitas_anterior }}</div>{% endif %}
+      </div>
+      <div class="stat-card"><div class="stat-label">Médicos novos nos painéis</div><div class="stat-valor">{{ t.novos_medicos }}</div></div>
+      <div class="stat-card"><div class="stat-label">Agendamentos criados</div><div class="stat-valor">{{ t.agendamentos }}</div></div>
+      <div class="stat-card rs-card-cliente"><div class="stat-label">Visitas a médicos clientes</div><div class="stat-valor">{{ t.clientes_visitados }}</div></div>
+      <div class="stat-card"><div class="stat-label">Novos cadastros</div><div class="stat-valor">{{ t.novos_usuarios }}</div></div>
+      <div class="stat-card"><div class="stat-label">Agenda da semana seguinte</div><div class="stat-valor">{{ t.agenda_proxima }}</div></div>
+    </div>
+
+    {% if dados.sem_visitas %}
+    <div class="rs-alerta" role="note">
+      <strong>{{ dados.sem_visitas|length }} promotor(es) sem nenhuma visita na semana:</strong>
+      {{ dados.sem_visitas|join(', ') }}
+    </div>
+    {% endif %}
+
+    <h3 class="modal-secao-titulo">Por promotor</h3>
+    {% if dados.promotores %}
+    <div class="tabela-scroll">
+    <table class="tabela-admin rs-tabela">
+      <thead><tr>
+        <th>#</th><th>Promotor</th>
+        <th class="num">Visitas</th><th class="num">Médicos novos</th><th class="num">Agenda&shy;mentos</th>
+        <th class="num">Clientes visitados</th><th class="num">Agenda próx. semana</th>
+        <th class="num" title="Médicos clientes sem visita há mais de {{ dados.dias_cliente_sem_visita }} dias">Clientes sem visita ({{ dados.dias_cliente_sem_visita }}+ dias)</th>
+      </tr></thead>
+      <tbody>
+        {% for p in dados.promotores %}
+        <tr class="{{ 'rs-zerado' if p.visitas == 0 }}">
+          <td data-rotulo="Posição" class="num rs-pos">{{ loop.index }}</td>
+          <td data-rotulo="Promotor"><a href="{{ url_for('admin_historico_visitas', usuario=p.id, de=dados.semana_inicio, ate=dados.semana_fim) }}">{{ p.nome }}</a></td>
+          <td data-rotulo="Visitas" class="num"><b>{{ p.visitas }}</b></td>
+          <td data-rotulo="Médicos novos" class="num">{{ p.novos_medicos }}</td>
+          <td data-rotulo="Agendamentos" class="num">{{ p.agendamentos }}</td>
+          <td data-rotulo="Clientes visitados" class="num">{{ p.clientes_visitados }}</td>
+          <td data-rotulo="Agenda próx. semana" class="num">{{ p.agenda_proxima }}</td>
+          <td data-rotulo="Clientes sem visita" class="num">{% if p.clientes_esquecidos %}<span class="rs-esquecidos">{{ p.clientes_esquecidos }}</span>{% else %}0{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="rs-vazio">Nenhum promotor aprovado ainda.</p>
+    {% endif %}
+
+    <h3 class="modal-secao-titulo">Médicos clientes visitados na semana</h3>
+    {% if dados.clientes_visitados %}
+    <ul class="rs-clientes">
+      {% for c in dados.clientes_visitados %}
+      <li><span class="ponto-cliente" aria-hidden="true"></span><strong>{{ c.medico_nome }}</strong>{% if c.medico_crm %} <span class="rs-crm">{{ c.medico_crm }}</span>{% endif %}<span class="rs-quem">{{ c.usuario_nome }} · {{ c.quando }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="rs-vazio">Nenhum médico cliente foi visitado nessa semana.</p>
+    {% endif %}
+  </div>
+  </main>
+<script>
+  document.getElementById('rs-semana').addEventListener('change', function(){ this.form.submit(); });
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+  }
+</script>
+{% include '_sino_clientes_js.html' %}
+</body>
+</html>
