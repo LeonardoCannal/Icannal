@@ -38,6 +38,8 @@ from auth import (
     ACOES_ADMIN,
     registrar_acao_admin,
     buscar_entrada_painel,
+    listar_todos_medicos_relatorio,
+    DIAS_PARA_REVISITAR,
     acrescentar_observacao,
     listar_acoes_admin,
     listar_admins_do_registro,
@@ -118,6 +120,7 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 
 
 def resource_path(relative_path):
@@ -741,6 +744,124 @@ def admin():
         for u in listar_usuarios_com_contagem_painel()
     ]
     return render_template("admin.html", usuarios=usuarios, eh_mestre=eh_admin_mestre(usuario_logado()))
+
+
+_CONTROLE_EXCEL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def _texto_seguro_excel(valor):
+    """Texto digitado por usuário indo pra planilha: tira caracteres que o
+    Excel recusa e impede que um texto começando com = + - @ vire fórmula."""
+    if not isinstance(valor, str):
+        return valor
+    valor = _CONTROLE_EXCEL.sub("", valor)
+    return "'" + valor if valor[:1] in ("=", "+", "-", "@") else valor
+
+
+@app.route("/admin/exportar-medicos")
+@admin_required
+def admin_exportar_medicos():
+    """Relatório geral: todos os médicos de todos os painéis numa planilha
+    (aba "Médicos") + os totais por promotor (aba "Por promotor")."""
+    medicos = listar_todos_medicos_relatorio()
+    limite_revisitar = (datetime.utcnow() - timedelta(days=DIAS_PARA_REVISITAR)).isoformat()
+
+    def data_br(iso, com_hora=False):
+        quando = _utc_para_br(iso) if iso else None
+        return quando.strftime("%d/%m/%Y %H:%M" if com_hora else "%d/%m/%Y") if quando else ""
+
+    def situacao(m):
+        if m["status"] == "agendado":
+            return "Agendado"
+        if m["status"] == "visitado":
+            return "A revisitar" if (m["visitado_em"] and m["visitado_em"] < limite_revisitar) else "Visitado"
+        return "Prospectado"
+
+    def agendado(m):
+        if m["status"] != "agendado" or not m["agendado_para"]:
+            return ""
+        dia, _, hora = str(m["agendado_para"]).partition(" ")
+        try:
+            return f"{date.fromisoformat(dia).strftime('%d/%m/%Y')} {hora}".strip()
+        except ValueError:
+            return str(m["agendado_para"])
+
+    def ultimo_pedido(m):
+        valor = str(m["ultimo_pedido_em"] or "")[:10]
+        try:
+            return date.fromisoformat(valor).strftime("%d/%m/%Y")
+        except ValueError:
+            return valor
+
+    cabecalho_fonte = Font(bold=True, color="FFFFFF")
+    cabecalho_fundo = PatternFill(start_color="5C7A22", end_color="5C7A22", fill_type="solid")
+    cliente_fundo = PatternFill(start_color="FDECEC", end_color="FDECEC", fill_type="solid")
+
+    def cabecalho(ws, colunas, larguras):
+        ws.append(colunas)
+        for celula in ws[1]:
+            celula.font = cabecalho_fonte
+            celula.fill = cabecalho_fundo
+            celula.alignment = Alignment(vertical="center", wrap_text=True)
+        for i, largura in enumerate(larguras, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = largura
+        ws.freeze_panes = "A2"
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Médicos"
+    colunas = ["Promotor", "Médico", "CRM/Registro", "Especialidade", "Cidade", "UF", "Endereço",
+               "Telefone da clínica", "Telefone pessoal", "Situação", "Cliente", "Último pedido",
+               "Adicionado em", "Agendado para", "Última visita", "Resultado da última visita",
+               "Visitas feitas", "Observações"]
+    cabecalho(ws, colunas, [24, 30, 16, 22, 18, 6, 38, 18, 18, 13, 9, 14, 14, 17, 14, 22, 9, 50])
+    por_promotor = {}
+    for m in medicos:
+        sit = situacao(m)
+        tel = m["telefone"] if m["telefone"] and m["telefone"] != "Não disponível" else ""
+        ws.append([_texto_seguro_excel(v) for v in (
+            m["usuario_nome"] or "(usuário excluído)", m["nome"], m["crm"] if m["crm"] != "Não encontrado" else "",
+            m["especialidade"] or "", m["cidade"] or "", m["uf"] or "", m["endereco"] or "",
+            tel, m["telefone_pessoal"] or "", sit, "Sim" if m["ja_comprou"] else "Não", ultimo_pedido(m),
+            data_br(m["adicionado_em"]), agendado(m), data_br(m["visitado_em"]) if m["status"] == "visitado" else "",
+            RESULTADOS_VISITA.get(m["resultado_visita"] or "", "") if m["status"] == "visitado" else "",
+            m["total_visitas"] or 0, m["observacoes"] or "",
+        )])
+        if m["ja_comprou"]:
+            for celula in ws[ws.max_row][:11]:
+                celula.fill = cliente_fundo
+        ws.cell(row=ws.max_row, column=len(colunas)).alignment = Alignment(wrap_text=True, vertical="top")
+        r = por_promotor.setdefault(m["usuario_nome"] or "(usuário excluído)",
+                                    {"Prospectado": 0, "Agendado": 0, "Visitado": 0, "A revisitar": 0, "clientes": 0})
+        r[sit] += 1
+        r["clientes"] += 1 if m["ja_comprou"] else 0
+    if medicos:
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(colunas))}{len(medicos) + 1}"
+
+    ws2 = wb.create_sheet("Por promotor")
+    cabecalho(ws2, ["Promotor", "Prospectados", "Agendados", "Visitados", "A revisitar", "Total de médicos", "Clientes"],
+              [28, 14, 12, 12, 13, 17, 10])
+    for nome in sorted(por_promotor, key=lambda n: n.lower()):
+        r = por_promotor[nome]
+        ws2.append([nome, r["Prospectado"], r["Agendado"], r["Visitado"], r["A revisitar"],
+                    r["Prospectado"] + r["Agendado"] + r["Visitado"] + r["A revisitar"], r["clientes"]])
+    if por_promotor:
+        fim = ws2.max_row
+        ws2.append(["Total"] + [f"=SUM({get_column_letter(c)}2:{get_column_letter(c)}{fim})" for c in range(2, 8)])
+        for celula in ws2[ws2.max_row]:
+            celula.font = Font(bold=True)
+
+    arquivo = io.BytesIO()
+    wb.save(arquivo)
+    arquivo.seek(0)
+    _registrar("exportar", None, f"Relatório de todos os médicos ({len(medicos)} médico(s))")
+    agora = datetime.utcnow() - timedelta(hours=3)
+    return send_file(
+        arquivo,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"icannal_medicos_{agora.strftime('%Y%m%d_%H%M')}.xlsx",
+    )
 
 
 @app.route("/admin/exportar-usuarios")
