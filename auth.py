@@ -327,6 +327,32 @@ def inicializar_auth(app, sqlite_path):
                 dados TEXT NOT NULL
             )
         """)
+        # Ajustes gerais do sistema (chave → valor), ex.: horário do relatório diário.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS config_sistema (
+                chave TEXT PRIMARY KEY,
+                valor TEXT
+            )
+        """)
+        # Relatório diário pelo WhatsApp: um registro por envio. `chave_envio`
+        # é única ("usuario:dia" no automático) — assim, com 2 processos no
+        # servidor, cada promotor recebe 1 relatório por dia só.
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS relatorio_envios (
+                id {"SERIAL PRIMARY KEY" if USANDO_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
+                chave_envio TEXT NOT NULL UNIQUE,
+                usuario_id INTEGER,
+                usuario_nome TEXT,
+                telefone TEXT,
+                dia TEXT NOT NULL,
+                tipo TEXT NOT NULL,
+                status TEXT NOT NULL,
+                detalhe TEXT,
+                mensagem TEXT,
+                criado_em TEXT NOT NULL,
+                atualizado_em TEXT
+            )
+        """)
         cursor.execute(sql_base_propria)
         cursor.execute(sql_removidos)
         # Traduções de artigos (Google Cloud Translation): cada texto é
@@ -352,6 +378,7 @@ def inicializar_auth(app, sqlite_path):
         ("idx_historico_data", "historico_visitas", "visitado_em"),
         ("idx_alertas_lida", "alertas_clientes", "lida, criado_em"),
         ("idx_acoes_admin_data", "acoes_admin", "criado_em"),
+        ("idx_relatorio_envios_criado", "relatorio_envios", "criado_em"),
         ("idx_agenda_criado", "agenda_compromissos", "criado_em"),
         ("idx_painel_adicionado", "painel_medicos", "adicionado_em"),
         # apagar/desfazer visita e excluir médico procuram por essas colunas
@@ -385,6 +412,10 @@ def inicializar_auth(app, sqlite_path):
     _adicionar_coluna_se_faltar("painel_medicos", "ultimo_pedido_em", "TEXT")  # da planilha de pedidos (AAAA-MM-DD)
     _adicionar_coluna_se_faltar("visitas_log", "resultado", "TEXT")
     _adicionar_coluna_se_faltar("usuarios", "telefone", "TEXT")
+    _adicionar_coluna_se_faltar("usuarios", "relatorio_whatsapp", "TEXT")
+    _adicionar_coluna_se_faltar("usuarios", "relatorio_ativo", "INTEGER DEFAULT 0")
+    _adicionar_coluna_se_faltar("usuarios", "desativado", "INTEGER DEFAULT 0")
+    _adicionar_coluna_se_faltar("usuarios", "desativado_em", "TEXT")
     # DEFAULT verdadeiro é de propósito: ninguém que já tinha conta fica
     # bloqueado quando essa coluna é criada — só cadastro NOVO nasce
     # precisando de aprovação (veja criar_usuario). O tipo precisa bater
@@ -854,9 +885,18 @@ def usuario_logado():
         if guardado is not None and guardado["id"] == user_id:
             return guardado
     usuario = buscar_usuario_por_id(user_id)
+    if usuario is not None and _esta_desativado(usuario):
+        usuario = None  # conta desativada: a sessão aberta deixa de valer
     if has_request_context():
         g._usuario_logado = usuario
     return usuario
+
+
+def _esta_desativado(usuario) -> bool:
+    try:
+        return bool(usuario["desativado"])
+    except (KeyError, IndexError):
+        return False
 
 
 def _esquecer_usuario_da_requisicao():
@@ -1960,6 +2000,7 @@ def listar_usuarios_com_contagem_painel():
         cursor = conn.cursor()
         cursor.execute(_q("""
             SELECT u.id, u.nome, u.email, u.cpf, u.criado_em, u.ultimo_login, u.is_admin, u.aprovado,
+                   u.desativado, u.desativado_em,
                    COUNT(p.id) AS total_painel,
                    COALESCE(SUM(CASE WHEN p.status = 'prospectado' THEN 1 ELSE 0 END), 0) AS prospectados,
                    COALESCE(SUM(CASE WHEN p.status = 'agendado' THEN 1 ELSE 0 END), 0) AS agendados,
@@ -1971,7 +2012,8 @@ def listar_usuarios_com_contagem_painel():
                    COALESCE(SUM(CASE WHEN p.ja_comprou = 1 THEN 1 ELSE 0 END), 0) AS clientes
             FROM usuarios u
             LEFT JOIN painel_medicos p ON p.usuario_id = u.id
-            GROUP BY u.id, u.nome, u.email, u.cpf, u.criado_em, u.ultimo_login, u.is_admin, u.aprovado
+            GROUP BY u.id, u.nome, u.email, u.cpf, u.criado_em, u.ultimo_login, u.is_admin, u.aprovado,
+                     u.desativado, u.desativado_em
             ORDER BY u.criado_em DESC
         """), (limite, limite))
         return cursor.fetchall()
@@ -2414,6 +2456,14 @@ ACOES_ADMIN = {
     "apagar_revisao": "Apagou médicos na Revisão",
     "importar_base": "Importou base de médicos",
     "exportar": "Exportou dados",
+    "relatorio_config": "Mudou o relatório diário",
+    "relatorio_promotor": "Mudou o WhatsApp do relatório de um promotor",
+    "relatorio_enviar": "Enviou relatório pelo WhatsApp",
+    "whatsapp_conectar": "Conectou o WhatsApp do relatório",
+    "whatsapp_desconectar": "Desconectou o WhatsApp do relatório",
+    "desativar_usuario": "Desativou conta",
+    "reativar_usuario": "Reativou conta",
+    "transferir_painel": "Transferiu painel médico",
 }
 
 
@@ -2532,7 +2582,7 @@ def calcular_resumo_semana(segunda, agora_utc=None):
               (SELECT COUNT(*) FROM painel_medicos p WHERE p.usuario_id = u.id AND p.ja_comprou = 1
                   AND (p.visitado_em IS NULL OR p.visitado_em = '' OR p.visitado_em < ?)) AS clientes_esquecidos
             FROM usuarios u
-            WHERE u.aprovado = ? AND u.is_admin = ?
+            WHERE u.aprovado = ? AND u.is_admin = ? AND COALESCE(u.desativado, 0) = 0
         """), (ini, fim, ini, fim, ini, fim, ini, fim, prox_ini, prox_fim, limite_cliente,
                True if USANDO_POSTGRES else 1, False if USANDO_POSTGRES else 0))
         promotores = [{k: (int(v or 0) if k not in ("nome",) else v) for k, v in dict(r).items()}
@@ -2599,4 +2649,261 @@ def listar_semanas_com_resumo(limite=52):
         cursor = conn.cursor()
         cursor.execute(f"SELECT semana_inicio FROM resumos_semanais ORDER BY semana_inicio DESC LIMIT {int(limite)}")
         return [r["semana_inicio"] for r in cursor.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# Ajustes gerais (config_sistema)
+# ---------------------------------------------------------------------------
+def ler_config(chaves_padrao: dict) -> dict:
+    """Devolve {chave: valor} pras chaves pedidas, com o padrão quando não há."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT chave, valor FROM config_sistema")
+        salvos = {l["chave"]: l["valor"] for l in cursor.fetchall()}
+    return {k: salvos.get(k, v) for k, v in chaves_padrao.items()}
+
+
+def salvar_config(valores: dict):
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        for chave, valor in valores.items():
+            cursor.execute(_q("""
+                INSERT INTO config_sistema (chave, valor) VALUES (?, ?)
+                ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor
+            """), (chave, None if valor is None else str(valor)))
+
+
+# ---------------------------------------------------------------------------
+# Relatório diário pelo WhatsApp
+# ---------------------------------------------------------------------------
+def listar_promotores_relatorio():
+    """Usuários aprovados, com o WhatsApp do relatório (ou o telefone do
+    cadastro, se ainda não foi definido) e o último envio."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""
+            SELECT u.id, u.nome, u.cpf, u.telefone, u.relatorio_whatsapp, u.relatorio_ativo, u.is_admin,
+                   (SELECT e.status FROM relatorio_envios e WHERE e.usuario_id = u.id
+                     ORDER BY e.criado_em DESC, e.id DESC LIMIT 1) AS ultimo_status,
+                   (SELECT e.criado_em FROM relatorio_envios e WHERE e.usuario_id = u.id
+                     ORDER BY e.criado_em DESC, e.id DESC LIMIT 1) AS ultimo_em,
+                   (SELECT e.detalhe FROM relatorio_envios e WHERE e.usuario_id = u.id
+                     ORDER BY e.criado_em DESC, e.id DESC LIMIT 1) AS ultimo_detalhe
+            FROM usuarios u
+            WHERE u.aprovado = ? AND COALESCE(u.desativado, 0) = 0
+            ORDER BY u.is_admin, u.nome
+        """), (True if USANDO_POSTGRES else 1,))
+        linhas = [dict(l) for l in cursor.fetchall()]
+    for l in linhas:
+        l["whatsapp"] = l["relatorio_whatsapp"] if l["relatorio_whatsapp"] is not None else (l["telefone"] or "")
+        l["ativo"] = bool(l["relatorio_ativo"])
+    return linhas
+
+
+def salvar_promotor_relatorio(usuario_id: int, whatsapp: str, ativo: bool) -> bool:
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("UPDATE usuarios SET relatorio_whatsapp = ?, relatorio_ativo = ? WHERE id = ?"),
+                       ((whatsapp or "").strip()[:30], 1 if ativo else 0, usuario_id))
+        return cursor.rowcount > 0
+
+
+def reservar_envio(chave_envio: str, usuario: dict, telefone: str, dia: str, tipo: str):
+    """Marca o envio como 'enviando' antes de mandar. Devolve o id, ou None
+    se esse envio já existe (outro processo já pegou)."""
+    agora = datetime.utcnow().isoformat()
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""
+            INSERT INTO relatorio_envios (chave_envio, usuario_id, usuario_nome, telefone, dia, tipo, status, criado_em, atualizado_em)
+            VALUES (?, ?, ?, ?, ?, ?, 'enviando', ?, ?)
+            ON CONFLICT (chave_envio) DO NOTHING
+        """), (chave_envio, usuario["id"], usuario["nome"], telefone, dia, tipo, agora, agora))
+        if cursor.rowcount != 1:
+            return None
+        cursor.execute(_q("SELECT id FROM relatorio_envios WHERE chave_envio = ?"), (chave_envio,))
+        return cursor.fetchone()["id"]
+
+
+def finalizar_envio(envio_id: int, status: str, detalhe: str = "", mensagem: str = None):
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""
+            UPDATE relatorio_envios SET status = ?, detalhe = ?, mensagem = COALESCE(?, mensagem), atualizado_em = ?
+            WHERE id = ?
+        """), (status, (detalhe or "")[:500], mensagem, datetime.utcnow().isoformat(), envio_id))
+
+
+def resumo_painel_para_relatorio(usuario_id: int, hoje_br: str) -> dict:
+    """O que vai no relatório diário: totais do painel e as próximas visitas
+    agendadas (de hoje em diante, horário de Brasília)."""
+    limite = (datetime.utcnow() - timedelta(days=DIAS_PARA_REVISITAR)).isoformat()
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""
+            SELECT COUNT(*) AS total,
+                   COALESCE(SUM(CASE WHEN status = 'visitado' THEN 1 ELSE 0 END), 0) AS visitados,
+                   COALESCE(SUM(CASE WHEN status = 'visitado' AND visitado_em <> '' AND visitado_em < ?
+                                     THEN 1 ELSE 0 END), 0) AS revisitar
+            FROM painel_medicos WHERE usuario_id = ?
+        """), (limite, usuario_id))
+        t = dict(cursor.fetchone())
+        cursor.execute(_q("""
+            SELECT a.data, a.horario, p.nome, p.especialidade, p.cidade
+            FROM agenda_compromissos a JOIN painel_medicos p ON p.id = a.painel_medico_id
+            WHERE a.usuario_id = ? AND a.data >= ?
+            ORDER BY a.data, a.horario
+            LIMIT 50
+        """), (usuario_id, hoje_br))
+        proximas = [dict(l) for l in cursor.fetchall()]
+    total, visitados = int(t["total"] or 0), int(t["visitados"] or 0)
+    return {"total": total, "visitados": visitados, "revisitar": int(t["revisitar"] or 0),
+            "nao_visitados": total - visitados, "proximas": proximas}
+
+
+def apagar_envio(envio_id: int):
+    with _conexao() as conn:
+        conn.cursor().execute(_q("DELETE FROM relatorio_envios WHERE id = ?"), (envio_id,))
+
+
+def destravar_envios_presos(minutos: int = 30) -> int:
+    """Envio que ficou 'enviando' (servidor reiniciou no meio) vira erro."""
+    limite = (datetime.utcnow() - timedelta(minutes=minutos)).isoformat()
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""
+            UPDATE relatorio_envios SET status = 'erro', detalhe = 'Interrompido (o servidor reiniciou no meio do envio).',
+                   atualizado_em = ?
+            WHERE status = 'enviando' AND atualizado_em < ?
+        """), (datetime.utcnow().isoformat(), limite))
+        return cursor.rowcount
+
+
+def listar_envios_relatorio(limite: int = 150, dia: str = None):
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        if dia:
+            cursor.execute(_q(f"""SELECT * FROM relatorio_envios WHERE dia = ?
+                                  ORDER BY criado_em DESC, id DESC LIMIT {int(limite)}"""), (dia,))
+        else:
+            cursor.execute(f"SELECT * FROM relatorio_envios ORDER BY criado_em DESC, id DESC LIMIT {int(limite)}")
+        return [dict(l) for l in cursor.fetchall()]
+
+
+def contar_envios_do_dia(dia: str) -> dict:
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("SELECT status, COUNT(*) AS total FROM relatorio_envios WHERE dia = ? AND tipo = 'automatico' GROUP BY status"), (dia,))
+        return {l["status"]: int(l["total"]) for l in cursor.fetchall()}
+
+
+# ---------------------------------------------------------------------------
+# Desativar usuário e transferir o painel médico
+# ---------------------------------------------------------------------------
+def desativar_usuario(usuario_id: int, desativar: bool = True) -> bool:
+    """Desativada, a conta não entra mais (e quem estava logado sai), mas
+    nada é apagado: painel, visitas e histórico ficam. Dá pra reativar."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("UPDATE usuarios SET desativado = ?, desativado_em = ?, relatorio_ativo = 0 WHERE id = ?")
+                       if desativar else
+                       _q("UPDATE usuarios SET desativado = ?, desativado_em = ? WHERE id = ?"),
+                       (1 if desativar else 0, datetime.utcnow().isoformat() if desativar else None, usuario_id))
+        return cursor.rowcount > 0
+
+
+def previa_transferencia(origem_id: int, destino_id: int) -> dict:
+    """Quantos médicos vão e quantos o destino já tem (esses são juntados)."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""
+            SELECT COUNT(*) AS total,
+                   COALESCE(SUM(CASE WHEN EXISTS (SELECT 1 FROM painel_medicos d
+                                                  WHERE d.usuario_id = ? AND d.chave_medico = o.chave_medico)
+                                     THEN 1 ELSE 0 END), 0) AS repetidos,
+                   COALESCE(SUM(CASE WHEN o.ja_comprou = 1 THEN 1 ELSE 0 END), 0) AS clientes
+            FROM painel_medicos o WHERE o.usuario_id = ?
+        """), (destino_id, origem_id))
+        l = dict(cursor.fetchone())
+        cursor.execute(_q("SELECT COUNT(*) AS n FROM agenda_compromissos WHERE usuario_id = ? AND data >= ?"),
+                       (origem_id, agora_brasil().date().isoformat()))
+        agenda = cursor.fetchone()["n"]
+    return {"total": int(l["total"] or 0), "repetidos": int(l["repetidos"] or 0),
+            "clientes": int(l["clientes"] or 0), "agendamentos": int(agenda or 0)}
+
+
+def transferir_painel(origem_id: int, destino_id: int, nome_origem: str = "") -> dict:
+    """Passa o painel médico inteiro de um usuário para outro, numa transação só.
+
+    - Médico que o destino ainda não tem: muda de dono, com status, observações,
+      marcação de cliente e agendamentos (se o destino já tiver outro
+      compromisso no mesmo dia e horário, esse agendamento é cancelado e o
+      médico volta para Prospectados).
+    - Médico que o destino já tem: os dois são juntados no do destino —
+      a marcação de cliente e as observações de quem saiu vão junto, e o
+      histórico de visitas passa a apontar para ele.
+    - O histórico de visitas continua no nome de quem visitou."""
+    if origem_id == destino_id:
+        raise ValueError("Escolha outro usuário para receber o painel.")
+    r = {"movidos": 0, "juntados": 0, "agendas_movidas": 0, "agendas_canceladas": 0}
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""SELECT chave_medico, id, ja_comprou, marcado_cliente_em, ultimo_pedido_em, observacoes
+                             FROM painel_medicos WHERE usuario_id = ?"""), (destino_id,))
+        do_destino = {l["chave_medico"]: dict(l) for l in cursor.fetchall()}
+        cursor.execute(_q("""SELECT id, chave_medico, status, ja_comprou, marcado_cliente_em, ultimo_pedido_em, observacoes
+                             FROM painel_medicos WHERE usuario_id = ? ORDER BY id"""), (origem_id,))
+        da_origem = [dict(l) for l in cursor.fetchall()]
+        rotulo = f"Notas de {nome_origem}" if nome_origem else "Notas do promotor anterior"
+
+        for m in da_origem:
+            alvo = do_destino.get(m["chave_medico"])
+            if alvo:
+                # junta no médico que o destino já tem
+                obs = (alvo["observacoes"] or "").rstrip()
+                if (m["observacoes"] or "").strip():
+                    obs = (obs + "\n\n" if obs else "") + f"{rotulo}:\n{m['observacoes'].strip()}"
+                    obs = obs[-LIMITE_OBSERVACOES:]
+                pedido = max([x for x in (alvo["ultimo_pedido_em"], m["ultimo_pedido_em"]) if x] or [None])
+                cursor.execute(_q("""
+                    UPDATE painel_medicos SET
+                        ja_comprou = CASE WHEN ja_comprou = 1 OR ? = 1 THEN 1 ELSE 0 END,
+                        marcado_cliente_em = COALESCE(marcado_cliente_em, ?),
+                        ultimo_pedido_em = ?, observacoes = ?
+                    WHERE id = ?
+                """), (1 if m["ja_comprou"] else 0, m["marcado_cliente_em"], pedido, obs or None, alvo["id"]))
+                for tabela in ("visitas_log", "historico_visitas", "alertas_clientes"):
+                    cursor.execute(_q(f"UPDATE {tabela} SET painel_medico_id = ? WHERE painel_medico_id = ?"),
+                                   (alvo["id"], m["id"]))
+                cursor.execute(_q("DELETE FROM agenda_compromissos WHERE painel_medico_id = ?"), (m["id"],))
+                r["agendas_canceladas"] += cursor.rowcount
+                cursor.execute(_q("DELETE FROM painel_medicos WHERE id = ?"), (m["id"],))
+                r["juntados"] += 1
+                continue
+
+            # muda de dono, com os agendamentos (se o horário estiver livre no destino)
+            cursor.execute(_q("SELECT id, data, horario FROM agenda_compromissos WHERE painel_medico_id = ?"), (m["id"],))
+            for ag in [dict(l) for l in cursor.fetchall()]:
+                cursor.execute(_q("SELECT 1 FROM agenda_compromissos WHERE usuario_id = ? AND data = ? AND horario = ?"),
+                               (destino_id, ag["data"], ag["horario"]))
+                if cursor.fetchone():
+                    cursor.execute(_q("DELETE FROM agenda_compromissos WHERE id = ?"), (ag["id"],))
+                    r["agendas_canceladas"] += 1
+                else:
+                    cursor.execute(_q("UPDATE agenda_compromissos SET usuario_id = ? WHERE id = ?"), (destino_id, ag["id"]))
+                    r["agendas_movidas"] += 1
+            novo_status = m["status"]
+            if m["status"] == "agendado":
+                cursor.execute(_q("SELECT 1 FROM agenda_compromissos WHERE painel_medico_id = ?"), (m["id"],))
+                if not cursor.fetchone():
+                    novo_status = "prospectado"
+            cursor.execute(_q("UPDATE painel_medicos SET usuario_id = ?, status = ? WHERE id = ?"),
+                           (destino_id, novo_status, m["id"]))
+            do_destino[m["chave_medico"]] = {**m, "id": m["id"]}
+            r["movidos"] += 1
+        # agendamento solto (sem médico no painel) não deve sobrar na agenda de quem saiu
+        cursor.execute(_q("""DELETE FROM agenda_compromissos WHERE usuario_id = ?
+                             AND painel_medico_id NOT IN (SELECT id FROM painel_medicos WHERE usuario_id = ?)"""),
+                       (origem_id, origem_id))
+    return r
 

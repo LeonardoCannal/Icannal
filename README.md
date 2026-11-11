@@ -33,6 +33,9 @@ Painel Médico pessoal por usuário (controle de prospecção/visita).
   exportar a base de usuários para Excel (prospectados, agendados,
   visitados e a revisitar).
 - **Dashboard** — números gerais, gráficos dos últimos 6 meses e ranking.
+- **Resumo semanal** — toda segunda às 7h, os números da semana da equipe (também chega no seu Telegram/WhatsApp).
+- **Relatório diário** — todo dia, no horário escolhido, cada promotor recebe no WhatsApp o resumo do painel médico dele: médicos no painel, já visitados, ainda não visitados e as próximas visitas agendadas. Precisa do robô do WhatsApp (`whatsapp_robo/LEIA-ME.md`).
+- **Registro** — tudo o que os admins fizeram, com filtros.
 - **Visitas** — histórico permanente de visitas por usuário, com filtro e
   exportação para Excel.
 - **Clientes** — importa a planilha de especialistas (coluna ULTIMO
