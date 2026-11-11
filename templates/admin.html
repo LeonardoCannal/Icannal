@@ -110,6 +110,7 @@
             <option value="promotor">Promotores</option>
             <option value="admin">Admins</option>
             <option value="pendente">Aguardando aprovação</option>
+            <option value="desativado">Desativados</option>
           </select>
         </div>
         <div class="campo">
@@ -172,7 +173,7 @@
         </thead>
         <tbody>
           {% for usuario in usuarios %}
-          <tr class="us-linha"
+          <tr class="us-linha{{ ' us-desativado' if usuario.desativado }}" data-desativado="{{ 1 if usuario.desativado else 0 }}" data-id="{{ usuario.id }}"
               data-nome="{{ usuario.nome }}" data-email="{{ usuario.email }}" data-cpf="{{ usuario.cpf }}"
               data-admin="{{ 1 if usuario.is_admin else 0 }}" data-aprovado="{{ 1 if usuario.aprovado else 0 }}"
               data-criado="{{ usuario.criado_em_iso }}" data-login="{{ usuario.ultimo_login_iso }}"
@@ -182,6 +183,7 @@
             <td class="c-nome">
               <div class="celula-nome-usuario">
                 <button type="button" class="link-nome-usuario" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">{{ usuario.nome }}</button>
+                {% if usuario.desativado %}<span class="us-tag-desativado">Desativado</span>{% endif %}
                 {% if usuario.id != current_user.id and not usuario.eh_mestre and (not usuario.is_admin or eh_mestre) %}
                 <button type="button" class="btn-excluir-usuario" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}" title="Excluir conta" aria-label="Excluir conta de {{ usuario.nome }}">&times;</button>
                 {% endif %}
@@ -199,6 +201,8 @@
               {% endif %}
               {% elif not usuario.aprovado %}
               <span class="us-tag-pendente">Aguardando aprovação</span>
+              {% elif usuario.desativado %}
+              <span class="us-tag-desativado">Conta desativada</span>
               {% else %}
               <button type="button" class="link-exportar btn-tornar-admin" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">Tornar admin</button>
               {% endif %}
@@ -213,6 +217,12 @@
             <td class="c-acao">
               <button type="button" class="link-exportar btn-adicionar-medicos" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">+ Adicionar médicos</button>
               <a href="{{ url_for('admin_historico_visitas', usuario=usuario.id) }}" class="link-exportar link-ver-visitas">Ver visitas</a>
+              {% if usuario.total_painel > 0 %}
+              <button type="button" class="link-exportar btn-transferir-painel" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}">Transferir painel</button>
+              {% endif %}
+              {% if usuario.aprovado and usuario.id != current_user.id and not usuario.eh_mestre and (not usuario.is_admin or eh_mestre) %}
+              <button type="button" class="link-exportar btn-desativar-usuario" data-id="{{ usuario.id }}" data-nome="{{ usuario.nome }}" data-desativado="{{ 1 if usuario.desativado else 0 }}">{{ 'Reativar conta' if usuario.desativado else 'Desativar conta' }}</button>
+              {% endif %}
             </td>
             <td class="c-acao{{ ' c-vazio' if usuario.total_painel == 0 }}">
               {% if usuario.total_painel > 0 %}
@@ -831,6 +841,7 @@
       avisoTextoNotif.textContent = mensagem;
       avisoOverlayNotif.classList.add('aberto');
     }
+    window.mostrarAvisoNotif = mostrarAvisoNotif;
 
     const btnNotif = document.getElementById('btn-notif');
     const notifPainel = document.getElementById('notif-painel');
@@ -1012,6 +1023,33 @@
   }
 </script>
 <script src="{{ url_for('static', filename='alertas_clientes.js') }}"></script>
+
+  <dialog class="tr-dialogo" id="tr-dialogo" aria-labelledby="tr-titulo">
+    <form method="dialog" class="tr-form" id="tr-form">
+      <div class="tr-topo">
+        <h2 id="tr-titulo">Transferir painel médico</h2>
+        <button type="button" class="modal-fechar" id="tr-fechar" aria-label="Fechar">&times;</button>
+      </div>
+      <p class="tr-texto">Todos os médicos do painel de <strong id="tr-origem"></strong> vão para o painel de quem você escolher, com status, observações, marcação de cliente e agendamentos.</p>
+      <div class="campo">
+        <label for="tr-destino">Quem recebe</label>
+        <select id="tr-destino" required>
+          <option value="">Escolha um usuário…</option>
+          {% for u in usuarios if u.aprovado and not u.desativado %}
+          <option value="{{ u.id }}">{{ u.nome }}{{ ' (admin)' if u.is_admin }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="tr-previa" id="tr-previa" aria-live="polite"></div>
+      <label class="tr-check"><input type="checkbox" id="tr-desativar" checked> <span>Desativar a conta de <strong id="tr-origem2"></strong> depois de transferir</span></label>
+      <p class="tr-nota">O histórico de visitas continua no nome de quem visitou. Médicos que os dois já tinham são juntados num só, sem perder as observações.</p>
+      <div class="tr-acoes">
+        <button type="button" class="rd-btn-sec" id="tr-cancelar">Cancelar</button>
+        <button type="submit" class="btn-primario" id="tr-confirmar" disabled>Transferir</button>
+      </div>
+    </form>
+  </dialog>
+<script src="{{ url_for('static', filename='admin_transferir.js') }}" defer></script>
 <script src="{{ url_for('static', filename='admin_usuarios.js') }}" defer></script>
 </body>
 </html>

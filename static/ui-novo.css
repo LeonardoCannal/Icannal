@@ -1099,3 +1099,124 @@ body.ui-novo .painel-btn-mover.painel-btn-visitado-direto{ background: transpare
 body.ui-novo .painel-btn-mover.painel-btn-visitado-direto:hover{ background: var(--verde-suave); border-color: var(--verde); color: var(--verde-texto); }
 body.ui-novo.escuro .painel-btn-mover.painel-btn-visitado-direto{ background: transparent; color: var(--verde-texto); }
 body.ui-novo.escuro .painel-btn-mover.painel-btn-visitado-direto:hover{ background: var(--verde-suave); border-color: var(--verde); color: var(--verde-texto); }
+
+/* Relatório diário (WhatsApp) */
+body.ui-novo .rd-grade{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 6px 0 22px; align-items: start; }
+body.ui-novo .rd-bloco{ border: 1px solid var(--linha); border-radius: 14px; padding: 16px 16px 14px; background: var(--tela); min-width: 0; }
+body.ui-novo .rd-bloco-topo{ display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+body.ui-novo .rd-bloco h2{ font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; color: var(--tinta); text-wrap: balance; }
+body.ui-novo .rd-passo{ display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--verde-suave); color: var(--verde-texto); font-size: 12px; font-weight: 700; flex: none; }
+body.ui-novo .rd-pill{ font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--superficie); color: var(--ardosia); border: 1px solid var(--linha); white-space: nowrap; }
+body.ui-novo .rd-pill.ok{ background: var(--verde-suave); color: var(--verde-texto); border-color: transparent; }
+body.ui-novo .rd-pill.aguardando{ background: var(--alerta-fundo); color: var(--alerta-texto); border-color: transparent; }
+body.ui-novo .rd-pill.erro{ background: #FDECEC; color: #A41F1F; border-color: transparent; }
+body.ui-novo.escuro .rd-pill.erro{ background: rgba(242,107,107,.14); color: #FF9A9A; }
+body.ui-novo .rd-texto{ font-size: 13.5px; color: var(--ardosia); line-height: 1.55; margin: 0 0 10px; }
+body.ui-novo .rd-texto strong{ color: var(--tinta); }
+body.ui-novo .rd-nota{ font-size: 12.5px; color: var(--pedra); line-height: 1.5; margin: 10px 0 0; }
+body.ui-novo .rd-erro-txt{ color: var(--cliente-texto); }
+body.ui-novo .rd-cmd{ font-size: 12px; background: var(--superficie); border: 1px solid var(--linha); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--tinta); margin: 0 0 8px; }
+body.ui-novo .rd-qr{ display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 4px 0 10px; }
+body.ui-novo .rd-qr img{ width: 200px; height: 200px; border-radius: 10px; background: #fff; padding: 6px; border: 1px solid var(--linha); }
+body.ui-novo .rd-passos{ margin: 0; padding-left: 18px; font-size: 13px; color: var(--ardosia); line-height: 1.55; flex: 1 1 160px; }
+body.ui-novo .rd-acoes{ display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+body.ui-novo .rd-btn-sec{ min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--linha-forte); background: var(--tela); color: var(--tinta); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: border-color .15s ease, background-color .15s ease; }
+body.ui-novo .rd-btn-sec:hover{ border-color: var(--verde); background: var(--verde-suave); }
+body.ui-novo .rd-btn-sec:disabled{ opacity: .6; cursor: progress; }
+body.ui-novo .rd-btn-sec:focus-visible, body.ui-novo .rd-switch input:focus-visible + span{ outline: 2px solid var(--verde); outline-offset: 2px; }
+body.ui-novo .rd-teste{ margin-top: 12px; }
+body.ui-novo .rd-teste label, body.ui-novo .rd-cfg .campo label, body.ui-novo .rd-dias legend{ display: block; font-size: 12.5px; font-weight: 600; color: var(--ardosia); margin-bottom: 6px; padding: 0; }
+body.ui-novo .rd-linha{ display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+body.ui-novo .rd-linha input[type=tel], body.ui-novo .rd-cfg input[type=time]{ min-height: 38px; flex: 1 1 140px; min-width: 0; background: var(--tela); color: var(--tinta); }
+body.ui-novo .rd-chave{ display: flex; gap: 8px; align-items: center; font-size: 14px; font-weight: 600; color: var(--tinta); margin-bottom: 12px; cursor: pointer; }
+body.ui-novo .rd-chave input{ width: 18px; height: 18px; accent-color: var(--verde-acao); }
+body.ui-novo .rd-cfg .campo{ margin: 0; flex: 0 0 120px; }
+body.ui-novo .rd-dias{ border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; flex: 1 1 200px; }
+body.ui-novo .rd-dias legend{ width: 100%; }
+body.ui-novo .rd-dias label{ display: inline-flex; gap: 4px; align-items: center; font-size: 13px; color: var(--tinta); cursor: pointer; min-height: 28px; }
+body.ui-novo .rd-dias input{ accent-color: var(--verde-acao); }
+body.ui-novo .rd-status{ font-size: 13px; color: var(--ardosia); }
+body.ui-novo .rd-sub{ font-weight: 400; color: var(--pedra); font-size: 13px; text-transform: none; letter-spacing: 0; }
+body.ui-novo table.tabela-admin.rd-tabela{ min-width: 0; width: 100%; }
+body.ui-novo .rd-tabela .rd-num{ width: 100%; min-width: 150px; min-height: 36px; box-sizing: border-box; background: var(--tela); color: var(--tinta); }
+body.ui-novo .rd-cpf{ font-variant-numeric: tabular-nums; color: var(--pedra); white-space: nowrap; }
+body.ui-novo .rd-tag{ font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--superficie); color: var(--pedra); border: 1px solid var(--linha); }
+body.ui-novo .rd-switch{ position: relative; display: inline-block; width: 42px; height: 24px; cursor: pointer; }
+body.ui-novo .rd-switch input{ position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+body.ui-novo .rd-switch span{ position: absolute; inset: 0; border-radius: 999px; background: var(--linha-forte); transition: background-color .15s ease; pointer-events: none; }
+body.ui-novo .rd-switch span::after{ content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s ease; }
+body.ui-novo .rd-switch input:checked + span{ background: var(--verde-acao); }
+body.ui-novo .rd-switch input:checked + span::after{ transform: translateX(18px); }
+@media (prefers-reduced-motion: reduce){ body.ui-novo .rd-switch span, body.ui-novo .rd-switch span::after{ transition: none; } }
+body.ui-novo .rd-st{ display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+body.ui-novo .rd-st-enviado{ background: var(--verde-suave); color: var(--verde-texto); }
+body.ui-novo .rd-st-erro{ background: #FDECEC; color: #A41F1F; }
+body.ui-novo.escuro .rd-st-erro{ background: rgba(242,107,107,.14); color: #FF9A9A; }
+body.ui-novo .rd-st-enviando{ background: var(--alerta-fundo); color: var(--alerta-texto); }
+body.ui-novo .rd-quando{ font-size: 12.5px; color: var(--pedra); margin-left: 6px; white-space: nowrap; }
+body.ui-novo .rd-detalhe{ display: block; font-size: 12px; color: var(--ardosia); margin-top: 3px; overflow-wrap: anywhere; max-width: 320px; }
+body.ui-novo .rd-acoes-linha{ white-space: nowrap; }
+body.ui-novo .rd-acoes-linha .rd-btn-sec + .rd-btn-sec{ margin-left: 6px; }
+body.ui-novo tr.rd-salvo td{ background: var(--verde-suave); transition: background-color .3s ease; }
+body.ui-novo .rd-dialogo{ border: 1px solid var(--linha); border-radius: 16px; padding: 0; width: min(440px, calc(100vw - 32px)); background: var(--tela); color: var(--tinta); box-shadow: 0 24px 60px -12px rgba(0,0,0,.35); overscroll-behavior: contain; }
+body.ui-novo .rd-dialogo::backdrop{ background: rgba(10,14,20,.45); }
+body.ui-novo .rd-dialogo-topo{ display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--linha); }
+body.ui-novo .rd-dialogo-topo h2{ font-size: 15px; margin: 0; }
+body.ui-novo .rd-bolha{ margin: 16px; padding: 12px 14px; border-radius: 4px 14px 14px 14px; background: #DCF8C6; color: #111B21; font-size: 14px; line-height: 1.5; max-height: 60vh; overflow: auto; overflow-wrap: anywhere; }
+body.ui-novo.escuro .rd-bolha{ background: #005C4B; color: #E9EDEF; }
+body.ui-novo .rd-bolha.erro{ background: var(--alerta-fundo); color: var(--alerta-texto); border-radius: 12px; }
+body.ui-novo .rd-aviso{ position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 50; background: var(--tinta); color: var(--tela); padding: 10px 16px; border-radius: 999px; font-size: 13.5px; font-weight: 600; box-shadow: 0 10px 30px -8px rgba(0,0,0,.4); max-width: calc(100vw - 32px); text-align: center; }
+body.ui-novo .rd-aviso.erro{ background: #B42318; color: #fff; }
+@media (max-width: 1100px){ body.ui-novo .rd-grade{ grid-template-columns: minmax(0,1fr) minmax(0,1fr); } body.ui-novo .rd-grade > :first-child{ grid-column: 1 / -1; } }
+@media (max-width: 720px){
+  body.ui-novo .rd-grade{ grid-template-columns: minmax(0,1fr); }
+  body.ui-novo .rd-tabela thead{ display: none; }
+  body.ui-novo .rd-tabela tr{ display: block; border: 1px solid var(--linha); border-radius: 12px; margin-bottom: 10px; padding: 10px 12px; background: var(--tela); }
+  body.ui-novo .rd-tabela td{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border: none; padding: 4px 0; text-align: left; }
+  body.ui-novo .rd-tabela td::before{ content: attr(data-rotulo); font-weight: 600; color: var(--pedra); min-width: 92px; font-size: 12.5px; }
+  body.ui-novo .rd-tabela .rd-num{ flex: 1 1 150px; width: auto; }
+  body.ui-novo .rd-acoes-linha{ white-space: normal; }
+}
+body.ui-novo .rd-bloco input[type=tel], body.ui-novo .rd-bloco input[type=time], body.ui-novo .rd-tabela .rd-num{
+  border: 1px solid var(--linha-forte); border-radius: 10px; padding: 0 10px; font: inherit; font-size: 14px;
+}
+body.ui-novo .rd-bloco input:focus-visible, body.ui-novo .rd-tabela .rd-num:focus-visible{ outline: 2px solid var(--verde); outline-offset: 1px; border-color: var(--verde); }
+body.ui-novo .rd-tabela .rd-num{ min-width: 140px; }
+body.ui-novo .rd-acoes-linha{ white-space: normal; }
+body.ui-novo .rd-acoes-linha .rd-btn-sec{ display: block; width: 100%; margin: 0 0 6px; }
+body.ui-novo .rd-acoes-linha .rd-btn-sec + .rd-btn-sec{ margin-left: 0; }
+body.ui-novo .rd-detalhe{ max-width: 240px; }
+@media (max-width: 720px){
+  body.ui-novo .rd-acoes-linha .rd-btn-sec{ display: inline-block; width: auto; margin: 0; }
+}
+body.ui-novo .rd-bloco [hidden], body.ui-novo .rd-aviso[hidden]{ display: none !important; }
+body.ui-novo .rd-tabela td.rd-ultimo{ white-space: normal; min-width: 170px; max-width: 260px; }
+body.ui-novo .rd-tabela td.rd-ultimo .rd-detalhe{ white-space: normal; }
+body.ui-novo .rd-lista{ margin: 0 0 4px; padding-left: 4px; list-style: none; font-size: 13.5px; color: var(--tinta); line-height: 1.8; }
+
+/* Desativar conta / transferir painel */
+body.ui-novo .us-tag-desativado{ display: inline-block; margin-left: 6px; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--superficie); color: var(--pedra); border: 1px solid var(--linha-forte); white-space: nowrap; }
+body.ui-novo tr.us-desativado td{ color: var(--pedra); }
+body.ui-novo tr.us-desativado .link-nome-usuario{ color: var(--pedra); text-decoration: line-through; text-decoration-color: var(--linha-forte); }
+body.ui-novo .btn-desativar-usuario{ color: var(--cliente-texto); }
+body.ui-novo tr.us-desativado .btn-desativar-usuario{ color: var(--verde-texto); }
+body.ui-novo .tr-dialogo{ border: 1px solid var(--linha); border-radius: 16px; padding: 0; width: min(480px, calc(100vw - 32px)); background: var(--tela); color: var(--tinta); box-shadow: 0 24px 60px -12px rgba(0,0,0,.35); overscroll-behavior: contain; }
+body.ui-novo .tr-dialogo::backdrop{ background: rgba(10,14,20,.45); }
+body.ui-novo .tr-form{ padding: 0 18px 18px; }
+body.ui-novo .tr-topo{ display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 16px 0 10px; }
+body.ui-novo .tr-topo h2{ font-size: 16px; margin: 0; }
+body.ui-novo .tr-texto, body.ui-novo .tr-nota{ font-size: 13.5px; color: var(--ardosia); line-height: 1.5; margin: 0 0 12px; }
+body.ui-novo .tr-nota{ font-size: 12.5px; color: var(--pedra); }
+body.ui-novo .tr-form .campo{ margin: 0 0 10px; }
+body.ui-novo .tr-form label[for=tr-destino]{ display: block; font-size: 12.5px; font-weight: 600; color: var(--ardosia); margin-bottom: 6px; }
+body.ui-novo .tr-form select{ width: 100%; min-height: 42px; background-color: var(--tela); color: var(--tinta); }
+body.ui-novo .tr-previa{ font-size: 13.5px; color: var(--tinta); background: var(--verde-suave); border-radius: 10px; padding: 10px 12px; margin: 0 0 12px; }
+body.ui-novo .tr-previa:empty{ display: none; }
+body.ui-novo .tr-check{ display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; color: var(--tinta); margin: 0 0 10px; cursor: pointer; }
+body.ui-novo .tr-check[hidden]{ display: none; }
+body.ui-novo .tr-check input{ margin-top: 2px; accent-color: var(--verde-acao); }
+body.ui-novo .tr-acoes{ display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+body.ui-novo .rg-acao-desativar_usuario, body.ui-novo .rg-acao-transferir_painel{ background: var(--alerta-fundo); color: var(--alerta-texto); border-color: transparent; }
+body.ui-novo .btn-transferir-painel, body.ui-novo .btn-desativar-usuario{ background: none; border: none; padding: 0; font: inherit; font-weight: 600; cursor: pointer; margin-left: 10px; }
+body.ui-novo .btn-transferir-painel:hover, body.ui-novo .btn-desativar-usuario:hover{ text-decoration: underline; }
+body.ui-novo .btn-transferir-painel:focus-visible, body.ui-novo .btn-desativar-usuario:focus-visible{ outline: 2px solid var(--verde); outline-offset: 2px; border-radius: 4px; }

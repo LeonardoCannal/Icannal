@@ -38,6 +38,7 @@
       nome: d.nome || '',
       texto: semAcento(d.nome + ' ' + d.email) + ' ' + (d.cpf || '').replace(/\D/g, ''),
       admin: d.admin === '1',
+      desativado: d.desativado === '1',
       aprovado: d.aprovado === '1',
       criado: data(d.criado),
       login: data(d.login),
@@ -72,6 +73,8 @@
     if (f.tipo === 'admin' && !u.admin) return false;
     if (f.tipo === 'promotor' && (u.admin || !u.aprovado)) return false;
     if (f.tipo === 'pendente' && u.aprovado) return false;
+    if (f.tipo === 'desativado' && !u.desativado) return false;
+    if ((f.tipo === 'promotor' || f.tipo === 'admin') && u.desativado) return false;
     if (f.acesso === '7' && !(u.login && agora - u.login <= 7 * DIA)) return false;
     if (f.acesso === '30' && !(u.login && agora - u.login <= 30 * DIA)) return false;
     if (f.acesso === 'sumido30' && !(u.login && agora - u.login > 30 * DIA)) return false;

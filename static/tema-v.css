@@ -75,6 +75,7 @@ body.tv.ui-novo .btn-exportar-excel:hover{ box-shadow: 0 10px 24px -8px rgba(81,
 body.tv.ui-novo.escuro .btn-exportar-excel{ color: #0D0415; }
 body.tv.ui-novo .hv-resultado-amostra_entregue{ border-color: rgba(81,30,126,.25); }
 body.tv.ui-novo a.rv-total.ativo{ box-shadow: 0 0 0 3px rgba(118,49,178,.18); }
+body.tv.ui-novo .rd-bolha{ background: #E1C4FA; }
 body.tv [fill="#88AD36" i]{ fill: #7631B2; }
 body.tv [stroke="#88AD36" i]{ stroke: #7631B2; }
 body.tv [fill="#A8CC5A" i]{ fill: #9755D1; }

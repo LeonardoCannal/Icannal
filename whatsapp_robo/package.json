@@ -1,0 +1,13 @@
+{
+  "name": "icannal-whatsapp-robo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Robô que envia os relatórios diários do i.cannal pelo WhatsApp Web (QR code).",
+  "main": "robo.js",
+  "scripts": { "start": "node robo.js" },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "whatsapp-web.js": "^1.26.0"
+  }
+}

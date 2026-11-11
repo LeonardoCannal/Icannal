@@ -1,6 +1,8 @@
 import clientes_import
 import revisao_paineis
 import json
+import auth as auth_mod
+import relatorio_diario
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, redirect, url_for, has_request_context, got_request_exception
 from flask.sessions import SecureCookieSessionInterface
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -635,6 +637,9 @@ def login():
             if not usuario["aprovado"]:
                 erro = "Seu cadastro ainda está sendo analisado pela nossa equipe. Assim que for aprovado, você já poderá entrar."
                 return render_template("login.html", erro=erro)
+            if usuario["desativado"]:
+                erro = "Sua conta está desativada. Se precisar de acesso, fale com o administrador do i.cannal."
+                return render_template("login.html", erro=erro)
             atualizar_ultimo_login(usuario["id"])
             fazer_login(usuario["id"])
             return redirect(url_for("index"))
@@ -730,6 +735,7 @@ def admin():
             "ultimo_login": formatar_data_br(u["ultimo_login"]),
             "is_admin": bool(u["is_admin"]),
             "eh_mestre": eh_admin_mestre(u),
+            "desativado": bool(u["desativado"]),
             "total_painel": u["total_painel"],
             "prospectados": u["prospectados"],
             "agendados": u["agendados"],
@@ -1447,6 +1453,17 @@ def _tarefa_resumo_semanal():
         time.sleep(30 * 60)
 
 
+def _tarefa_relatorio_diario():
+    """Confere a cada 5 minutos se é hora de mandar o relatório diário."""
+    time.sleep(60)
+    while True:
+        try:
+            relatorio_diario.rodar_envio_automatico(auth_mod, avisar_admin=notificar_admin)
+        except Exception:
+            pass
+        time.sleep(5 * 60)
+
+
 _TAREFA_INICIADA = {"pid": None}
 
 
@@ -1458,6 +1475,7 @@ def _iniciar_tarefa_resumo():
         return
     _TAREFA_INICIADA["pid"] = os.getpid()
     threading.Thread(target=_tarefa_resumo_semanal, daemon=True, name="resumo-semanal").start()
+    threading.Thread(target=_tarefa_relatorio_diario, daemon=True, name="relatorio-diario").start()
 
 
 @app.route("/admin/resumo")
@@ -1526,6 +1544,129 @@ def admin_registro():
         admins=listar_admins_do_registro(),
         filtros={"admin": admin_id, "acao": acao, "de": de, "ate": ate},
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin: relatório diário pelo WhatsApp (resumo do painel médico)
+# ---------------------------------------------------------------------------
+@app.route("/admin/relatorio-diario")
+@admin_required
+def admin_relatorio_diario():
+    config = auth_mod.ler_config(relatorio_diario.CONFIG_PADRAO)
+    promotores = auth_mod.listar_promotores_relatorio()
+    for p in promotores:
+        quando = _utc_para_br(p["ultimo_em"]) if p["ultimo_em"] else None
+        p["ultimo_quando"] = quando.strftime("%d/%m %H:%M") if quando else ""
+        p["numero_ok"] = relatorio_diario.numero_valido(p["whatsapp"])
+    envios = auth_mod.listar_envios_relatorio(limite=150)
+    for e in envios:
+        quando = _utc_para_br(e["criado_em"])
+        e["quando"] = quando.strftime("%d/%m/%Y %H:%M") if quando else ""
+    hoje = relatorio_diario.agora_br().date().isoformat()
+    h, m = relatorio_diario.hora_config(config["relatorio_hora"])
+    return render_template(
+        "admin_relatorio_diario.html",
+        config=config, hora=f"{h:02d}:{m:02d}", dias_semana=relatorio_diario.DIAS_SEMANA,
+        promotores=promotores, envios=envios,
+        hoje_contagem=auth_mod.contar_envios_do_dia(hoje),
+        robo_instalado=relatorio_diario.robo_configurado(),
+        ativos=sum(1 for p in promotores if p["ativo"]),
+    )
+
+
+@app.route("/admin/relatorio-diario/whatsapp")
+@admin_required
+def admin_relatorio_whatsapp_status():
+    return jsonify(relatorio_diario.robo_status())
+
+
+@app.route("/admin/relatorio-diario/whatsapp/conectar", methods=["POST"])
+@admin_required
+def admin_relatorio_whatsapp_conectar():
+    dados, erro = relatorio_diario.robo_conectar()
+    if erro:
+        return jsonify({"ok": False, "erro": erro}), 503
+    _registrar("whatsapp_conectar")
+    return jsonify({"ok": True, **dados})
+
+
+@app.route("/admin/relatorio-diario/whatsapp/desconectar", methods=["POST"])
+@admin_required
+def admin_relatorio_whatsapp_desconectar():
+    dados, erro = relatorio_diario.robo_desconectar()
+    if erro:
+        return jsonify({"ok": False, "erro": erro}), 503
+    _registrar("whatsapp_desconectar")
+    return jsonify({"ok": True, **dados})
+
+
+@app.route("/admin/relatorio-diario/whatsapp/teste", methods=["POST"])
+@admin_required
+def admin_relatorio_whatsapp_teste():
+    numero = (_corpo_json().get("numero") or "").strip()
+    if not relatorio_diario.numero_valido(numero):
+        return jsonify({"ok": False, "erro": "Digite um WhatsApp com DDD, ex.: (15) 99999-0000."}), 400
+    ok, erro = relatorio_diario.robo_enviar(
+        numero, "✅ Teste do i.cannal: o WhatsApp do relatório diário está funcionando.")
+    return jsonify({"ok": ok, "erro": erro}), (200 if ok else 400)
+
+
+@app.route("/admin/relatorio-diario/config", methods=["POST"])
+@admin_required
+def admin_relatorio_config():
+    dados = _corpo_json()
+    h, m = relatorio_diario.hora_config(dados.get("hora") or "07:00")
+    dias = "".join(sorted({str(d) for d in (dados.get("dias") or []) if str(d) in "0123456" and len(str(d)) == 1}))
+    ligado = bool(dados.get("ligado"))
+    if ligado and not dias:
+        return jsonify({"ok": False, "erro": "Escolha pelo menos um dia da semana."}), 400
+    auth_mod.salvar_config({"relatorio_ligado": "1" if ligado else "0",
+                            "relatorio_hora": f"{h:02d}:{m:02d}", "relatorio_dias": dias})
+    nomes = ", ".join(relatorio_diario.DIAS_SEMANA[int(d)] for d in dias) or "nenhum dia"
+    _registrar("relatorio_config", None, f"{'Ligado' if ligado else 'Desligado'} · {h:02d}:{m:02d} · {nomes}")
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/relatorio-diario/promotor/<int:user_id>", methods=["POST"])
+@admin_required
+def admin_relatorio_promotor(user_id):
+    dados = _corpo_json()
+    numero = (dados.get("whatsapp") or "").strip()
+    ativo = bool(dados.get("ativo"))
+    if ativo and not relatorio_diario.numero_valido(numero):
+        return jsonify({"ok": False, "erro": "Para ligar o envio, coloque um WhatsApp com DDD."}), 400
+    alvo = buscar_usuario_por_id(user_id)
+    if not alvo or not auth_mod.salvar_promotor_relatorio(user_id, numero, ativo):
+        return jsonify({"ok": False, "erro": "Usuário não encontrado."}), 404
+    _registrar("relatorio_promotor", alvo, f"{'Recebe' if ativo else 'Não recebe'} · {numero or 'sem número'}")
+    return jsonify({"ok": True})
+
+
+def _promotor_do_relatorio(user_id):
+    return next((p for p in auth_mod.listar_promotores_relatorio() if p["id"] == user_id), None)
+
+
+@app.route("/admin/relatorio-diario/previa/<int:user_id>")
+@admin_required
+def admin_relatorio_previa(user_id):
+    p = _promotor_do_relatorio(user_id)
+    if not p:
+        return jsonify({"ok": False, "erro": "Usuário não encontrado."}), 404
+    hoje = relatorio_diario.agora_br().date()
+    painel = auth_mod.resumo_painel_para_relatorio(p["id"], hoje.isoformat())
+    return jsonify({"ok": True, "texto": relatorio_diario.montar_mensagem(p["nome"], painel, hoje)})
+
+
+@app.route("/admin/relatorio-diario/enviar/<int:user_id>", methods=["POST"])
+@admin_required
+def admin_relatorio_enviar(user_id):
+    p = _promotor_do_relatorio(user_id)
+    if not p:
+        return jsonify({"ok": False, "erro": "Usuário não encontrado."}), 404
+    status, detalhe = relatorio_diario.enviar_para_promotor(auth_mod, p, tipo="manual")
+    if status == "enviado":
+        _registrar("relatorio_enviar", buscar_usuario_por_id(user_id), f"Enviado agora para {p['whatsapp']}")
+    return jsonify({"ok": status == "enviado", "erro": detalhe}), (200 if status == "enviado" else 400)
 
 
 @app.route("/admin/dashboard")
@@ -2143,8 +2284,11 @@ def admin_painel_importar(user_id):
 @app.route("/admin/usuarios/<int:user_id>/tornar-admin", methods=["POST"])
 @admin_required
 def admin_tornar_admin(user_id):
-    if not buscar_usuario_por_id(user_id):
+    alvo = buscar_usuario_por_id(user_id)
+    if not alvo:
         return jsonify({"ok": False, "mensagem": "Usuário não encontrado."}), 404
+    if alvo["desativado"]:
+        return jsonify({"ok": False, "mensagem": "Reative a conta antes de dar acesso de admin."}), 400
 
     ok = tornar_admin(user_id)
     if ok:
@@ -2172,6 +2316,78 @@ def admin_remover_admin(user_id):
     if ok:
         _registrar("remover_admin", alvo)
     return jsonify({"ok": ok})
+
+
+def _pode_mexer_na_conta(alvo, acao):
+    """Mesmas regras de excluir: não a própria conta, nunca o admin principal,
+    e admin só pelo admin principal. Devolve (ok, resposta_de_erro)."""
+    atual = usuario_logado()
+    if not alvo:
+        return False, (jsonify({"ok": False, "mensagem": "Usuário não encontrado."}), 404)
+    if alvo["id"] == atual["id"]:
+        return False, (jsonify({"ok": False, "mensagem": f"Você não pode {acao} a sua própria conta."}), 400)
+    if eh_admin_mestre(alvo):
+        return False, (jsonify({"ok": False, "mensagem": f"Não dá para {acao} a conta do admin principal."}), 403)
+    if alvo["is_admin"] and not eh_admin_mestre(atual):
+        return False, (jsonify({"ok": False, "mensagem": f"Só o admin principal pode {acao} a conta de outro admin."}), 403)
+    return True, None
+
+
+@app.route("/admin/usuarios/<int:user_id>/desativar", methods=["POST"])
+@admin_required
+def admin_desativar_usuario(user_id):
+    desativar = bool(_corpo_json().get("desativar", True))
+    alvo = buscar_usuario_por_id(user_id)
+    ok, erro = _pode_mexer_na_conta(alvo, "desativar" if desativar else "reativar")
+    if not ok:
+        return erro
+    ok = auth_mod.desativar_usuario(user_id, desativar)
+    if ok:
+        _registrar("desativar_usuario" if desativar else "reativar_usuario", alvo)
+    return jsonify({"ok": ok})
+
+
+def _destino_transferencia(user_id, destino_id):
+    origem = buscar_usuario_por_id(user_id)
+    destino = buscar_usuario_por_id(destino_id) if destino_id else None
+    if not origem:
+        return None, None, (jsonify({"ok": False, "mensagem": "Usuário não encontrado."}), 404)
+    if not destino or destino["id"] == origem["id"]:
+        return None, None, (jsonify({"ok": False, "mensagem": "Escolha quem vai receber o painel."}), 400)
+    if not destino["aprovado"] or destino["desativado"]:
+        return None, None, (jsonify({"ok": False, "mensagem": "Quem recebe precisa ser um usuário ativo e aprovado."}), 400)
+    return origem, destino, None
+
+
+@app.route("/admin/usuarios/<int:user_id>/transferir/previa")
+@admin_required
+def admin_transferir_previa(user_id):
+    destino_id = request.args.get("destino", type=int)
+    origem, destino, erro = _destino_transferencia(user_id, destino_id)
+    if erro:
+        return erro
+    return jsonify({"ok": True, **auth_mod.previa_transferencia(origem["id"], destino["id"])})
+
+
+@app.route("/admin/usuarios/<int:user_id>/transferir", methods=["POST"])
+@admin_required
+def admin_transferir_painel(user_id):
+    dados = _corpo_json()
+    origem, destino, erro = _destino_transferencia(user_id, int(dados.get("destino") or 0))
+    if erro:
+        return erro
+    desativar_depois = bool(dados.get("desativar"))
+    if desativar_depois:
+        ok, erro = _pode_mexer_na_conta(origem, "desativar")
+        if not ok:
+            return erro
+    r = auth_mod.transferir_painel(origem["id"], destino["id"], origem["nome"])
+    _registrar("transferir_painel", origem,
+               f"Para {destino['nome']}: {r['movidos']} médico(s) passado(s), {r['juntados']} juntado(s) com os que "
+               f"ele já tinha, {r['agendas_movidas']} agendamento(s) passado(s), {r['agendas_canceladas']} cancelado(s)")
+    if desativar_depois and auth_mod.desativar_usuario(origem["id"], True):
+        _registrar("desativar_usuario", origem, "Depois de transferir o painel")
+    return jsonify({"ok": True, **r, "desativado": desativar_depois})
 
 
 @app.route("/admin/usuarios/<int:user_id>/excluir", methods=["POST"])

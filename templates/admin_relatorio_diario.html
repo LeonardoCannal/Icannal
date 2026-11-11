@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i.cannal · Relatório diário</title>
+<link rel="preload" href="/static/fontes/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fontes/montserrat.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="i.cannal">
+<link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
+</head>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
+  <div class="admin-header">
+    <svg class="logo-admin" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">
+      <polygon points="2,0 16,0 32,44 18,44" fill="#88AD36"/>
+      <polygon points="25,0 39,0 55,44 41,44" fill="#88AD36"/>
+      <text x="72" y="34" font-family="Montserrat, sans-serif" font-weight="900" font-size="34" textLength="204" lengthAdjust="spacing">
+        <tspan fill="#A8CC5A">I.</tspan><tspan fill="#FFFFFF">CANNAL</tspan>
+      </text>
+    </svg>
+    <div class="admin-header-direita">
+      {% include '_botao_tema.html' %}
+      {% include '_sino_clientes.html' %}
+      <a href="{{ url_for('index') }}">Voltar ao i.cannal</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('perfil') }}">Meu Perfil</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('logout') }}">Sair</a>
+    </div>
+  </div>
+
+  <div class="hero-secao">
+    <div class="hero-secao-conteudo">
+      <h1>Relatório diário</h1>
+      <p>Todo dia, cada promotor recebe no WhatsApp o resumo do painel médico dele e as próximas visitas.</p>
+    </div>
+  </div>
+
+  <main class="admin-main">
+  <div class="card-flutuante">
+    {% with aba='relatorio' %}{% include '_admin_nav.html' %}{% endwith %}
+
+    <div class="rd-grade">
+      <!-- 1. WhatsApp -->
+      <section class="rd-bloco" aria-labelledby="rd-wa-titulo">
+        <div class="rd-bloco-topo">
+          <h2 id="rd-wa-titulo"><span class="rd-passo">1</span> WhatsApp que envia</h2>
+          <span class="rd-pill" id="rd-wa-pill">Verificando…</span>
+        </div>
+        <div id="rd-wa-corpo" aria-live="polite">
+          {% if not robo_instalado %}
+          <p class="rd-texto">O robô do WhatsApp ainda não foi instalado no servidor. Rode uma vez, pelo terminal do servidor:</p>
+          <pre class="rd-cmd">sudo bash /home/cannal/cannal/whatsapp_robo/instalar.sh</pre>
+          {% endif %}
+        </div>
+        <div class="rd-qr" id="rd-qr" hidden>
+          <img id="rd-qr-img" alt="QR code para conectar o WhatsApp" width="220" height="220">
+          <ol class="rd-passos">
+            <li>No celular do número que vai enviar, abra o <strong>WhatsApp</strong>.</li>
+            <li>Toque em <strong>⋮</strong> (ou Configurações) → <strong>Aparelhos conectados</strong> → <strong>Conectar aparelho</strong>.</li>
+            <li>Aponte a câmera para este código.</li>
+          </ol>
+        </div>
+        <div class="rd-acoes">
+          <button type="button" class="btn-primario" id="rd-wa-conectar" hidden>Conectar WhatsApp</button>
+          <button type="button" class="rd-btn-sec" id="rd-wa-desconectar" hidden>Desconectar</button>
+        </div>
+        <form class="rd-teste" id="rd-wa-teste" hidden>
+          <label for="rd-teste-num">Enviar mensagem de teste para</label>
+          <div class="rd-linha">
+            <input type="tel" id="rd-teste-num" inputmode="tel" autocomplete="off" placeholder="(15) 99999-0000…">
+            <button type="submit" class="rd-btn-sec">Testar</button>
+          </div>
+        </form>
+        <p class="rd-nota">Use um número da empresa, não o seu pessoal: o robô funciona como o WhatsApp Web (igual ao Comunica). Ele envia com intervalos de alguns segundos entre um promotor e outro, para parecer uma pessoa enviando.</p>
+      </section>
+
+      <!-- 2. O que vai na mensagem -->
+      <section class="rd-bloco" aria-labelledby="rd-msg-titulo">
+        <div class="rd-bloco-topo">
+          <h2 id="rd-msg-titulo"><span class="rd-passo">2</span> O que cada um recebe</h2>
+        </div>
+        <p class="rd-texto">Um resumo do <strong>painel médico</strong> do próprio promotor, direto do i.cannal:</p>
+        <ul class="rd-lista">
+          <li>🩺 Médicos no painel</li>
+          <li>✅ Médicos já visitados (e quantos estão para revisitar)</li>
+          <li>⏳ Médicos ainda não visitados</li>
+          <li>📅 Próximas visitas agendadas, com dia e horário</li>
+        </ul>
+        <p class="rd-nota">Use <strong>Prévia</strong> na lista abaixo para ver a mensagem exata de cada um.</p>
+      </section>
+
+      <!-- 3. Envio automático -->
+      <section class="rd-bloco" aria-labelledby="rd-cfg-titulo">
+        <div class="rd-bloco-topo">
+          <h2 id="rd-cfg-titulo"><span class="rd-passo">3</span> Envio automático</h2>
+          {% if config.relatorio_ligado == '1' %}<span class="rd-pill ok">Ligado</span>{% else %}<span class="rd-pill">Desligado</span>{% endif %}
+        </div>
+        <form id="rd-cfg" class="rd-cfg">
+          <label class="rd-chave">
+            <input type="checkbox" id="rd-ligado" {{ 'checked' if config.relatorio_ligado == '1' }}>
+            <span>Enviar o relatório automaticamente</span>
+          </label>
+          <div class="rd-linha rd-cfg-linha">
+            <div class="campo">
+              <label for="rd-hora">Horário</label>
+              <input type="time" id="rd-hora" value="{{ hora }}" step="900">
+            </div>
+            <fieldset class="rd-dias">
+              <legend>Dias</legend>
+              {% for nome in dias_semana %}
+              <label><input type="checkbox" name="dias" value="{{ loop.index0 }}" {{ 'checked' if loop.index0|string in config.relatorio_dias }}> {{ nome }}</label>
+              {% endfor %}
+            </fieldset>
+          </div>
+          <div class="rd-acoes">
+            <button type="submit" class="btn-primario">Salvar</button>
+            <span class="rd-status" id="rd-cfg-status" aria-live="polite"></span>
+          </div>
+          <p class="rd-nota">Hoje: {{ hoje_contagem.get('enviado', 0) }} enviado(s){% if hoje_contagem.get('erro') %}, <span class="rd-erro-txt">{{ hoje_contagem.get('erro') }} com erro</span>{% endif %}. Se o servidor estiver fora no horário, ele ainda envia nas 4 horas seguintes. Cada promotor recebe 1 vez por dia.</p>
+        </form>
+      </section>
+    </div>
+
+    <!-- 4. Promotores -->
+    <h3 class="modal-secao-titulo">Quem recebe <span class="rd-sub">({{ ativos }} de {{ promotores|length }} ligados)</span></h3>
+    <p class="rd-texto">O WhatsApp já vem do cadastro de cada um; dá para trocar aqui.</p>
+    <div class="tabela-scroll">
+    <table class="tabela-admin rd-tabela">
+      <thead><tr><th>Promotor</th><th>WhatsApp</th><th>Recebe</th><th>Último envio</th><th>Ações</th></tr></thead>
+      <tbody>
+        {% for p in promotores %}
+        <tr data-id="{{ p.id }}" data-nome="{{ p.nome }}">
+          <td data-rotulo="Promotor"><strong>{{ p.nome }}</strong>{% if p.is_admin %} <span class="rd-tag">admin</span>{% endif %}</td>
+          <td data-rotulo="WhatsApp">
+            <input type="tel" class="rd-num" value="{{ p.whatsapp }}" inputmode="tel" autocomplete="off" aria-label="WhatsApp de {{ p.nome }}" placeholder="(15) 99999-0000…">
+          </td>
+          <td data-rotulo="Recebe">
+            <label class="rd-switch"><input type="checkbox" class="rd-ativo" {{ 'checked' if p.ativo }} aria-label="{{ p.nome }} recebe o relatório"><span aria-hidden="true"></span></label>
+          </td>
+          <td data-rotulo="Último envio" class="rd-ultimo">
+            {% if p.ultimo_status %}
+              <span class="rd-st rd-st-{{ p.ultimo_status }}">{{ {'enviado': 'Enviado', 'erro': 'Erro', 'enviando': 'Enviando…'}.get(p.ultimo_status, p.ultimo_status) }}</span>
+              <span class="rd-quando">{{ p.ultimo_quando }}</span>
+              {% if p.ultimo_status == 'erro' and p.ultimo_detalhe %}<span class="rd-detalhe">{{ p.ultimo_detalhe }}</span>{% endif %}
+            {% else %}<span class="rd-quando">—</span>{% endif %}
+          </td>
+          <td data-rotulo="Ações" class="rd-acoes-linha">
+            <button type="button" class="rd-btn-sec rd-previa">Prévia</button>
+            <button type="button" class="rd-btn-sec rd-enviar">Enviar agora</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+
+    <!-- 5. Histórico -->
+    <h3 class="modal-secao-titulo">Histórico de envios</h3>
+    {% if envios %}
+    <div class="tabela-scroll">
+    <table class="tabela-admin rd-tabela">
+      <thead><tr><th>Quando</th><th>Promotor</th><th>WhatsApp</th><th>Tipo</th><th>Situação</th></tr></thead>
+      <tbody>
+        {% for e in envios %}
+        <tr>
+          <td data-rotulo="Quando" class="hv-data">{{ e.quando }}</td>
+          <td data-rotulo="Promotor">{{ e.usuario_nome }}</td>
+          <td data-rotulo="WhatsApp">{{ e.telefone or '—' }}</td>
+          <td data-rotulo="Tipo">{{ 'Automático' if e.tipo == 'automatico' else 'Manual' }}</td>
+          <td data-rotulo="Situação">
+            <span class="rd-st rd-st-{{ e.status }}">{{ {'enviado': 'Enviado', 'erro': 'Erro', 'enviando': 'Enviando…'}.get(e.status, e.status) }}</span>
+            {% if e.detalhe %}<span class="rd-detalhe">{{ e.detalhe }}</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="rs-vazio">Nenhum relatório enviado ainda.</p>
+    {% endif %}
+  </div>
+  </main>
+
+  <dialog class="rd-dialogo" id="rd-dialogo" aria-labelledby="rd-dialogo-titulo">
+    <div class="rd-dialogo-topo">
+      <h2 id="rd-dialogo-titulo">Prévia</h2>
+      <button type="button" class="modal-fechar" id="rd-dialogo-fechar" aria-label="Fechar">&times;</button>
+    </div>
+    <div class="rd-bolha" id="rd-dialogo-texto" aria-live="polite">Carregando…</div>
+  </dialog>
+
+  <div class="rd-aviso" id="rd-aviso" role="status" aria-live="polite" hidden></div>
+
+<script src="{{ url_for('static', filename='admin_relatorio.js') }}" defer></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+  }
+</script>
+{% include '_sino_clientes_js.html' %}
+</body>
+</html>
