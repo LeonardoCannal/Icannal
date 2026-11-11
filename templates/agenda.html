@@ -237,7 +237,7 @@
 <div class="hero-secao">
   <div class="hero-secao-conteudo">
     <h1>Agenda</h1>
-    <p>Suas visitas marcadas, dia a dia — de 30 em 30 minutos.</p>
+    <p>Suas visitas, dia a dia. Toque num horário livre para agendar um médico e marque a visita direto daqui.</p>
   </div>
 </div>
 
@@ -273,6 +273,41 @@
   </div>
 </main>
 
+<dialog class="ag-dialogo" id="dlg-agendar" aria-labelledby="ag-titulo">
+  <div class="ag-dialogo-topo">
+    <div>
+      <h2 id="ag-titulo">Agendar</h2>
+      <span class="ag-subtitulo" id="ag-subtitulo"></span>
+    </div>
+    <button type="button" class="ag-fechar" id="ag-fechar" aria-label="Fechar">&times;</button>
+  </div>
+  <div class="ag-dialogo-corpo">
+    <label class="ag-rotulo" for="ag-busca">Escolha um médico do seu painel</label>
+    <input type="search" id="ag-busca" class="ag-busca" placeholder="Buscar por nome, especialidade ou cidade…" autocomplete="off" spellcheck="false">
+    <div class="ag-lista" id="ag-lista"></div>
+  </div>
+</dialog>
+
+<dialog class="ag-dialogo" id="dlg-visitado" aria-labelledby="vs-titulo">
+  <div class="ag-dialogo-topo">
+    <h2 id="vs-titulo">Como foi a visita?</h2>
+    <button type="button" class="ag-fechar" id="vs-fechar" aria-label="Fechar">&times;</button>
+  </div>
+  <div class="ag-dialogo-corpo">
+    <label class="ag-rotulo" for="vs-nota">Nota da visita <span>(opcional) — fale ou escreva antes de escolher o resultado</span></label>
+    <textarea id="vs-nota" class="obs-textarea ag-nota" rows="3" maxlength="2000" data-ditado placeholder="Ex.: pediu material sobre CBD, voltar em 15 dias…"></textarea>
+    <div class="vs-opcoes">
+      {% for chave, rotulo in resultados_visita.items() %}
+      <button type="button" class="vs-opcao" data-resultado="{{ chave }}">{{ rotulo }}</button>
+      {% endfor %}
+    </div>
+    <button type="button" class="vs-pular" id="vs-pular">Marcar visitado sem informar o resultado</button>
+  </div>
+</dialog>
+
+<div class="ag-aviso" id="ag-aviso" role="status" aria-live="polite" hidden></div>
+
+<script src="{{ url_for('static', filename='ditado.js') }}" defer></script>
 <script>
   function esc(valor){
     return String(valor == null ? '' : valor)
@@ -366,32 +401,205 @@
       .then(res => res.json())
       .then(dados => {
         horariosLista.innerHTML = '';
-        dados.horarios.forEach(h => {
-          const linha = document.createElement('div');
-          linha.className = 'horario-linha' + (h.ocupado ? ' horario-linha-ocupado' : '');
-
-          if(h.ocupado && h.medico){
-            const local = [h.medico.cidade, h.medico.uf].filter(Boolean).join(' - ');
-            linha.innerHTML = `
-              <span class="horario-hora">${esc(h.horario)}</span>
-              <div class="horario-conteudo">
-                <strong>${esc(h.medico.nome)}</strong>
-                <span>${esc(h.medico.especialidade)}${local ? ' · ' + esc(local) : ''}</span>
-              </div>
-            `;
-          } else {
-            linha.innerHTML = `
-              <span class="horario-hora">${esc(h.horario)}</span>
-              <div class="horario-conteudo"><span class="horario-livre">Disponível</span></div>
-            `;
-          }
-          horariosLista.appendChild(linha);
-        });
+        dados.horarios.forEach(h => horariosLista.appendChild(desenharHorario(dataStr, h)));
       })
       .catch(() => {
         horariosLista.innerHTML = '<div class="vazio">Não foi possível carregar os horários.</div>';
       });
   }
+
+  // ----- Cada horário da agenda: livre (toca para agendar), ocupado (marcar visitado) -----
+  const RESULTADOS = {{ resultados_visita | tojson }};
+
+  function desenharHorario(dataStr, h){
+    const m = h.medico;
+    if(h.ocupado && m){
+      const linha = document.createElement('div');
+      const visitado = m.status === 'visitado';
+      linha.className = 'horario-linha horario-linha-ocupado' + (visitado ? ' horario-linha-visitado' : '') + (m.ja_comprou ? ' horario-linha-cliente' : '');
+      const local = [m.cidade, m.uf].filter(Boolean).join(' - ');
+      linha.innerHTML = `
+        <span class="horario-hora">${esc(h.horario)}</span>
+        <div class="horario-conteudo">
+          <strong>${m.ja_comprou ? '<span class="ag-ponto-cliente" title="Médico cliente" aria-label="Médico cliente"></span>' : ''}${esc(m.nome)}</strong>
+          <span>${esc(info(m.especialidade))}${local ? ' · ' + esc(local) : ''}</span>
+        </div>
+        <div class="horario-acoes"></div>`;
+      const acoes = linha.querySelector('.horario-acoes');
+      if(visitado){
+        acoes.innerHTML = `<span class="ag-selo-visitado">✓ Visitado${m.resultado_visita && RESULTADOS[m.resultado_visita] ? ' · ' + esc(RESULTADOS[m.resultado_visita]) : ''}</span>`;
+      } else if(m.status === 'agendado'){
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'ag-btn-visitado';
+        b.textContent = 'Marcar visitado';
+        b.addEventListener('click', () => abrirVisitado(m.painel_medico_id, m.nome));
+        acoes.appendChild(b);
+      }
+      return linha;
+    }
+    if(h.passado){
+      const linha = document.createElement('div');
+      linha.className = 'horario-linha horario-linha-passado';
+      linha.innerHTML = `<span class="horario-hora">${esc(h.horario)}</span><div class="horario-conteudo"><span class="horario-livre">Horário já passou</span></div>`;
+      return linha;
+    }
+    const botao = document.createElement('button');
+    botao.type = 'button';
+    botao.className = 'horario-linha horario-linha-livre';
+    botao.setAttribute('aria-label', `Agendar um médico às ${h.horario}`);
+    botao.innerHTML = `<span class="horario-hora">${esc(h.horario)}</span><div class="horario-conteudo"><span class="horario-livre">Disponível</span></div><span class="ag-mais" aria-hidden="true">+ Agendar</span>`;
+    botao.addEventListener('click', () => abrirAgendar(dataStr, h.horario));
+    return botao;
+  }
+
+  function recarregarDia(){
+    renderizarCalendario();
+    if(diaSelecionado) selecionarDia(diaSelecionado, calGrade.querySelector('.cal-dia-selecionado'));
+  }
+
+  function avisoAgenda(msg, erro){
+    const el = document.getElementById('ag-aviso');
+    el.textContent = msg;
+    el.classList.toggle('erro', !!erro);
+    el.hidden = false;
+    clearTimeout(avisoAgenda._t);
+    avisoAgenda._t = setTimeout(() => { el.hidden = true; }, 4000);
+  }
+
+  function dataBonita(dataStr){
+    const [a, me, d] = dataStr.split('-').map(Number);
+    return `${NOMES_DIAS_SEMANA[new Date(a, me - 1, d).getDay()]}, ${pad2(d)}/${pad2(me)}`;
+  }
+
+  // ----- Agendar um médico no horário escolhido -----
+  const dlgAgendar = document.getElementById('dlg-agendar');
+  const agBusca = document.getElementById('ag-busca');
+  const agLista = document.getElementById('ag-lista');
+  let agAlvo = null, agMedicos = [];
+
+  const GRUPOS = [
+    ['revisitar', 'Para revisitar'],
+    ['prospectados', 'Prospectados'],
+    ['visitados', 'Já visitados'],
+    ['agendados', 'Já agendados (vai trocar o horário)'],
+  ];
+
+  function info(v){ return v && !/^n[ãa]o (encontrad|dispon[ií]vel)/i.test(String(v)) ? v : ''; }
+  function semAcento(t){ return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+
+  function desenharListaAgendar(){
+    const termo = semAcento(agBusca.value.trim());
+    agLista.innerHTML = '';
+    let total = 0;
+    GRUPOS.forEach(([chave, rotulo]) => {
+      const itens = agMedicos.filter(m => m.grupo === chave && (!termo || m.busca.includes(termo)));
+      if(!itens.length) return;
+      total += itens.length;
+      const titulo = document.createElement('div');
+      titulo.className = 'ag-grupo';
+      titulo.textContent = `${rotulo} (${itens.length})`;
+      agLista.appendChild(titulo);
+      itens.forEach(m => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'ag-medico';
+        const local = [m.cidade, m.uf].filter(Boolean).join(' - ');
+        const extra = m.grupo === 'agendados' && m.compromisso ? `Marcado para ${esc(m.compromisso.data.split('-').reverse().join('/'))} às ${esc(m.compromisso.horario)}` : '';
+        b.innerHTML = `<strong>${m.ja_comprou ? '<span class="ag-ponto-cliente" aria-label="Médico cliente"></span>' : ''}${esc(m.nome)}</strong>
+          <span>${esc(info(m.especialidade))}${local ? ' · ' + esc(local) : ''}</span>${extra ? `<span class="ag-medico-extra">${extra}</span>` : ''}`;
+        b.addEventListener('click', () => agendarMedico(m, b));
+        agLista.appendChild(b);
+      });
+    });
+    if(!total){
+      agLista.innerHTML = agMedicos.length
+        ? '<div class="vazio">Nenhum médico com esse nome.</div>'
+        : '<div class="vazio">Seu painel médico está vazio. Adicione médicos pela Busca primeiro.</div>';
+    }
+  }
+
+  function abrirAgendar(dataStr, horario){
+    agAlvo = { data: dataStr, horario };
+    document.getElementById('ag-titulo').textContent = `Agendar às ${horario}`;
+    document.getElementById('ag-subtitulo').textContent = dataBonita(dataStr);
+    agBusca.value = '';
+    agLista.innerHTML = '<div class="vazio">Carregando seu painel…</div>';
+    dlgAgendar.showModal();
+    if(window.matchMedia('(pointer: fine)').matches) agBusca.focus();
+    fetch('/api/painel').then(r => r.json()).then(d => {
+      agMedicos = [];
+      GRUPOS.forEach(([chave]) => (d[chave] || []).forEach(m => {
+        agMedicos.push({ ...m, grupo: chave, busca: semAcento([m.nome, m.especialidade, m.cidade].join(' ')) });
+      }));
+      desenharListaAgendar();
+    }).catch(() => { agLista.innerHTML = '<div class="vazio">Não foi possível carregar o painel.</div>'; });
+  }
+
+  function agendarMedico(m, botao){
+    if(m.grupo === 'agendados' && !confirm(`${m.nome} já está agendado. Trocar para ${dataBonita(agAlvo.data)} às ${agAlvo.horario}?`)) return;
+    botao.disabled = true;
+    fetch('/api/painel/agendar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: m.id, data: agAlvo.data, horario: agAlvo.horario })
+    }).then(r => r.json()).then(r => {
+      if(r.ok){
+        dlgAgendar.close();
+        avisoAgenda(`${m.nome} agendado para ${agAlvo.horario}.`);
+        recarregarDia();
+      } else {
+        botao.disabled = false;
+        avisoAgenda(r.mensagem || 'Não foi possível agendar.', true);
+      }
+    }).catch(() => { botao.disabled = false; avisoAgenda('Sem conexão. Tente de novo.', true); });
+  }
+
+  agBusca.addEventListener('input', desenharListaAgendar);
+  document.getElementById('ag-fechar').addEventListener('click', () => dlgAgendar.close());
+  dlgAgendar.addEventListener('click', (e) => { if(e.target === dlgAgendar) dlgAgendar.close(); });
+
+  // ----- Marcar visitado direto na agenda -----
+  const dlgVisitado = document.getElementById('dlg-visitado');
+  const vsNota = document.getElementById('vs-nota');
+  let vsAlvo = null;
+
+  function abrirVisitado(id, nome){
+    vsAlvo = { id, nome };
+    document.getElementById('vs-titulo').textContent = `Como foi a visita a ${nome}?`;
+    vsNota.value = '';
+    dlgVisitado.querySelectorAll('button').forEach(b => { b.disabled = false; });
+    dlgVisitado.showModal();
+  }
+
+  function marcarVisitado(resultado){
+    if(window.icannalDitado) window.icannalDitado.pararTudo();
+    const nota = vsNota.value.trim();
+    dlgVisitado.querySelectorAll('.vs-opcao, #vs-pular').forEach(b => { b.disabled = true; });
+    const corpo = { id: vsAlvo.id, status: 'visitado' };
+    if(resultado) corpo.resultado = resultado;
+    fetch('/api/painel/mover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) })
+      .then(r => r.json())
+      .then(r => {
+        if(r.ok === false) throw new Error(r.mensagem || '');
+        if(!nota) return;
+        return fetch(`/api/painel/${vsAlvo.id}/nota`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: nota }) })
+          .then(x => x.json()).then(x => { if(!x.ok) avisoAgenda('A visita foi marcada, mas a nota não foi salva.', true); });
+      })
+      .then(() => {
+        dlgVisitado.close();
+        avisoAgenda(`Visita a ${vsAlvo.nome} marcada.`);
+        recarregarDia();
+      })
+      .catch(e => {
+        dlgVisitado.querySelectorAll('.vs-opcao, #vs-pular').forEach(b => { b.disabled = false; });
+        avisoAgenda(e.message || 'Não foi possível marcar a visita.', true);
+      });
+  }
+
+  dlgVisitado.querySelectorAll('.vs-opcao').forEach(b => b.addEventListener('click', () => marcarVisitado(b.dataset.resultado)));
+  document.getElementById('vs-pular').addEventListener('click', () => marcarVisitado(null));
+  document.getElementById('vs-fechar').addEventListener('click', () => dlgVisitado.close());
+  dlgVisitado.addEventListener('click', (e) => { if(e.target === dlgVisitado) dlgVisitado.close(); });
 
   document.getElementById('cal-mes-anterior').addEventListener('click', () => {
     mesRef = new Date(mesRef.getFullYear(), mesRef.getMonth() - 1, 1);

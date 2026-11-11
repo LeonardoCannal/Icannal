@@ -1593,7 +1593,8 @@ def listar_horarios_dia(usuario_id: int, data: str, agora_utc=None):
         cursor = conn.cursor()
         cursor.execute(
             _q("""
-                SELECT a.horario, a.painel_medico_id, p.nome, p.especialidade, p.cidade, p.uf
+                SELECT a.horario, a.painel_medico_id, p.nome, p.especialidade, p.cidade, p.uf,
+                       p.status, p.resultado_visita, p.ja_comprou, p.visitado_em
                 FROM agenda_compromissos a
                 JOIN painel_medicos p ON p.id = a.painel_medico_id
                 WHERE a.usuario_id = ? AND a.data = ?
