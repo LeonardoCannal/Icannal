@@ -1093,3 +1093,9 @@ body.ui-novo .resultado-nota label{ display: block; font-size: 13px; font-weight
 body.ui-novo .resultado-nota label span{ font-weight: 400; color: var(--pedra); }
 body.ui-novo .resultado-nota .obs-textarea{ min-height: 0; }
 body.ui-novo .modal-resultado-painel .resultado-nota{ margin: 4px 0 16px; }
+
+/* "Marcar visitado" direto nos prospectados: contorno verde, pra não brigar com o Agendar */
+body.ui-novo .painel-btn-mover.painel-btn-visitado-direto{ background: transparent; border-color: var(--verde); color: var(--verde-texto); }
+body.ui-novo .painel-btn-mover.painel-btn-visitado-direto:hover{ background: var(--verde-suave); border-color: var(--verde); color: var(--verde-texto); }
+body.ui-novo.escuro .painel-btn-mover.painel-btn-visitado-direto{ background: transparent; color: var(--verde-texto); }
+body.ui-novo.escuro .painel-btn-mover.painel-btn-visitado-direto:hover{ background: var(--verde-suave); border-color: var(--verde); color: var(--verde-texto); }

@@ -1225,6 +1225,24 @@ def listar_painel_todos_completo():
         return [dict(l) for l in cursor.fetchall()]
 
 
+def listar_todos_medicos_relatorio():
+    """Relatório geral do admin: todos os médicos de todos os painéis, com o
+    promotor, a situação, a última visita e o próximo agendamento."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT p.id, p.usuario_id, u.nome AS usuario_nome, p.nome, p.crm, p.especialidade, p.cidade, p.uf,
+                   p.endereco, p.telefone, p.telefone_pessoal, p.status, p.ja_comprou, p.ultimo_pedido_em,
+                   p.adicionado_em, p.visitado_em, p.resultado_visita, p.observacoes,
+                   (SELECT MIN(a.data || ' ' || a.horario) FROM agenda_compromissos a
+                     WHERE a.painel_medico_id = p.id) AS agendado_para,
+                   (SELECT COUNT(*) FROM historico_visitas h WHERE h.painel_medico_id = p.id) AS total_visitas
+            FROM painel_medicos p LEFT JOIN usuarios u ON u.id = p.usuario_id
+            ORDER BY u.nome, p.nome
+        """)
+        return [dict(l) for l in cursor.fetchall()]
+
+
 def apagar_medicos_paineis_admin(ids: list) -> int:
     """Admin apaga médicos de qualquer painel (revisão de duplicados). As
     visitas já feitas continuam no histórico. Devolve quantos apagou."""
@@ -1318,7 +1336,7 @@ def mover_no_painel(usuario_id: int, entrada_id: int, novo_status: str, resultad
     with _conexao() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            _q("SELECT status FROM painel_medicos WHERE id = ? AND usuario_id = ?"),
+            _q("SELECT status, visitado_em FROM painel_medicos WHERE id = ? AND usuario_id = ?"),
             (entrada_id, usuario_id),
         )
         linha = cursor.fetchone()
@@ -1328,7 +1346,12 @@ def mover_no_painel(usuario_id: int, entrada_id: int, novo_status: str, resultad
 
         if novo_status == "visitado":
             if status_atual == "visitado":
-                return True  # já estava visitado: não conta duas vezes
+                # Já estava visitado: não conta duas vezes — a não ser que já
+                # esteja na coluna "Revisitar" (visita antiga), quando marcar
+                # de novo é uma visita nova de verdade.
+                limite = (datetime.utcnow() - timedelta(days=DIAS_PARA_REVISITAR)).isoformat()
+                if not (linha["visitado_em"] and linha["visitado_em"] < limite):
+                    return True
             agora = datetime.utcnow().isoformat()
             cursor.execute(
                 _q("UPDATE painel_medicos SET status = ?, visitado_em = ?, resultado_visita = ? WHERE id = ? AND usuario_id = ?"),

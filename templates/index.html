@@ -1918,6 +1918,14 @@
       btnAgendar.textContent = 'Agendar';
       btnAgendar.addEventListener('click', () => abrirModalAgendar(item.id, item.nome));
       acoes.appendChild(btnAgendar);
+
+      // Visitou sem ter agendado: marca direto (pergunta o resultado e a nota).
+      const btnDireto = document.createElement('button');
+      btnDireto.type = 'button';
+      btnDireto.className = 'painel-btn-mover painel-btn-visitado-direto';
+      btnDireto.textContent = coluna === 'revisitar' ? 'Marcar revisitado' : 'Marcar visitado';
+      btnDireto.addEventListener('click', () => abrirModalResultado(item.id, item.nome));
+      acoes.appendChild(btnDireto);
     }
 
     if(coluna === 'agendados'){

@@ -90,6 +90,13 @@
           Exportar para Excel
         </a>
       </div>
+      <div class="admin-acoes">
+        <p class="admin-acoes-texto">Relatório com <strong>todos os médicos</strong> do i.cannal: promotor, situação, cliente, telefones, endereço, última visita, agendamento e observações.</p>
+        <a href="{{ url_for('admin_exportar_medicos') }}" class="btn-exportar-excel" download>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4.5-4.5M12 15l4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          Baixar relatório de médicos
+        </a>
+      </div>
 
       <div class="us-filtros" id="us-filtros" role="search">
         <div class="campo us-campo-busca">
