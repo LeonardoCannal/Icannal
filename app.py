@@ -2031,7 +2031,7 @@ def api_painel_cancelar_agendamento(entrada_id):
 @app.route("/agenda")
 @login_required
 def agenda():
-    return render_template("agenda.html")
+    return render_template("agenda.html", resultados_visita=RESULTADOS_VISITA)
 
 
 # ---------------------------------------------------------------------------

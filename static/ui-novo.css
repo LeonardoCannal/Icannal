@@ -1220,3 +1220,62 @@ body.ui-novo .rg-acao-desativar_usuario, body.ui-novo .rg-acao-transferir_painel
 body.ui-novo .btn-transferir-painel, body.ui-novo .btn-desativar-usuario{ background: none; border: none; padding: 0; font: inherit; font-weight: 600; cursor: pointer; margin-left: 10px; }
 body.ui-novo .btn-transferir-painel:hover, body.ui-novo .btn-desativar-usuario:hover{ text-decoration: underline; }
 body.ui-novo .btn-transferir-painel:focus-visible, body.ui-novo .btn-desativar-usuario:focus-visible{ outline: 2px solid var(--verde); outline-offset: 2px; border-radius: 4px; }
+
+/* Agenda: agendar tocando no horário livre e marcar visitado */
+body.ui-novo button.horario-linha-livre{ width: 100%; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color .15s ease, background-color .15s ease; touch-action: manipulation; }
+body.ui-novo button.horario-linha-livre:hover{ border-color: var(--verde); background: var(--tela); }
+body.ui-novo button.horario-linha-livre:focus-visible{ outline: 2px solid var(--verde); outline-offset: 2px; }
+body.ui-novo .ag-mais{ font-size: 12.5px; font-weight: 700; color: var(--verde-texto); white-space: nowrap; opacity: 0; transition: opacity .15s ease; }
+body.ui-novo button.horario-linha-livre:hover .ag-mais, body.ui-novo button.horario-linha-livre:focus-visible .ag-mais{ opacity: 1; }
+@media (hover: none){ body.ui-novo .ag-mais{ opacity: 1; } }
+body.ui-novo .horario-linha-passado{ opacity: .55; }
+body.ui-novo .horario-acoes{ flex: none; display: flex; align-items: center; }
+body.ui-novo .ag-btn-visitado{ min-height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--verde); background: var(--tela); color: var(--verde-texto); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap; touch-action: manipulation; }
+body.ui-novo .ag-btn-visitado:hover{ background: var(--verde-acao); border-color: var(--verde-acao); color: #fff; }
+body.ui-novo.escuro .ag-btn-visitado:hover{ color: #0E1405; }
+body.ui-novo .ag-btn-visitado:focus-visible{ outline: 2px solid var(--verde); outline-offset: 2px; }
+body.ui-novo .horario-linha-visitado{ background: var(--tela); }
+body.ui-novo .horario-linha-visitado .horario-conteudo strong{ color: var(--ardosia); }
+body.ui-novo .ag-selo-visitado{ font-size: 12px; font-weight: 700; color: var(--verde-texto); background: var(--verde-suave); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+body.ui-novo .horario-linha-cliente{ box-shadow: inset 3px 0 0 var(--cliente); }
+body.ui-novo .ag-ponto-cliente{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--cliente); margin-right: 6px; vertical-align: 1px; }
+
+body.ui-novo .ag-dialogo{ border: 1px solid var(--linha); border-radius: 18px; padding: 0; width: min(480px, calc(100vw - 24px)); max-height: min(640px, calc(100dvh - 32px)); background: var(--tela); color: var(--tinta); box-shadow: 0 24px 60px -12px rgba(0,0,0,.35); overscroll-behavior: contain; }
+body.ui-novo .ag-dialogo[open]{ display: flex; flex-direction: column; }
+body.ui-novo .ag-dialogo::backdrop{ background: rgba(10,14,20,.45); }
+body.ui-novo .ag-dialogo-topo{ display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 16px 18px 10px; border-bottom: 1px solid var(--linha); }
+body.ui-novo .ag-dialogo-topo h2{ font-size: 16px; margin: 0; color: var(--tinta); text-wrap: balance; }
+body.ui-novo .ag-subtitulo{ font-size: 13px; color: var(--ardosia); }
+body.ui-novo .ag-fechar{ background: none; border: 0; font-size: 26px; line-height: 1; color: var(--pedra); cursor: pointer; padding: 0 4px; border-radius: 6px; }
+body.ui-novo .ag-fechar:hover{ color: var(--tinta); }
+body.ui-novo .ag-fechar:focus-visible{ outline: 2px solid var(--verde); }
+body.ui-novo .ag-dialogo-corpo{ padding: 14px 18px 18px; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; }
+body.ui-novo .ag-rotulo{ display: block; font-size: 13px; font-weight: 600; color: var(--tinta); margin-bottom: 8px; }
+body.ui-novo .ag-rotulo span{ font-weight: 400; color: var(--pedra); }
+body.ui-novo .ag-busca{ width: 100%; box-sizing: border-box; min-height: 42px; border: 1px solid var(--linha-forte); border-radius: 10px; padding: 0 12px; font: inherit; font-size: 14px; background: var(--tela); color: var(--tinta); margin-bottom: 10px; }
+body.ui-novo .ag-busca:focus-visible{ outline: 2px solid var(--verde); outline-offset: 1px; }
+body.ui-novo .ag-lista{ display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 120px; max-height: 50dvh; }
+body.ui-novo .ag-grupo{ font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--pedra); margin: 8px 0 2px; }
+body.ui-novo .ag-medico{ text-align: left; border: 1px solid var(--linha); background: var(--superficie); border-radius: 10px; padding: 9px 12px; font: inherit; cursor: pointer; color: var(--tinta); transition: border-color .15s ease, background-color .15s ease; touch-action: manipulation; }
+body.ui-novo .ag-medico:hover{ border-color: var(--verde); background: var(--verde-suave); }
+body.ui-novo .ag-medico:focus-visible{ outline: 2px solid var(--verde); outline-offset: 1px; }
+body.ui-novo .ag-medico:disabled{ opacity: .6; cursor: progress; }
+body.ui-novo .ag-medico strong{ display: block; font-size: 13.5px; }
+body.ui-novo .ag-medico span{ display: block; font-size: 12px; color: var(--ardosia); margin-top: 1px; }
+body.ui-novo .ag-medico .ag-medico-extra{ color: var(--alerta-texto); }
+body.ui-novo .ag-medico strong .ag-ponto-cliente{ display: inline-block; margin-top: 0; }
+body.ui-novo .ag-nota{ width: 100%; box-sizing: border-box; min-height: 0; }
+body.ui-novo .vs-opcoes{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 10px; }
+body.ui-novo .vs-opcao{ min-height: 44px; border-radius: 12px; border: 1px solid var(--linha-forte); background: var(--superficie); color: var(--tinta); font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; touch-action: manipulation; }
+body.ui-novo .vs-opcao:hover{ border-color: var(--verde); background: var(--verde-suave); }
+body.ui-novo .vs-opcao:focus-visible, body.ui-novo .vs-pular:focus-visible{ outline: 2px solid var(--verde); outline-offset: 2px; }
+body.ui-novo .vs-opcao:disabled, body.ui-novo .vs-pular:disabled{ opacity: .6; cursor: progress; }
+body.ui-novo .vs-pular{ background: none; border: 0; color: var(--ardosia); font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; padding: 6px; align-self: center; }
+body.ui-novo .ag-aviso{ position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 60; background: var(--tinta); color: var(--tela); padding: 10px 16px; border-radius: 999px; font-size: 13.5px; font-weight: 600; box-shadow: 0 10px 30px -8px rgba(0,0,0,.4); max-width: calc(100vw - 32px); text-align: center; }
+body.ui-novo .ag-aviso.erro{ background: #B42318; color: #fff; }
+body.ui-novo .ag-aviso[hidden]{ display: none; }
+@media (max-width: 520px){
+  body.ui-novo .ag-dialogo{ width: 100vw; max-width: 100vw; max-height: 88dvh; margin: auto 0 0; border-radius: 18px 18px 0 0; }
+  body.ui-novo .horario-linha{ gap: 10px; }
+  body.ui-novo .ag-btn-visitado{ padding: 0 10px; }
+}
