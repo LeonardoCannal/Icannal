@@ -88,7 +88,7 @@ def montar_mensagem(nome, painel, hoje=None):
         linhas.append(f"_e mais {len(proximas) - MAX_VISITAS_NA_MENSAGEM} visita(s) agendada(s)_")
     if not proximas:
         linhas.append("• Nenhuma visita agendada.")
-    linhas += ["", "Boas visitas! — _i.cannal_"]
+    linhas += ["", "👉 Acesse seu painel: https://icannal.com.br", "", "Boas visitas! — _i.cannal_"]
     return "\n".join(linhas)
 
 
