@@ -15,6 +15,8 @@ Cada texto é traduzido UMA vez: o resultado fica guardado no banco (tabela
 import hashlib
 import html
 import os
+import threading
+import time
 
 import requests
 
@@ -27,6 +29,28 @@ MAX_CARACTERES_POR_PEDIDO = 12000
 
 class ErroTraducao(Exception):
     pass
+
+
+_ULTIMO_ACORDAR = {"quando": 0.0}
+
+
+def acordar():
+    """O tradutor só fica ligado enquanto é usado (tradutor/sob_demanda.sh).
+    Quando alguém abre a página de Artigos, damos um "toque" nele em segundo
+    plano, para que já esteja pronto quando a busca pedir a tradução."""
+    url = _url_libre()
+    agora = time.monotonic()
+    if not url or agora - _ULTIMO_ACORDAR["quando"] < 120:
+        return
+    _ULTIMO_ACORDAR["quando"] = agora
+
+    def tocar():
+        try:
+            requests.get(f"{url}/languages", timeout=3)
+        except requests.RequestException:
+            pass  # está ligando: o próximo pedido espera ele ficar pronto
+
+    threading.Thread(target=tocar, daemon=True).start()
 
 
 def _url_libre() -> str:

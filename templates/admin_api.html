@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i.cannal · API</title>
+<link rel="preload" href="/static/fontes/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fontes/montserrat.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="i.cannal">
+<link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
+</head>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
+  <div class="admin-header">
+    <svg class="logo-admin" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">
+      <polygon points="2,0 16,0 32,44 18,44" fill="#88AD36"/>
+      <polygon points="25,0 39,0 55,44 41,44" fill="#88AD36"/>
+      <text x="72" y="34" font-family="Montserrat, sans-serif" font-weight="900" font-size="34" textLength="204" lengthAdjust="spacing">
+        <tspan fill="#A8CC5A">I.</tspan><tspan fill="#FFFFFF">CANNAL</tspan>
+      </text>
+    </svg>
+    <div class="admin-header-direita">
+      {% include '_botao_tema.html' %}
+      {% include '_sino_clientes.html' %}
+      <a href="{{ url_for('index') }}">Voltar ao i.cannal</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('perfil') }}">Meu Perfil</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('logout') }}">Sair</a>
+    </div>
+  </div>
+
+  <div class="hero-secao">
+    <div class="hero-secao-conteudo">
+      <h1>API para outros sistemas</h1>
+      <p>Gere uma chave para outro sistema ler todas as informações e estatísticas do i.cannal. Só leitura: a chave não altera nada.</p>
+    </div>
+  </div>
+
+  <main class="admin-main">
+  <div class="card-flutuante">
+    {% with aba='api' %}{% include '_admin_nav.html' %}{% endwith %}
+
+    <section class="api-bloco" aria-labelledby="api-nova-titulo">
+      <h2 id="api-nova-titulo">Gerar nova chave</h2>
+      <form class="api-form" id="api-form">
+        <label for="api-nome">Nome (para saber quem usa)</label>
+        <div class="api-linha">
+          <input type="text" id="api-nome" maxlength="80" autocomplete="off" placeholder="Ex.: MICHAEL 2.0, Power BI…" required>
+          <button type="submit" class="btn-primario">Gerar chave</button>
+        </div>
+      </form>
+      <div class="api-nova" id="api-nova" hidden>
+        <p class="api-alerta"><strong>Copie agora:</strong> por segurança, esta chave aparece só esta vez. Se perder, revogue e gere outra.</p>
+        <div class="api-linha">
+          <code class="api-chave" id="api-chave" translate="no"></code>
+          <button type="button" class="rd-btn-sec" id="api-copiar">Copiar</button>
+        </div>
+        <p class="api-nota">Guarde num lugar seguro (o arquivo de configuração do outro sistema). Não mande por WhatsApp nem e-mail.</p>
+      </div>
+    </section>
+
+    <h3 class="modal-secao-titulo">Chaves</h3>
+    {% if chaves %}
+    <div class="tabela-scroll">
+    <table class="tabela-admin api-tabela">
+      <thead><tr><th>Nome</th><th>Começa com</th><th>Criada</th><th>Último uso</th><th class="num">Pedidos</th><th>Situação</th></tr></thead>
+      <tbody>
+        {% for c in chaves %}
+        <tr class="{{ 'api-revogada' if c.revogada_em }}">
+          <td data-rotulo="Nome"><strong>{{ c.nome }}</strong></td>
+          <td data-rotulo="Começa com"><code translate="no">{{ c.prefixo }}…</code></td>
+          <td data-rotulo="Criada">{{ c.criado_em_br }}{% if c.criado_por_nome %}<span class="api-sub">por {{ c.criado_por_nome }}</span>{% endif %}</td>
+          <td data-rotulo="Último uso">{{ c.ultimo_uso_em_br or 'Nunca usada' }}</td>
+          <td data-rotulo="Pedidos" class="num">{{ c.usos }}</td>
+          <td data-rotulo="Situação">
+            {% if c.revogada_em %}
+              <span class="rd-st rd-st-erro">Revogada</span><span class="api-sub">{{ c.revogada_em_br }}</span>
+            {% else %}
+              <span class="rd-st rd-st-enviado">Ativa</span>
+              <button type="button" class="api-revogar" data-id="{{ c.id }}" data-nome="{{ c.nome }}">Revogar</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="rs-vazio">Nenhuma chave ainda.</p>
+    {% endif %}
+
+    <h3 class="modal-secao-titulo">Como o outro sistema usa</h3>
+    <div class="api-doc">
+      <p>Endereço base: <code translate="no">{{ base_url }}/api/v1</code>. Mande a chave no cabeçalho de cada pedido:</p>
+      <pre translate="no">Authorization: Bearer icn_SUA_CHAVE</pre>
+      <p>Todas as respostas são JSON. Datas e horas vêm em UTC (terminam em <code>Z</code>); filtros de dia (<code>de</code>, <code>ate</code>, <code>alterado_desde</code>) são dias no horário de Brasília, no formato <code>AAAA-MM-DD</code>. Listas grandes vêm em páginas: use <code>pagina</code> e <code>por_pagina</code> (até 1000) e siga <code>proxima_pagina</code> até vir <code>null</code>. Limite: 120 pedidos por minuto por chave.</p>
+
+      <p>A chave dá acesso, só para leitura, a todas as informações e estatísticas do i.cannal:</p>
+      <div class="tabela-scroll">
+      <table class="tabela-admin api-endpoints">
+        <thead><tr><th>Endereço</th><th>O que traz</th><th>Filtros</th></tr></thead>
+        <tbody>
+          <tr><td><code translate="no">/api/v1</code></td><td>A lista de todos os endereços abaixo</td><td>—</td></tr>
+          <tr><td><code translate="no">/api/v1/estatisticas</code></td><td>Os números gerais do Dashboard: prospectados, agendados, visitados, visitas do mês e comparação, buscas, usuários ativos, gráficos dos últimos meses, especialidades, estados, cidades, ranking</td><td>—</td></tr>
+          <tr><td><code translate="no">/api/v1/promotores</code></td><td>Todos os usuários, com CPF, situação da conta e os números do painel</td><td>—</td></tr>
+          <tr><td><code translate="no">/api/v1/promotores/ID/estatisticas</code></td><td>O dashboard individual de um promotor</td><td>—</td></tr>
+          <tr><td><code translate="no">/api/v1/medicos</code></td><td>Médicos de todos os painéis: promotor, contato, situação, cliente, última e próxima visita, observações</td><td><code>promotor_id</code>, <code>situacao</code> (prospectado, agendado, visitado, revisitar, cliente), <code>alterado_desde</code></td></tr>
+          <tr><td><code translate="no">/api/v1/visitas</code></td><td>Histórico de visitas com resultado</td><td><code>de</code>, <code>ate</code>, <code>promotor_id</code></td></tr>
+          <tr><td><code translate="no">/api/v1/agenda</code></td><td>Visitas agendadas, com médico e endereço</td><td><code>de</code>, <code>ate</code>, <code>promotor_id</code></td></tr>
+          <tr><td><code translate="no">/api/v1/resumos-semanais</code></td><td>As semanas que já têm resumo fechado</td><td>—</td></tr>
+          <tr><td><code translate="no">/api/v1/resumos-semanais/AAAA-MM-DD</code></td><td>O resumo de uma semana (ou <code>atual</code> para a semana em andamento)</td><td>—</td></tr>
+          <tr><td><code translate="no">/api/v1/alertas-clientes</code></td><td>Médicos clientes agendados ou visitados</td><td><code>de</code>, <code>ate</code></td></tr>
+          <tr><td><code translate="no">/api/v1/relatorio-diario/envios</code></td><td>Relatórios diários enviados pelo WhatsApp, com a mensagem</td><td><code>de</code>, <code>ate</code></td></tr>
+          <tr><td><code translate="no">/api/v1/registro-admin</code></td><td>O que os admins fizeram</td><td><code>de</code>, <code>ate</code></td></tr>
+          <tr><td><code translate="no">/api/v1/base-medicos</code></td><td>A base de médicos importada</td><td><code>especialidade</code>, <code>uf</code></td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>Nunca saem pela API: senhas, chaves de API, sessões, pedidos de troca de senha e as configurações do servidor.</p>
+      <p>Resultados de visita: {% for chave, rotulo in resultados_visita.items() %}<code>{{ chave }}</code> ({{ rotulo }}){{ ', ' if not loop.last else '.' }}{% endfor %}</p>
+
+      <h4>Exemplo</h4>
+      <pre translate="no">curl -H "Authorization: Bearer icn_SUA_CHAVE" "{{ base_url }}/api/v1/visitas?de=2026-11-01&ate=2026-11-30"</pre>
+      <p>Respostas de erro: <code>401</code> chave ausente, inválida ou revogada · <code>400</code> filtro inválido · <code>429</code> pedidos demais (aguarde um minuto).</p>
+    </div>
+  </div>
+  </main>
+
+  <div class="rd-aviso" id="rd-aviso" role="status" aria-live="polite" hidden></div>
+<script>
+(function () {
+  const aviso = document.getElementById('rd-aviso');
+  function avisar(msg, erro) {
+    aviso.textContent = msg; aviso.classList.toggle('erro', !!erro); aviso.hidden = false;
+    clearTimeout(avisar._t); avisar._t = setTimeout(() => { aviso.hidden = true; }, 4000);
+  }
+  async function postar(url, corpo) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo || {}) });
+    try { return await r.json(); } catch (_) { return { ok: false, mensagem: 'Resposta inesperada do servidor.' }; }
+  }
+  const form = document.getElementById('api-form');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const botao = form.querySelector('button');
+    botao.disabled = true; botao.textContent = 'Gerando…';
+    const r = await postar('/admin/api/chaves', { nome: document.getElementById('api-nome').value });
+    botao.disabled = false; botao.textContent = 'Gerar chave';
+    if (!r.ok) { avisar(r.mensagem || 'Não foi possível gerar.', true); return; }
+    document.getElementById('api-chave').textContent = r.chave;
+    document.getElementById('api-nova').hidden = false;
+    document.getElementById('api-nome').value = '';
+    form.hidden = true;
+  });
+  document.getElementById('api-copiar').addEventListener('click', async () => {
+    const texto = document.getElementById('api-chave').textContent;
+    try { await navigator.clipboard.writeText(texto); avisar('Chave copiada.'); }
+    catch (_) {
+      const sel = window.getSelection(); const faixa = document.createRange();
+      faixa.selectNodeContents(document.getElementById('api-chave')); sel.removeAllRanges(); sel.addRange(faixa);
+      avisar('Selecionei a chave: copie com Ctrl+C.');
+    }
+  });
+  document.querySelectorAll('.api-revogar').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm(`Revogar a chave "${b.dataset.nome}"? O sistema que usa essa chave perde o acesso na hora. Isso não pode ser desfeito.`)) return;
+    b.disabled = true;
+    const r = await postar(`/admin/api/chaves/${b.dataset.id}/revogar`);
+    if (r.ok) location.reload(); else { b.disabled = false; avisar(r.mensagem || 'Não foi possível revogar.', true); }
+  }));
+})();
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+  }
+</script>
+{% include '_sino_clientes_js.html' %}
+</body>
+</html>

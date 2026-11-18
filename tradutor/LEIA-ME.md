@@ -97,11 +97,35 @@ e o botão **"Ler resumo em português"** traduz o resumo.
 
 ---
 
+## Ligar só quando alguém usa os Artigos (recomendado)
+
+O tradutor ocupa memória e processador mesmo parado. Com este modo ele fica
+**desligado** e liga sozinho quando alguém abre a página **Artigos**. Depois
+de **15 minutos sem uso**, desliga de novo.
+
+Depois de instalar (passos 1 a 5 acima), rode **uma vez**:
+```
+sudo bash /home/cannal/cannal/tradutor/sob_demanda.sh
+```
+O script troca o modo, testa uma tradução e mostra o resultado.
+
+- A primeira tradução depois que ele estava desligado demora um pouco mais
+  (uns 20 a 60 segundos), porque o tradutor está ligando. Como o i.cannal já
+  liga o tradutor quando a página Artigos abre, normalmente ele está pronto
+  quando a pessoa busca.
+- Os textos já traduzidos ficam guardados e aparecem na hora, mesmo com o
+  tradutor desligado.
+- Ver se está ligado agora: `systemctl is-active libretranslate`
+- Voltar ao modo antigo (sempre ligado):
+  `sudo bash /home/cannal/cannal/tradutor/sob_demanda.sh --desfazer`
+
+---
+
 ## Se algo der errado
 
 - O i.cannal continua funcionando normalmente. Os artigos só aparecem em
   inglês até o tradutor voltar, e você recebe um aviso no Telegram.
-- Ver o estado: `systemctl status libretranslate`
+- Ver o estado: `systemctl status libretranslate` (no modo sob demanda, também `systemctl status icannal-tradutor.socket`)
 - Reiniciar: `sudo systemctl restart libretranslate`
 - Desligar de vez: `sudo systemctl disable --now libretranslate` e apagar
   a linha `TRADUTOR_URL` do `/etc/cannal.env` (depois `sudo systemctl restart cannal`).

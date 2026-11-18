@@ -128,6 +128,41 @@ def robo_desconectar():
     return _robo("POST", "/desconectar", timeout=30)
 
 
+def robo_dormir():
+    """Fecha o navegador do robô (fica em espera, sem perder a conexão)."""
+    return _robo("POST", "/dormir", timeout=30)
+
+
+def acordar_robo(espera_max=150):
+    """Garante o WhatsApp pronto para enviar: se está em espera, abre o
+    navegador e espera conectar. Devolve (ok, motivo)."""
+    st = robo_status()
+    if st.get("estado") == "conectado":
+        return True, ""
+    if st.get("estado") == "indisponivel":
+        return False, st.get("erro") or "O robô do WhatsApp não está rodando."
+    if st.get("estado") == "desligado" or st.get("estado") == "qr":
+        return False, "Nenhum WhatsApp conectado. Entre em Admin → Relatório diário e leia o QR code."
+    if st.get("estado") == "dormindo":
+        _, erro = robo_conectar()
+        if erro:
+            return False, erro
+    limite = time.monotonic() + espera_max
+    while time.monotonic() < limite:
+        time.sleep(1.5)
+        st = robo_status()
+        estado = st.get("estado")
+        if estado == "conectado":
+            return True, ""
+        if estado == "qr":
+            robo_dormir()
+            return False, ("O WhatsApp pediu para ler o QR code de novo (a conexão expirou). "
+                           "Entre em Admin → Relatório diário e conecte outra vez.")
+        if estado in ("erro", "desligado", "indisponivel"):
+            return False, st.get("erro") or "O WhatsApp não conseguiu abrir."
+    return False, "O WhatsApp demorou demais para abrir. Tente de novo em alguns minutos."
+
+
 def robo_enviar(numero, texto):
     dados, erro = _robo("POST", "/enviar", {"numero": numero, "texto": texto}, timeout=90)
     if erro:
@@ -211,14 +246,13 @@ def rodar_envio_automatico(auth, avisar_admin=None, agora_utc=None, dormir=time.
     if not pendentes:
         return {"rodou": False, "motivo": "nada pendente"}
 
-    st = robo_status()
-    if st.get("estado") != "conectado":
+    pronto, motivo = acordar_robo()  # tira o robô da espera (abre o navegador)
+    if not pronto:
         # avisa o admin 1 vez por dia e tenta de novo na próxima volta
         if avisar_admin and config.get("relatorio_aviso_robo_dia") != dia:
             auth.salvar_config({"relatorio_aviso_robo_dia": dia})
-            avisar_admin("⚠️ i.cannal — o relatório diário não saiu: o WhatsApp que envia está desconectado. "
-                         "Entre em Admin → Relatório diário e leia o QR code de novo.")
-        return {"rodou": False, "motivo": "WhatsApp desconectado"}
+            avisar_admin(f"⚠️ i.cannal — o relatório diário ainda não saiu: {motivo}")
+        return {"rodou": False, "motivo": "WhatsApp desconectado", "detalhe": motivo}
 
     resultado = {"rodou": True, "enviados": 0, "erros": 0, "repetidos": 0}
     for i, promotor in enumerate(pendentes):
@@ -230,4 +264,6 @@ def rodar_envio_automatico(auth, avisar_admin=None, agora_utc=None, dormir=time.
             break  # o WhatsApp caiu: o resto fica pra próxima volta
         chave = {"enviado": "enviados", "erro": "erros"}.get(status, "repetidos")
         resultado[chave] += 1
+    # O robô volta sozinho para a espera alguns minutos depois do último envio
+    # (não fechamos aqui: o outro processo do servidor pode estar enviando).
     return resultado
