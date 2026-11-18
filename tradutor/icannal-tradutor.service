@@ -1,0 +1,9 @@
+[Unit]
+Description=Ponte do tradutor do i.cannal (desliga o tradutor depois de 15 min parado)
+Requires=icannal-tradutor.socket libretranslate.service
+After=icannal-tradutor.socket libretranslate.service
+
+[Service]
+# Repassa os pedidos da porta 5000 para o tradutor (5001). Depois de 15
+# minutos sem nenhum pedido, sai, e o tradutor desliga junto.
+ExecStart=PROXYD --exit-idle-time=15min 127.0.0.1:5001

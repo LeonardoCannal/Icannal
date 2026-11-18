@@ -45,6 +45,7 @@
 
   const ROTULOS = {
     conectado: ['Conectado', 'ok'],
+    dormindo: ['Conectado · em espera', 'ok'],
     qr: ['Esperando o QR code', 'aguardando'],
     iniciando: ['Abrindo o WhatsApp…', 'aguardando'],
     autenticando: ['Entrando…', 'aguardando'],
@@ -60,14 +61,17 @@
     blocoQr.hidden = !(st.estado === 'qr' && st.qr);
     if (st.estado === 'qr' && st.qr && imgQr.src !== st.qr) imgQr.src = st.qr;
     btnCon.hidden = !instalado || !['desligado', 'erro'].includes(st.estado);
-    btnDes.hidden = !instalado || !['conectado', 'qr', 'iniciando', 'autenticando'].includes(st.estado);
-    btnDes.textContent = st.estado === 'conectado' ? 'Desconectar' : 'Cancelar';
-    formTeste.hidden = st.estado !== 'conectado';
+    btnDes.hidden = !instalado || !['conectado', 'dormindo', 'qr', 'iniciando', 'autenticando'].includes(st.estado);
+    btnDes.textContent = ['conectado', 'dormindo'].includes(st.estado) ? 'Desconectar' : 'Cancelar';
+    formTeste.hidden = !['conectado', 'dormindo'].includes(st.estado);
 
     if (!instalado) return;
     let html = '';
     if (st.estado === 'conectado') {
       html = `<p class="rd-texto">Enviando pelo número <strong>${formatarNumero(st.numero)}</strong>${st.nome ? ' (' + esc(st.nome) + ')' : ''}.</p>`;
+    } else if (st.estado === 'dormindo') {
+      html = `<p class="rd-texto">Conectado ao número <strong>${formatarNumero(st.numero)}</strong>${st.nome ? ' (' + esc(st.nome) + ')' : ''}. ` +
+        'Para poupar o servidor, o robô fica em espera e liga sozinho na hora de enviar (leva uns segundos).</p>';
     } else if (st.estado === 'desligado') {
       html = '<p class="rd-texto">Nenhum WhatsApp conectado. Clique em <strong>Conectar WhatsApp</strong> e leia o QR code com o celular.</p>';
     } else if (st.estado === 'iniciando' || st.estado === 'autenticando') {
@@ -117,7 +121,7 @@
   formTeste.addEventListener('submit', async (e) => {
     e.preventDefault();
     const botao = formTeste.querySelector('button');
-    ocupado(botao, true, 'Enviando…');
+    ocupado(botao, true, 'Ligando e enviando…');
     const r = await chamar('/admin/relatorio-diario/whatsapp/teste', 'POST', { numero: $('#rd-teste-num').value });
     ocupado(botao, false);
     avisar(r.ok ? 'Mensagem de teste enviada. Confira o WhatsApp.' : (r.erro || 'Não foi possível enviar.'), !r.ok);

@@ -18,6 +18,18 @@ O script:
 Depois: **i.cannal → Admin → Relatório diário → Conectar WhatsApp** e leia o
 QR code pelo celular (WhatsApp → Aparelhos conectados → Conectar aparelho).
 
+## Em espera (para poupar o servidor)
+
+O navegador do robô só fica aberto quando precisa. Uns 10 minutos depois do
+último envio ele fecha sozinho e o robô fica **em espera**, ainda conectado.
+Na hora do relatório (ou num "Enviar agora" / teste), o i.cannal abre o
+navegador de novo, o que leva alguns segundos. Não precisa ler o QR code de novo.
+
+Para mudar o tempo, coloque em `/etc/cannal.env` (em minutos) e reinicie o robô:
+```
+WHATSAPP_ROBO_DORMIR_MIN=10
+```
+
 ## Comandos úteis
 
 | O quê | Comando |

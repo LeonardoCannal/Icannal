@@ -29,8 +29,10 @@ PAINEL MÉDICO:
   aparece de novo numa busca já está no painel de alguém.
 """
 
+import hashlib
 import os
 import re
+import secrets
 import sqlite3
 import threading
 import time
@@ -325,6 +327,22 @@ def inicializar_auth(app, sqlite_path):
                 semana_inicio TEXT PRIMARY KEY,
                 criado_em TEXT NOT NULL,
                 dados TEXT NOT NULL
+            )
+        """)
+        # Chaves de API para outros sistemas lerem dados do i.cannal. Só o
+        # hash da chave fica no banco: a chave em si aparece uma vez, ao criar.
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS api_chaves (
+                id {"SERIAL PRIMARY KEY" if USANDO_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
+                nome TEXT NOT NULL,
+                prefixo TEXT NOT NULL,
+                hash TEXT NOT NULL UNIQUE,
+                criado_por INTEGER,
+                criado_por_nome TEXT,
+                criado_em TEXT NOT NULL,
+                ultimo_uso_em TEXT,
+                usos INTEGER NOT NULL DEFAULT 0,
+                revogada_em TEXT
             )
         """)
         # Ajustes gerais do sistema (chave → valor), ex.: horário do relatório diário.
@@ -2465,6 +2483,8 @@ ACOES_ADMIN = {
     "desativar_usuario": "Desativou conta",
     "reativar_usuario": "Reativou conta",
     "transferir_painel": "Transferiu painel médico",
+    "criar_chave_api": "Criou chave de API",
+    "revogar_chave_api": "Revogou chave de API",
 }
 
 
@@ -2907,4 +2927,213 @@ def transferir_painel(origem_id: int, destino_id: int, nome_origem: str = "") ->
                              AND painel_medico_id NOT IN (SELECT id FROM painel_medicos WHERE usuario_id = ?)"""),
                        (origem_id, origem_id))
     return r
+
+
+# ---------------------------------------------------------------------------
+# Chaves de API (outros sistemas lendo médicos, promotores e visitas)
+# ---------------------------------------------------------------------------
+PREFIXO_CHAVE_API = "icn_"
+
+
+def _hash_chave_api(chave: str) -> str:
+    return hashlib.sha256((chave or "").strip().encode("utf-8")).hexdigest()
+
+
+def criar_chave_api(nome: str, admin) -> str:
+    """Cria a chave e devolve o texto dela — a ÚNICA vez que ele existe:
+    no banco fica só o hash."""
+    chave = PREFIXO_CHAVE_API + secrets.token_urlsafe(32)
+    with _conexao() as conn:
+        conn.cursor().execute(_q("""
+            INSERT INTO api_chaves (nome, prefixo, hash, criado_por, criado_por_nome, criado_em)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """), ((nome or "").strip()[:80] or "Sem nome", chave[:12], _hash_chave_api(chave),
+               admin["id"] if admin else None, admin["nome"] if admin else None, datetime.utcnow().isoformat()))
+    return chave
+
+
+def validar_chave_api(chave: str):
+    """Devolve a chave (dict) se existe e não foi revogada; senão None."""
+    if not chave or not chave.startswith(PREFIXO_CHAVE_API) or len(chave) > 200:
+        return None
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("SELECT id, nome, revogada_em, ultimo_uso_em FROM api_chaves WHERE hash = ?"),
+                       (_hash_chave_api(chave),))
+        linha = cursor.fetchone()
+        if not linha or linha["revogada_em"]:
+            return None
+        agora = datetime.utcnow().isoformat()
+        cursor.execute(_q("UPDATE api_chaves SET ultimo_uso_em = ?, usos = usos + 1 WHERE id = ?"), (agora, linha["id"]))
+        return dict(linha)
+
+
+def listar_chaves_api():
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""SELECT id, nome, prefixo, criado_por_nome, criado_em, ultimo_uso_em, usos, revogada_em
+                          FROM api_chaves ORDER BY revogada_em IS NOT NULL, criado_em DESC""")
+        return [dict(l) for l in cursor.fetchall()]
+
+
+def revogar_chave_api(chave_id: int):
+    """Devolve o nome da chave revogada (ou None se não existia/já revogada)."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("SELECT nome FROM api_chaves WHERE id = ? AND revogada_em IS NULL"), (chave_id,))
+        linha = cursor.fetchone()
+        if not linha:
+            return None
+        cursor.execute(_q("UPDATE api_chaves SET revogada_em = ? WHERE id = ?"), (datetime.utcnow().isoformat(), chave_id))
+        return linha["nome"]
+
+
+def _situacao_medico(status, visitado_em, limite_revisitar):
+    if status == "visitado" and visitado_em and visitado_em < limite_revisitar:
+        return "revisitar"
+    return status
+
+
+def api_listar_medicos(promotor_id=None, situacao=None, alterado_desde=None, limite=500, offset=0):
+    """Médicos de todos os painéis (ou de um promotor), paginados por id."""
+    limite_revisitar = (datetime.utcnow() - timedelta(days=DIAS_PARA_REVISITAR)).isoformat()
+    filtros, params = [], []
+    if promotor_id:
+        filtros.append("p.usuario_id = ?"); params.append(promotor_id)
+    if situacao == "revisitar":
+        filtros.append("p.status = 'visitado' AND p.visitado_em <> '' AND p.visitado_em < ?"); params.append(limite_revisitar)
+    elif situacao == "visitado":
+        filtros.append("p.status = 'visitado' AND (p.visitado_em IS NULL OR p.visitado_em = '' OR p.visitado_em >= ?)")
+        params.append(limite_revisitar)
+    elif situacao in ("prospectado", "agendado"):
+        filtros.append("p.status = ?"); params.append(situacao)
+    elif situacao == "cliente":
+        filtros.append("p.ja_comprou = 1")
+    if alterado_desde:
+        filtros.append("(p.adicionado_em >= ? OR p.visitado_em >= ? OR p.marcado_cliente_em >= ?)")
+        params += [alterado_desde] * 3
+    where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q(f"SELECT COUNT(*) AS total FROM painel_medicos p {where}"), tuple(params))
+        total = int(cursor.fetchone()["total"] or 0)
+        cursor.execute(_q(f"""
+            SELECT p.id, p.usuario_id, u.nome AS promotor_nome, u.cpf AS promotor_cpf,
+                   p.nome, p.crm, p.especialidade, p.cidade, p.uf, p.endereco, p.telefone, p.telefone_pessoal,
+                   p.status, p.ja_comprou, p.marcado_cliente_em, p.ultimo_pedido_em, p.adicionado_em,
+                   p.visitado_em, p.resultado_visita, p.observacoes,
+                   (SELECT MIN(a.data || ' ' || a.horario) FROM agenda_compromissos a
+                     WHERE a.painel_medico_id = p.id) AS agendado_para,
+                   (SELECT COUNT(*) FROM historico_visitas h WHERE h.painel_medico_id = p.id) AS total_visitas
+            FROM painel_medicos p LEFT JOIN usuarios u ON u.id = p.usuario_id
+            {where}
+            ORDER BY p.id
+            LIMIT {int(limite)} OFFSET {int(offset)}
+        """), tuple(params))
+        linhas = [dict(l) for l in cursor.fetchall()]
+    for l in linhas:
+        l["situacao"] = _situacao_medico(l["status"], l["visitado_em"], limite_revisitar)
+    return total, linhas
+
+
+def api_listar_visitas(de_utc=None, ate_utc=None, promotor_id=None, limite=500, offset=0):
+    """Histórico permanente de visitas (fica mesmo se o médico sair do painel)."""
+    filtros, params = [], []
+    if de_utc:
+        filtros.append("h.visitado_em >= ?"); params.append(de_utc)
+    if ate_utc:
+        filtros.append("h.visitado_em < ?"); params.append(ate_utc)
+    if promotor_id:
+        filtros.append("h.usuario_id = ?"); params.append(promotor_id)
+    where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q(f"SELECT COUNT(*) AS total FROM historico_visitas h {where}"), tuple(params))
+        total = int(cursor.fetchone()["total"] or 0)
+        cursor.execute(_q(f"""
+            SELECT h.id, h.usuario_id, u.nome AS promotor_nome, u.cpf AS promotor_cpf,
+                   h.painel_medico_id, h.visitado_em, h.resultado,
+                   h.medico_nome, h.medico_crm, h.medico_especialidade, h.medico_cidade, h.medico_uf
+            FROM historico_visitas h LEFT JOIN usuarios u ON u.id = h.usuario_id
+            {where}
+            ORDER BY h.visitado_em DESC, h.id DESC
+            LIMIT {int(limite)} OFFSET {int(offset)}
+        """), tuple(params))
+        return total, [dict(l) for l in cursor.fetchall()]
+
+
+def _api_paginado(colunas: str, origem: str, filtros: list, params: list, ordem: str, limite: int, offset: int):
+    """Conta e busca uma página (total, linhas) — base das listas da API."""
+    where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q(f"SELECT COUNT(*) AS total FROM {origem} {where}"), tuple(params))
+        total = int(cursor.fetchone()["total"] or 0)
+        cursor.execute(_q(f"SELECT {colunas} FROM {origem} {where} ORDER BY {ordem} "
+                          f"LIMIT {int(limite)} OFFSET {int(offset)}"), tuple(params))
+        return total, [dict(l) for l in cursor.fetchall()]
+
+
+def api_listar_agenda(de_dia=None, ate_dia=None, promotor_id=None, limite=500, offset=0):
+    filtros, params = [], []
+    if de_dia:
+        filtros.append("a.data >= ?"); params.append(de_dia)
+    if ate_dia:
+        filtros.append("a.data <= ?"); params.append(ate_dia)
+    if promotor_id:
+        filtros.append("a.usuario_id = ?"); params.append(promotor_id)
+    return _api_paginado(
+        "a.id, a.usuario_id, u.nome AS promotor_nome, u.cpf AS promotor_cpf, a.painel_medico_id, a.data, a.horario, "
+        "a.criado_em, p.nome AS medico_nome, p.crm AS medico_crm, p.especialidade AS medico_especialidade, "
+        "p.cidade AS medico_cidade, p.uf AS medico_uf, p.endereco AS medico_endereco, p.status AS medico_status, "
+        "p.ja_comprou AS medico_cliente",
+        "agenda_compromissos a LEFT JOIN usuarios u ON u.id = a.usuario_id "
+        "LEFT JOIN painel_medicos p ON p.id = a.painel_medico_id",
+        filtros, params, "a.data, a.horario, a.id", limite, offset)
+
+
+def api_listar_alertas_clientes(de_utc=None, ate_utc=None, limite=500, offset=0):
+    filtros, params = [], []
+    if de_utc:
+        filtros.append("a.criado_em >= ?"); params.append(de_utc)
+    if ate_utc:
+        filtros.append("a.criado_em < ?"); params.append(ate_utc)
+    return _api_paginado(
+        "a.id, a.usuario_id, u.nome AS promotor_nome, a.painel_medico_id, a.tipo, a.detalhe, "
+        "a.medico_nome, a.medico_crm, a.criado_em",
+        "alertas_clientes a LEFT JOIN usuarios u ON u.id = a.usuario_id",
+        filtros, params, "a.criado_em DESC, a.id DESC", limite, offset)
+
+
+def api_listar_envios_relatorio(de_dia=None, ate_dia=None, limite=500, offset=0):
+    filtros, params = [], []
+    if de_dia:
+        filtros.append("dia >= ?"); params.append(de_dia)
+    if ate_dia:
+        filtros.append("dia <= ?"); params.append(ate_dia)
+    return _api_paginado(
+        "id, usuario_id, usuario_nome, telefone, dia, tipo, status, detalhe, mensagem, criado_em",
+        "relatorio_envios", filtros, params, "criado_em DESC, id DESC", limite, offset)
+
+
+def api_listar_registro(de_utc=None, ate_utc=None, limite=500, offset=0):
+    filtros, params = [], []
+    if de_utc:
+        filtros.append("criado_em >= ?"); params.append(de_utc)
+    if ate_utc:
+        filtros.append("criado_em < ?"); params.append(ate_utc)
+    return _api_paginado(
+        "id, admin_id, admin_nome, acao, alvo_usuario_id, alvo_nome, detalhe, criado_em",
+        "acoes_admin", filtros, params, "criado_em DESC, id DESC", limite, offset)
+
+
+def api_listar_base_medicos(especialidade=None, uf=None, limite=500, offset=0):
+    filtros, params = [], []
+    if especialidade:
+        filtros.append("especialidade = ?"); params.append(especialidade)
+    if uf:
+        filtros.append("uf = ?"); params.append(uf.upper())
+    return _api_paginado(
+        "id, nome, crm, especialidade, cidade, uf, endereco, telefone, importado_em",
+        "medicos_base_propria", filtros, params, "id", limite, offset)
 

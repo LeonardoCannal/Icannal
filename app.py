@@ -3,7 +3,7 @@ import revisao_paineis
 import json
 import auth as auth_mod
 import relatorio_diario
-from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, redirect, url_for, has_request_context, got_request_exception
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, redirect, url_for, has_request_context, got_request_exception, g
 from flask.sessions import SecureCookieSessionInterface
 from werkzeug.middleware.proxy_fix import ProxyFix
 from urllib.parse import urlparse
@@ -106,6 +106,7 @@ from auth import (
     data_valida,
 )
 import re
+from functools import wraps
 import artigos as artigos_mod
 import traducao
 import requests
@@ -1606,6 +1607,9 @@ def admin_relatorio_whatsapp_teste():
     numero = (_corpo_json().get("numero") or "").strip()
     if not relatorio_diario.numero_valido(numero):
         return jsonify({"ok": False, "erro": "Digite um WhatsApp com DDD, ex.: (15) 99999-0000."}), 400
+    pronto, erro = relatorio_diario.acordar_robo()
+    if not pronto:
+        return jsonify({"ok": False, "erro": erro}), 400
     ok, erro = relatorio_diario.robo_enviar(
         numero, "✅ Teste do i.cannal: o WhatsApp do relatório diário está funcionando.")
     return jsonify({"ok": ok, "erro": erro}), (200 if ok else 400)
@@ -1663,10 +1667,312 @@ def admin_relatorio_enviar(user_id):
     p = _promotor_do_relatorio(user_id)
     if not p:
         return jsonify({"ok": False, "erro": "Usuário não encontrado."}), 404
+    pronto, erro = relatorio_diario.acordar_robo()
+    if not pronto:
+        return jsonify({"ok": False, "erro": erro}), 400
     status, detalhe = relatorio_diario.enviar_para_promotor(auth_mod, p, tipo="manual")
     if status == "enviado":
         _registrar("relatorio_enviar", buscar_usuario_por_id(user_id), f"Enviado agora para {p['whatsapp']}")
     return jsonify({"ok": status == "enviado", "erro": detalhe}), (200 if status == "enviado" else 400)
+
+
+# ---------------------------------------------------------------------------
+# API para outros sistemas (somente leitura, com chave gerada no admin)
+# ---------------------------------------------------------------------------
+API_MAX_POR_PAGINA = 1000
+
+
+def _iso_utc(valor):
+    """Data do banco (UTC, sem fuso) → ISO 8601 com 'Z', pra quem lê saber que é UTC."""
+    if not valor:
+        return None
+    texto = str(valor)
+    return texto if texto.endswith("Z") or "+" in texto[10:] else texto + "Z"
+
+
+def _api_erro(mensagem, codigo):
+    return jsonify({"erro": mensagem}), codigo
+
+
+def api_chave_required(f):
+    """Aceita a chave em 'Authorization: Bearer <chave>' ou 'X-API-Key: <chave>'
+    (nunca na URL, pra não ficar gravada em logs)."""
+    @wraps(f)
+    def decorador(*args, **kwargs):
+        cabecalho = request.headers.get("Authorization", "")
+        chave = cabecalho[7:].strip() if cabecalho.lower().startswith("bearer ") else request.headers.get("X-API-Key", "").strip()
+        ip = request.headers.get("X-Real-IP") or request.remote_addr or "?"
+        if _passou_do_limite("api_falha", ip, 30, 300, registrar=False):
+            return _api_erro("Muitas tentativas com chave inválida. Aguarde alguns minutos.", 429)
+        dono = auth_mod.validar_chave_api(chave)
+        if not dono:
+            _passou_do_limite("api_falha", ip, 30, 300)
+            return _api_erro("Chave de API ausente, inválida ou revogada.", 401)
+        if _passou_do_limite("api", str(dono["id"]), 120, 60):
+            return _api_erro("Limite de 120 pedidos por minuto atingido. Aguarde um pouco.", 429)
+        g.api_chave = dono
+        return f(*args, **kwargs)
+    return decorador
+
+
+def _paginacao():
+    pagina = max(1, request.args.get("pagina", 1, type=int) or 1)
+    por_pagina = min(API_MAX_POR_PAGINA, max(1, request.args.get("por_pagina", 500, type=int) or 500))
+    return pagina, por_pagina
+
+
+def _resposta_paginada(dados, total, pagina, por_pagina):
+    return jsonify({
+        "dados": dados, "total": total, "pagina": pagina, "por_pagina": por_pagina,
+        "proxima_pagina": pagina + 1 if pagina * por_pagina < total else None,
+    })
+
+
+def _cpf_digitos(cpf):
+    return re.sub(r"\D", "", cpf or "") or None
+
+
+@app.route("/api/v1/promotores")
+@api_chave_required
+def api_v1_promotores():
+    dados = []
+    for u in listar_usuarios_com_contagem_painel():
+        dados.append({
+            "id": u["id"], "nome": u["nome"], "email": u["email"], "cpf": _cpf_digitos(u["cpf"]),
+            "admin": bool(u["is_admin"]), "aprovado": bool(u["aprovado"]), "desativado": bool(u["desativado"]),
+            "cadastrado_em": _iso_utc(u["criado_em"]), "ultimo_login_em": _iso_utc(u["ultimo_login"]),
+            "painel": {
+                "total": int(u["total_painel"] or 0), "prospectados": int(u["prospectados"] or 0),
+                "agendados": int(u["agendados"] or 0), "visitados": int(u["visitados"] or 0),
+                "revisitar": int(u["revisitar"] or 0), "clientes": int(u["clientes"] or 0),
+            },
+        })
+    dados.sort(key=lambda d: d["id"])
+    return jsonify({"dados": dados, "total": len(dados)})
+
+
+@app.route("/api/v1/medicos")
+@api_chave_required
+def api_v1_medicos():
+    pagina, por_pagina = _paginacao()
+    situacao = request.args.get("situacao") or None
+    if situacao and situacao not in ("prospectado", "agendado", "visitado", "revisitar", "cliente"):
+        return _api_erro("situacao deve ser prospectado, agendado, visitado, revisitar ou cliente.", 400)
+    desde = request.args.get("alterado_desde")
+    desde_utc = _dia_br_para_utc(desde) if desde else None
+    if desde and not desde_utc:
+        return _api_erro("alterado_desde deve ser uma data AAAA-MM-DD.", 400)
+    total, linhas = auth_mod.api_listar_medicos(
+        promotor_id=request.args.get("promotor_id", type=int), situacao=situacao, alterado_desde=desde_utc,
+        limite=por_pagina, offset=(pagina - 1) * por_pagina)
+    dados = []
+    for m in linhas:
+        agendado = None
+        if m["status"] == "agendado" and m["agendado_para"]:
+            dia, _, hora = str(m["agendado_para"]).partition(" ")
+            agendado = {"data": dia, "horario": hora or None}
+        dados.append({
+            "id": m["id"], "promotor_id": m["usuario_id"], "promotor_nome": m["promotor_nome"],
+            "promotor_cpf": _cpf_digitos(m["promotor_cpf"]),
+            "nome": m["nome"], "crm": None if m["crm"] in (None, "", "Não encontrado") else m["crm"],
+            "especialidade": m["especialidade"] or None, "cidade": m["cidade"] or None, "uf": m["uf"] or None,
+            "endereco": m["endereco"] or None,
+            "telefone_clinica": None if m["telefone"] in (None, "", "Não disponível") else m["telefone"],
+            "telefone_pessoal": m["telefone_pessoal"] or None,
+            "situacao": m["situacao"], "cliente": bool(m["ja_comprou"]),
+            "marcado_cliente_em": _iso_utc(m["marcado_cliente_em"]),
+            "ultimo_pedido_em": (str(m["ultimo_pedido_em"])[:10] if m["ultimo_pedido_em"] else None),
+            "adicionado_em": _iso_utc(m["adicionado_em"]),
+            "ultima_visita_em": _iso_utc(m["visitado_em"]) if m["status"] == "visitado" else None,
+            "resultado_ultima_visita": (m["resultado_visita"] or None) if m["status"] == "visitado" else None,
+            "visitas_feitas": int(m["total_visitas"] or 0),
+            "proxima_visita": agendado,
+            "observacoes": m["observacoes"] or None,
+        })
+    return _resposta_paginada(dados, total, pagina, por_pagina)
+
+
+@app.route("/api/v1/visitas")
+@api_chave_required
+def api_v1_visitas():
+    pagina, por_pagina = _paginacao()
+    de, ate = request.args.get("de"), request.args.get("ate")
+    de_utc = _dia_br_para_utc(de) if de else None
+    ate_utc = _dia_br_para_utc(ate, fim=True) if ate else None
+    if (de and not de_utc) or (ate and not ate_utc):
+        return _api_erro("de e ate devem ser datas AAAA-MM-DD (dias no horário de Brasília).", 400)
+    total, linhas = auth_mod.api_listar_visitas(
+        de_utc=de_utc, ate_utc=ate_utc, promotor_id=request.args.get("promotor_id", type=int),
+        limite=por_pagina, offset=(pagina - 1) * por_pagina)
+    dados = [{
+        "id": v["id"], "promotor_id": v["usuario_id"], "promotor_nome": v["promotor_nome"],
+        "promotor_cpf": _cpf_digitos(v["promotor_cpf"]),
+        "medico_id": v["painel_medico_id"], "medico_nome": v["medico_nome"],
+        "medico_crm": None if v["medico_crm"] in (None, "", "Não encontrado") else v["medico_crm"],
+        "medico_especialidade": v["medico_especialidade"] or None,
+        "medico_cidade": v["medico_cidade"] or None, "medico_uf": v["medico_uf"] or None,
+        "visitado_em": _iso_utc(v["visitado_em"]), "resultado": v["resultado"] or None,
+    } for v in linhas]
+    return _resposta_paginada(dados, total, pagina, por_pagina)
+
+
+def _periodo_dias():
+    """de/ate (dias no Brasil) → (de, ate, de_utc, ate_utc) ou levanta ValueError."""
+    de, ate = request.args.get("de"), request.args.get("ate")
+    de_utc = _dia_br_para_utc(de) if de else None
+    ate_utc = _dia_br_para_utc(ate, fim=True) if ate else None
+    if (de and not de_utc) or (ate and not ate_utc):
+        raise ValueError
+    return de, ate, de_utc, ate_utc
+
+
+def _lista_api(buscar, montar=lambda l: l, usa_dia_utc=True):
+    pagina, por_pagina = _paginacao()
+    try:
+        de, ate, de_utc, ate_utc = _periodo_dias()
+    except ValueError:
+        return _api_erro("de e ate devem ser datas AAAA-MM-DD (dias no horário de Brasília).", 400)
+    total, linhas = buscar((de_utc, ate_utc) if usa_dia_utc else (de, ate), por_pagina, (pagina - 1) * por_pagina)
+    return _resposta_paginada([montar(l) for l in linhas], total, pagina, por_pagina)
+
+
+@app.route("/api/v1")
+@api_chave_required
+def api_v1_indice():
+    """Lista do que a API oferece (para quem está integrando)."""
+    return jsonify({"versao": 1, "enderecos": {
+        "/api/v1/estatisticas": "Números gerais (os mesmos do Dashboard do admin)",
+        "/api/v1/promotores": "Usuários, situação da conta e números do painel de cada um",
+        "/api/v1/promotores/<id>/estatisticas": "Números de um promotor (os mesmos do dashboard individual)",
+        "/api/v1/medicos": "Médicos de todos os painéis (filtros: promotor_id, situacao, alterado_desde)",
+        "/api/v1/visitas": "Histórico de visitas (filtros: de, ate, promotor_id)",
+        "/api/v1/agenda": "Visitas agendadas (filtros: de, ate, promotor_id)",
+        "/api/v1/resumos-semanais": "Semanas com resumo fechado",
+        "/api/v1/resumos-semanais/<AAAA-MM-DD|atual>": "Resumo de uma semana (segunda-feira) ou da semana atual",
+        "/api/v1/alertas-clientes": "Médicos clientes agendados ou visitados (filtros: de, ate)",
+        "/api/v1/relatorio-diario/envios": "Relatórios diários enviados pelo WhatsApp (filtros: de, ate)",
+        "/api/v1/registro-admin": "O que os admins fizeram (filtros: de, ate)",
+        "/api/v1/base-medicos": "Base de médicos importada (filtros: especialidade, uf)",
+    }})
+
+
+@app.route("/api/v1/estatisticas")
+@api_chave_required
+def api_v1_estatisticas():
+    return jsonify(estatisticas_dashboard())
+
+
+@app.route("/api/v1/promotores/<int:user_id>/estatisticas")
+@api_chave_required
+def api_v1_estatisticas_promotor(user_id):
+    usuario = buscar_usuario_por_id(user_id)
+    if not usuario:
+        return _api_erro("Promotor não encontrado.", 404)
+    dados = estatisticas_usuario(user_id)
+    dados["promotor"] = {"id": usuario["id"], "nome": usuario["nome"], "cpf": _cpf_digitos(usuario["cpf"])}
+    return jsonify(dados)
+
+
+@app.route("/api/v1/agenda")
+@api_chave_required
+def api_v1_agenda():
+    promotor_id = request.args.get("promotor_id", type=int)
+    def montar(a):
+        return {
+            "id": a["id"], "promotor_id": a["usuario_id"], "promotor_nome": a["promotor_nome"],
+            "promotor_cpf": _cpf_digitos(a["promotor_cpf"]), "data": a["data"], "horario": a["horario"],
+            "agendado_em": _iso_utc(a["criado_em"]), "medico_id": a["painel_medico_id"],
+            "medico_nome": a["medico_nome"], "medico_crm": a["medico_crm"] if a["medico_crm"] not in ("", "Não encontrado") else None,
+            "medico_especialidade": a["medico_especialidade"] or None, "medico_cidade": a["medico_cidade"] or None,
+            "medico_uf": a["medico_uf"] or None, "medico_endereco": a["medico_endereco"] or None,
+            "medico_situacao": a["medico_status"], "medico_cliente": bool(a["medico_cliente"]),
+        }
+    return _lista_api(lambda per, lim, off: auth_mod.api_listar_agenda(per[0], per[1], promotor_id, lim, off),
+                      montar, usa_dia_utc=False)
+
+
+@app.route("/api/v1/resumos-semanais")
+@api_chave_required
+def api_v1_resumos_semanais():
+    return jsonify({"semanas": listar_semanas_com_resumo(limite=520)})
+
+
+@app.route("/api/v1/resumos-semanais/<semana>")
+@api_chave_required
+def api_v1_resumo_semanal(semana):
+    if semana == "atual":
+        return jsonify(calcular_resumo_semana(inicio_da_semana_br((datetime.utcnow() - timedelta(hours=3)).date())))
+    try:
+        segunda = inicio_da_semana_br(date.fromisoformat(semana))
+    except ValueError:
+        return _api_erro("Use AAAA-MM-DD (qualquer dia da semana) ou 'atual'.", 400)
+    dados = buscar_resumo_semana(segunda) or calcular_resumo_semana(segunda)
+    return jsonify(dados)
+
+
+@app.route("/api/v1/alertas-clientes")
+@api_chave_required
+def api_v1_alertas_clientes():
+    return _lista_api(lambda per, lim, off: auth_mod.api_listar_alertas_clientes(per[0], per[1], lim, off),
+                      lambda a: {**a, "criado_em": _iso_utc(a["criado_em"])})
+
+
+@app.route("/api/v1/relatorio-diario/envios")
+@api_chave_required
+def api_v1_relatorio_envios():
+    return _lista_api(lambda per, lim, off: auth_mod.api_listar_envios_relatorio(per[0], per[1], lim, off),
+                      lambda e: {**e, "criado_em": _iso_utc(e["criado_em"])}, usa_dia_utc=False)
+
+
+@app.route("/api/v1/registro-admin")
+@api_chave_required
+def api_v1_registro_admin():
+    return _lista_api(lambda per, lim, off: auth_mod.api_listar_registro(per[0], per[1], lim, off),
+                      lambda a: {**a, "acao_nome": ACOES_ADMIN.get(a["acao"], a["acao"]), "criado_em": _iso_utc(a["criado_em"])})
+
+
+@app.route("/api/v1/base-medicos")
+@api_chave_required
+def api_v1_base_medicos():
+    pagina, por_pagina = _paginacao()
+    total, linhas = auth_mod.api_listar_base_medicos(
+        request.args.get("especialidade") or None, request.args.get("uf") or None, por_pagina, (pagina - 1) * por_pagina)
+    return _resposta_paginada([{**l, "importado_em": _iso_utc(l["importado_em"])} for l in linhas], total, pagina, por_pagina)
+
+
+# Admin: gerar e revogar chaves
+@app.route("/admin/api")
+@admin_required
+def admin_api():
+    chaves = auth_mod.listar_chaves_api()
+    for c in chaves:
+        for campo in ("criado_em", "ultimo_uso_em", "revogada_em"):
+            quando = _utc_para_br(c[campo]) if c[campo] else None
+            c[campo + "_br"] = quando.strftime("%d/%m/%Y %H:%M") if quando else ""
+    return render_template("admin_api.html", chaves=chaves, resultados_visita=RESULTADOS_VISITA,
+                           base_url=request.url_root.rstrip("/").replace("http://", "https://")
+                           if not request.host.startswith(("127.", "localhost")) else request.url_root.rstrip("/"))
+
+
+@app.route("/admin/api/chaves", methods=["POST"])
+@admin_required
+def admin_api_criar_chave():
+    nome = (_corpo_json().get("nome") or "").strip()
+    if not nome:
+        return jsonify({"ok": False, "mensagem": "Dê um nome para a chave (ex.: o sistema que vai usar)."}), 400
+    chave = auth_mod.criar_chave_api(nome, usuario_logado())
+    _registrar("criar_chave_api", None, f"{nome} ({chave[:12]}…)")
+    return jsonify({"ok": True, "chave": chave})
+
+
+@app.route("/admin/api/chaves/<int:chave_id>/revogar", methods=["POST"])
+@admin_required
+def admin_api_revogar_chave(chave_id):
+    nome = auth_mod.revogar_chave_api(chave_id)
+    if not nome:
+        return jsonify({"ok": False, "mensagem": "Chave não encontrada ou já revogada."}), 404
+    _registrar("revogar_chave_api", None, nome)
+    return jsonify({"ok": True})
 
 
 @app.route("/admin/dashboard")
@@ -2041,6 +2347,7 @@ def agenda():
 @app.route("/artigos")
 @login_required
 def artigos():
+    traducao.acordar()  # liga o tradutor em segundo plano (ele dorme quando ninguém usa)
     return render_template("artigos.html", especialidades=NOMES_ESPECIALIDADES)
 
 
