@@ -3481,3 +3481,14 @@ def integ_cpfs_ativos():
         cursor = conn.cursor()
         cursor.execute("SELECT cpf, aprovado, desativado FROM usuarios")
         return {limpar_cpf(l["cpf"]) for l in cursor.fetchall() if l["aprovado"] and not l["desativado"]}
+
+
+def visitas_do_periodo(usuario_id, de_utc, ate_utc):
+    """Médicos que o usuário visitou no período (a visita mais recente de cada um)."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""SELECT medico_nome, medico_crm, medico_uf, medico_cidade, visitado_em
+                             FROM historico_visitas
+                             WHERE usuario_id = ? AND visitado_em >= ? AND visitado_em < ?
+                             ORDER BY visitado_em DESC"""), (usuario_id, de_utc, ate_utc))
+        return [dict(l) for l in cursor.fetchall()]
