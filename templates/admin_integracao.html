@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i.cannal · Integração</title>
+<link rel="preload" href="/static/fontes/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fontes/montserrat.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="i.cannal">
+<link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
+</head>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
+  <div class="admin-header">
+    <svg class="logo-admin" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">
+      <polygon points="2,0 16,0 32,44 18,44" fill="#88AD36"/>
+      <polygon points="25,0 39,0 55,44 41,44" fill="#88AD36"/>
+      <text x="72" y="34" font-family="Montserrat, sans-serif" font-weight="900" font-size="34" textLength="204" lengthAdjust="spacing">
+        <tspan fill="#A8CC5A">I.</tspan><tspan fill="#FFFFFF">CANNAL</tspan>
+      </text>
+    </svg>
+    <div class="admin-header-direita">
+      {% include '_botao_tema.html' %}
+      {% include '_sino_clientes.html' %}
+      <a href="{{ url_for('index') }}">Voltar ao i.cannal</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('perfil') }}">Meu Perfil</a>
+      &nbsp;&nbsp;·&nbsp;&nbsp;
+      <a href="{{ url_for('logout') }}">Sair</a>
+    </div>
+  </div>
+
+  <div class="hero-secao">
+
+  <div class="hero-secao">
+    <div class="hero-secao-conteudo">
+      <h1>Integração com o sistema interno</h1>
+      <p>Os médicos dos painéis vão para o sistema interno, e os de lá entram no painel do promotor certo aqui, sempre pelo CPF do promotor.</p>
+    </div>
+  </div>
+
+  <main class="admin-main">
+  <div class="card-flutuante">
+    {% with aba='integracao' %}{% include '_admin_nav.html' %}{% endwith %}
+
+    <div class="rd-grade">
+      <section class="rd-bloco" aria-labelledby="in-con-titulo">
+        <div class="rd-bloco-topo">
+          <h2 id="in-con-titulo"><span class="rd-passo">1</span> Conexão</h2>
+          {% if situacao.configurada %}<span class="rd-pill ok">Configurada</span>{% else %}<span class="rd-pill">Não configurada</span>{% endif %}
+        </div>
+        {% if situacao.configurada %}
+        <p class="rd-texto">Ligado a <strong translate="no">{{ situacao.host }}</strong>. A chave fica só no servidor e não aparece aqui.</p>
+        <div class="rd-acoes">
+          <button type="button" class="rd-btn-sec" id="in-testar">Testar conexão</button>
+        </div>
+        <p class="rd-texto" id="in-teste-res" aria-live="polite"></p>
+        {% else %}
+        {% if situacao.problema %}<p class="rd-texto rd-erro-txt">{{ situacao.problema }}</p>{% endif %}
+        <p class="rd-texto">No terminal do servidor, abra o arquivo de configuração:</p>
+        <pre class="rd-cmd">sudo nano /etc/cannal.env</pre>
+        <p class="rd-texto">Coloque estas duas linhas no final, com o endereço e a chave do sistema interno:</p>
+        <pre class="rd-cmd" translate="no">INTEGRACAO_API_URL=https://endereco-do-sistema
+INTEGRACAO_API_CHAVE=a_chave_gerada_la</pre>
+        <p class="rd-texto">Salve (Ctrl+O, Enter, Ctrl+X) e reinicie:</p>
+        <pre class="rd-cmd">sudo systemctl restart cannal</pre>
+        {% endif %}
+      </section>
+
+      <section class="rd-bloco" aria-labelledby="in-cfg-titulo">
+        <div class="rd-bloco-topo">
+          <h2 id="in-cfg-titulo"><span class="rd-passo">2</span> Sincronização</h2>
+          {% if cfg.integracao_ligado == '1' %}<span class="rd-pill ok">Automática</span>{% else %}<span class="rd-pill">Desligada</span>{% endif %}
+        </div>
+        <form id="in-cfg" class="rd-cfg">
+          <label class="rd-chave">
+            <input type="checkbox" id="in-ligado" {{ 'checked' if cfg.integracao_ligado == '1' }} {{ 'disabled' if not situacao.configurada }}>
+            <span>Sincronizar automaticamente</span>
+          </label>
+          <div class="campo">
+            <label for="in-intervalo">A cada</label>
+            <select id="in-intervalo">
+              {% for m in intervalos %}
+              <option value="{{ m }}" {{ 'selected' if cfg.integracao_intervalo_min == m|string }}>{% if m < 60 %}{{ m }} minutos{% elif m == 60 %}1 hora{% else %}{{ m // 60 }} horas{% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="rd-acoes">
+            <button type="submit" class="btn-primario">Salvar</button>
+            <button type="button" class="rd-btn-sec" id="in-agora" {{ 'disabled' if not situacao.configurada }}>Sincronizar agora</button>
+          </div>
+        </form>
+        <div id="in-ultima" aria-live="polite">
+          {% include '_integracao_ultima.html' %}
+        </div>
+      </section>
+
+      <section class="rd-bloco" aria-labelledby="in-num-titulo">
+        <div class="rd-bloco-topo">
+          <h2 id="in-num-titulo"><span class="rd-passo">3</span> Médicos</h2>
+        </div>
+        <ul class="rd-lista in-numeros">
+          <li><span>Enviados ao sistema interno</span><strong>{{ contagens.get('enviado', 0) }}</strong></li>
+          <li><span>Já existiam lá</span><strong>{{ contagens.get('ja_existia', 0) }}</strong></li>
+          <li><span>Vieram de lá para os painéis</span><strong>{{ contagens.get('importado', 0) }}</strong></li>
+          <li><span>Já estavam nos dois</span><strong>{{ contagens.get('vinculado', 0) }}</strong></li>
+          <li><span>Ainda não enviados</span><strong>{{ contagens.get('nao_enviados', 0) }}</strong></li>
+          <li><span>Com problema</span><strong>{{ contagens.get('erro', 0) + contagens.get('sem_promotor', 0) }}</strong></li>
+          <li><span>Conflitos para decidir</span><strong>{{ contagens.get('conflitos', 0) }}</strong></li>
+        </ul>
+        <p class="rd-nota">O mesmo médico é reconhecido pelo CRM + UF (sem CRM, pelo nome + cidade), então ninguém é cadastrado duas vezes. Médicos que chegam do sistema interno entram como <strong>Prospectados</strong>.</p>
+      </section>
+    </div>
+
+    <h3 class="modal-secao-titulo">Conflitos para decidir <span class="rd-sub">({{ conflitos|length }})</span></h3>
+    <p class="rd-texto">Nada aqui foi mexido. Resolva no i.cannal ou no sistema interno (ex.: transferindo o médico ou criando o promotor) e marque como resolvido. Quando o problema some, o conflito sai sozinho na próxima sincronização.</p>
+    {% if conflitos %}
+    <div class="tabela-scroll">
+    <table class="tabela-admin rd-tabela in-tabela">
+      <thead><tr><th>Médico</th><th>CRM</th><th>Promotor no sistema interno</th><th>O que houve</th><th>Quando</th><th></th></tr></thead>
+      <tbody>
+        {% for c in conflitos %}
+        <tr>
+          <td data-rotulo="Médico">{{ c.d.nome or '—' }}{% if c.d.cidade %}<span class="api-sub">{{ c.d.cidade }}{% if c.d.uf %}/{{ c.d.uf }}{% endif %}</span>{% endif %}</td>
+          <td data-rotulo="CRM">{% if c.d.crm %}{{ c.d.crm }}{% if c.d.uf %} {{ c.d.uf }}{% endif %}{% else %}—{% endif %}</td>
+          <td data-rotulo="Promotor">{{ c.d.promotor_nome or '—' }}</td>
+          <td data-rotulo="O que houve"><span class="rd-st rd-st-enviando">{{ c.tipo_nome }}</span><span class="api-sub">{{ c.motivo }}</span></td>
+          <td data-rotulo="Quando">{{ c.quando }}</td>
+          <td><button type="button" class="rd-btn-sec in-resolver" data-id="{{ c.id }}">Resolvido</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="rd-nota">Nenhum conflito.</p>
+    {% endif %}
+
+    {% if problemas %}
+    <h3 class="modal-secao-titulo">Não foram para o sistema interno <span class="rd-sub">({{ problemas|length }})</span></h3>
+    <p class="rd-texto">O i.cannal tenta de novo sozinho a cada 6 horas.</p>
+    <div class="tabela-scroll">
+    <table class="tabela-admin rd-tabela in-tabela">
+      <thead><tr><th>Médico</th><th>Promotor</th><th>Motivo</th><th>Última tentativa</th></tr></thead>
+      <tbody>
+        {% for e in problemas %}
+        <tr>
+          <td data-rotulo="Médico">{{ e.nome }}{% if e.crm %}<span class="api-sub">{{ e.crm }}</span>{% endif %}</td>
+          <td data-rotulo="Promotor">{{ e.promotor_nome or '—' }}</td>
+          <td data-rotulo="Motivo"><span class="rd-st rd-st-erro">{{ e.status_nome }}</span>{% if e.detalhe %}<span class="api-sub">{{ e.detalhe }}</span>{% endif %}</td>
+          <td data-rotulo="Última tentativa">{{ e.quando }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </div>
+  </main>
+
+  <div class="rd-aviso" id="rd-aviso" role="status" aria-live="polite" hidden></div>
+<script src="{{ url_for('static', filename='admin_integracao.js') }}" data-sincronizando="{{ '1' if sincronizando else '0' }}" id="in-script"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+  }
+</script>
+{% include '_sino_clientes_js.html' %}
+</body>
+</html>

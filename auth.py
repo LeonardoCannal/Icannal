@@ -345,6 +345,38 @@ def inicializar_auth(app, sqlite_path):
                 revogada_em TEXT
             )
         """)
+        # Integração com o sistema interno: qual médico do painel já foi
+        # ligado a qual cadastro de lá (para não duplicar em nenhum dos lados).
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS integracao_medicos (
+                id {"SERIAL PRIMARY KEY" if USANDO_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
+                painel_medico_id INTEGER NOT NULL UNIQUE,
+                externo_id TEXT,
+                origem TEXT NOT NULL,
+                status TEXT NOT NULL,
+                detalhe TEXT,
+                tentativas INTEGER NOT NULL DEFAULT 0,
+                criado_em TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL
+            )
+        """)
+        # Médicos do sistema interno que não puderam entrar no i.cannal
+        # sozinhos (promotor não existe aqui, médico no painel de outro
+        # promotor...). Ficam para o admin decidir; nada é mexido.
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS integracao_conflitos (
+                id {"SERIAL PRIMARY KEY" if USANDO_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
+                externo_id TEXT NOT NULL UNIQUE,
+                tipo TEXT NOT NULL,
+                motivo TEXT NOT NULL,
+                dados TEXT,
+                painel_medico_id INTEGER,
+                criado_em TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL,
+                resolvido_em TEXT,
+                resolvido_por_nome TEXT
+            )
+        """)
         # Ajustes gerais do sistema (chave → valor), ex.: horário do relatório diário.
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS config_sistema (
@@ -412,6 +444,8 @@ def inicializar_auth(app, sqlite_path):
         ("idx_base_propria_busca", "medicos_base_propria", "especialidade, cidade_norm"),
         ("idx_removidos_usuario", "medicos_removidos_inatividade", "usuario_id, removido_em"),
         ("idx_senha_atendido", "solicitacoes_senha", "atendido"),
+        ("idx_integracao_externo", "integracao_medicos", "externo_id"),
+        ("idx_integracao_conflitos_aberto", "integracao_conflitos", "resolvido_em, atualizado_em"),
     ]:
         _criar_indice_se_faltar(nome, tabela, colunas)
 
@@ -2485,6 +2519,9 @@ ACOES_ADMIN = {
     "transferir_painel": "Transferiu painel médico",
     "criar_chave_api": "Criou chave de API",
     "revogar_chave_api": "Revogou chave de API",
+    "integracao_config": "Mudou a integração com o sistema interno",
+    "integracao_sincronizar": "Sincronizou com o sistema interno",
+    "integracao_conflito": "Resolveu conflito da integração",
 }
 
 
@@ -3137,3 +3174,180 @@ def api_listar_base_medicos(especialidade=None, uf=None, limite=500, offset=0):
         "id, nome, crm, especialidade, cidade, uf, endereco, telefone, importado_em",
         "medicos_base_propria", filtros, params, "id", limite, offset)
 
+
+# ---------------------------------------------------------------------------
+# Integração com o sistema interno (a lógica fica em integracao.py)
+# ---------------------------------------------------------------------------
+def integ_mapa_painel():
+    """Todos os médicos dos painéis (para achar duplicados por CRM+UF)."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT p.id, p.usuario_id, p.nome, p.crm, p.uf, p.cidade, u.nome AS promotor_nome
+            FROM painel_medicos p LEFT JOIN usuarios u ON u.id = p.usuario_id
+        """)
+        return [dict(l) for l in cursor.fetchall()]
+
+
+def integ_links_por_externo():
+    """{externo_id: painel_medico_id} dos médicos já ligados ao sistema interno."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""SELECT i.externo_id, i.painel_medico_id FROM integracao_medicos i
+                          JOIN painel_medicos p ON p.id = i.painel_medico_id
+                          WHERE i.externo_id IS NOT NULL AND i.externo_id <> ''""")
+        return {l["externo_id"]: l["painel_medico_id"] for l in cursor.fetchall()}
+
+
+def integ_pendentes_envio(limite=2000, tentar_de_novo_antes=None):
+    """Médicos dos painéis que ainda não foram para o sistema interno (ou que
+    deram erro há algum tempo e merecem nova tentativa)."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q(f"""
+            SELECT p.id, p.nome, p.crm, p.uf, p.especialidade, p.cidade, p.endereco, p.telefone,
+                   p.telefone_pessoal, p.status, p.ja_comprou, u.cpf AS promotor_cpf, u.nome AS promotor_nome
+            FROM painel_medicos p
+            JOIN usuarios u ON u.id = p.usuario_id
+            LEFT JOIN integracao_medicos i ON i.painel_medico_id = p.id
+            WHERE COALESCE(u.desativado, 0) = 0
+              AND (i.id IS NULL OR (i.status IN ('erro', 'sem_promotor') AND i.atualizado_em < ?))
+            ORDER BY p.id
+            LIMIT {int(limite)}
+        """), (tentar_de_novo_antes or "",))
+        return [dict(l) for l in cursor.fetchall()]
+
+
+def integ_salvar_link(painel_medico_id, externo_id, origem, status, detalhe=""):
+    agora = datetime.utcnow().isoformat()
+    with _conexao() as conn:
+        conn.cursor().execute(_q("""
+            INSERT INTO integracao_medicos (painel_medico_id, externo_id, origem, status, detalhe, tentativas, criado_em, atualizado_em)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+            ON CONFLICT (painel_medico_id) DO UPDATE SET
+                externo_id = COALESCE(excluded.externo_id, integracao_medicos.externo_id),
+                status = excluded.status, detalhe = excluded.detalhe,
+                tentativas = integracao_medicos.tentativas + 1, atualizado_em = excluded.atualizado_em
+        """), (painel_medico_id, externo_id or None, origem, status, (detalhe or "")[:500], agora, agora))
+
+
+def integ_salvar_conflito(externo_id, tipo, motivo, dados_json, painel_medico_id=None):
+    """Guarda (ou atualiza) um conflito. Um conflito já marcado como resolvido
+    pelo admin continua resolvido, a não ser que o motivo mude."""
+    agora = datetime.utcnow().isoformat()
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("SELECT id, tipo, resolvido_em FROM integracao_conflitos WHERE externo_id = ?"), (externo_id,))
+        atual = cursor.fetchone()
+        if atual:
+            reabrir = atual["tipo"] != tipo
+            cursor.execute(_q(f"""
+                UPDATE integracao_conflitos SET tipo = ?, motivo = ?, dados = ?, painel_medico_id = ?, atualizado_em = ?
+                {", resolvido_em = NULL, resolvido_por_nome = NULL" if reabrir else ""}
+                WHERE id = ?
+            """), (tipo, motivo[:500], dados_json, painel_medico_id, agora, atual["id"]))
+            return bool(reabrir and atual["resolvido_em"])
+        cursor.execute(_q("""
+            INSERT INTO integracao_conflitos (externo_id, tipo, motivo, dados, painel_medico_id, criado_em, atualizado_em)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """), (externo_id, tipo, motivo[:500], dados_json, painel_medico_id, agora, agora))
+        return True
+
+
+def integ_apagar_conflito(externo_id, manter_tipo=None):
+    """Apaga o conflito (o problema sumiu). `manter_tipo`: não apaga se for desse tipo."""
+    with _conexao() as conn:
+        if manter_tipo:
+            conn.cursor().execute(_q("DELETE FROM integracao_conflitos WHERE externo_id = ? AND tipo <> ?"), (externo_id, manter_tipo))
+        else:
+            conn.cursor().execute(_q("DELETE FROM integracao_conflitos WHERE externo_id = ?"), (externo_id,))
+
+
+def integ_conflitos(abertos=True, limite=300):
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT * FROM integracao_conflitos
+            WHERE resolvido_em IS {"NULL" if abertos else "NOT NULL"}
+            ORDER BY atualizado_em DESC, id DESC LIMIT {int(limite)}
+        """)
+        return [dict(l) for l in cursor.fetchall()]
+
+
+def integ_resolver_conflito(conflito_id, admin_nome):
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("SELECT id, dados FROM integracao_conflitos WHERE id = ? AND resolvido_em IS NULL"), (conflito_id,))
+        linha = cursor.fetchone()
+        if not linha:
+            return None
+        cursor.execute(_q("UPDATE integracao_conflitos SET resolvido_em = ?, resolvido_por_nome = ? WHERE id = ?"),
+                       (datetime.utcnow().isoformat(), admin_nome or "", conflito_id))
+        return dict(linha)
+
+
+def integ_envios_com_problema(limite=100):
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT i.status, i.detalhe, i.tentativas, i.atualizado_em, p.id AS painel_medico_id,
+                   p.nome, p.crm, p.uf, u.nome AS promotor_nome
+            FROM integracao_medicos i
+            JOIN painel_medicos p ON p.id = i.painel_medico_id
+            LEFT JOIN usuarios u ON u.id = p.usuario_id
+            WHERE i.status IN ('erro', 'sem_promotor')
+            ORDER BY i.atualizado_em DESC LIMIT {int(limite)}
+        """)
+        return [dict(l) for l in cursor.fetchall()]
+
+
+def integ_contagens():
+    """Quantos médicos em cada situação da integração (só os que ainda estão
+    em algum painel), mais os que nunca foram enviados e os conflitos abertos."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""SELECT i.status, COUNT(*) AS total FROM integracao_medicos i
+                          JOIN painel_medicos p ON p.id = i.painel_medico_id GROUP BY i.status""")
+        c = {l["status"]: int(l["total"]) for l in cursor.fetchall()}
+        cursor.execute("""SELECT COUNT(*) AS total FROM painel_medicos p
+                          LEFT JOIN integracao_medicos i ON i.painel_medico_id = p.id WHERE i.id IS NULL""")
+        c["nao_enviados"] = int(cursor.fetchone()["total"] or 0)
+        cursor.execute("SELECT COUNT(*) AS total FROM integracao_conflitos WHERE resolvido_em IS NULL")
+        c["conflitos"] = int(cursor.fetchone()["total"] or 0)
+    return c
+
+
+def integ_pegar_trava(dono, segundos=900):
+    """Só um processo do servidor sincroniza por vez. Devolve True se pegou."""
+    agora = datetime.utcnow()
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("INSERT INTO config_sistema (chave, valor) VALUES ('integracao_trava', '') "
+                          "ON CONFLICT (chave) DO NOTHING"))
+        cursor.execute(_q("""UPDATE config_sistema SET valor = ?
+                             WHERE chave = 'integracao_trava' AND (valor IS NULL OR valor = '' OR valor < ?)"""),
+                       ((agora + timedelta(seconds=segundos)).isoformat() + "|" + dono, agora.isoformat()))
+        return cursor.rowcount == 1
+
+
+def integ_soltar_trava(dono):
+    with _conexao() as conn:
+        conn.cursor().execute(_q("UPDATE config_sistema SET valor = '' WHERE chave = 'integracao_trava' AND valor LIKE ?"),
+                              ("%|" + dono,))
+
+
+def integ_sincronizando():
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT valor FROM config_sistema WHERE chave = 'integracao_trava'")
+        linha = cursor.fetchone()
+    valor = (linha["valor"] if linha else "") or ""
+    return bool(valor) and valor.split("|")[0] > datetime.utcnow().isoformat()
+
+
+def integ_id_no_painel(usuario_id, chave_medico):
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("SELECT id FROM painel_medicos WHERE usuario_id = ? AND chave_medico = ?"), (usuario_id, chave_medico))
+        linha = cursor.fetchone()
+    return linha["id"] if linha else None

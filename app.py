@@ -3,6 +3,7 @@ import revisao_paineis
 import json
 import auth as auth_mod
 import relatorio_diario
+import integracao
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, redirect, url_for, has_request_context, got_request_exception, g
 from flask.sessions import SecureCookieSessionInterface
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -1465,6 +1466,17 @@ def _tarefa_relatorio_diario():
         time.sleep(5 * 60)
 
 
+def _tarefa_integracao():
+    """Confere a cada minuto se é hora de sincronizar com o sistema interno."""
+    time.sleep(90)
+    while True:
+        try:
+            integracao.rodar_se_for_hora(auth_mod)
+        except Exception:
+            pass
+        time.sleep(60)
+
+
 _TAREFA_INICIADA = {"pid": None}
 
 
@@ -1477,6 +1489,7 @@ def _iniciar_tarefa_resumo():
     _TAREFA_INICIADA["pid"] = os.getpid()
     threading.Thread(target=_tarefa_resumo_semanal, daemon=True, name="resumo-semanal").start()
     threading.Thread(target=_tarefa_relatorio_diario, daemon=True, name="relatorio-diario").start()
+    threading.Thread(target=_tarefa_integracao, daemon=True, name="integracao").start()
 
 
 @app.route("/admin/resumo")
@@ -1972,6 +1985,113 @@ def admin_api_revogar_chave(chave_id):
     if not nome:
         return jsonify({"ok": False, "mensagem": "Chave não encontrada ou já revogada."}), 404
     _registrar("revogar_chave_api", None, nome)
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Admin: integração com o sistema interno (médicos nos dois sentidos, por CPF)
+# ---------------------------------------------------------------------------
+_TIPOS_CONFLITO = {
+    "sem_promotor": "Promotor não está no i.cannal",
+    "outro_painel": "Médico no painel de outro promotor",
+    "promotor_diferente": "Promotor diferente nos dois sistemas",
+}
+_STATUS_INTEGRACAO = {"erro": "Erro", "sem_promotor": "Promotor não está no sistema interno"}
+
+
+def _quando_br(iso):
+    quando = _utc_para_br(iso) if iso else None
+    return quando.strftime("%d/%m/%Y %H:%M") if quando else ""
+
+
+def _resumo_integracao_para_tela():
+    ultima = integracao.ultima_rodada(auth_mod)
+    if ultima:
+        ultima["quando"] = _quando_br(ultima.get("fim") or ultima.get("inicio"))
+    return ultima
+
+
+@app.route("/admin/integracao")
+@admin_required
+def admin_integracao():
+    cfg = auth_mod.ler_config(integracao.CONFIG_PADRAO)
+    conflitos = auth_mod.integ_conflitos(abertos=True)
+    for c in conflitos:
+        try:
+            c["d"] = json.loads(c["dados"] or "{}")
+        except ValueError:
+            c["d"] = {}
+        c["tipo_nome"] = _TIPOS_CONFLITO.get(c["tipo"], c["tipo"])
+        c["quando"] = _quando_br(c["atualizado_em"])
+    problemas = auth_mod.integ_envios_com_problema()
+    for e in problemas:
+        e["quando"] = _quando_br(e["atualizado_em"])
+        e["status_nome"] = _STATUS_INTEGRACAO.get(e["status"], e["status"])
+    return render_template(
+        "admin_integracao.html", situacao=integracao.situacao_config(), cfg=cfg,
+        intervalos=integracao.INTERVALOS_MIN, ultima=_resumo_integracao_para_tela(),
+        sincronizando=auth_mod.integ_sincronizando(), contagens=auth_mod.integ_contagens(),
+        conflitos=conflitos, problemas=problemas,
+    )
+
+
+@app.route("/admin/integracao/status")
+@admin_required
+def admin_integracao_status():
+    return jsonify({"ok": True, "sincronizando": auth_mod.integ_sincronizando(),
+                    "ultima": _resumo_integracao_para_tela(), "contagens": auth_mod.integ_contagens()})
+
+
+@app.route("/admin/integracao/testar", methods=["POST"])
+@admin_required
+def admin_integracao_testar():
+    ok, mensagem = integracao.testar_conexao()
+    return jsonify({"ok": ok, "mensagem": mensagem})
+
+
+@app.route("/admin/integracao/config", methods=["POST"])
+@admin_required
+def admin_integracao_config():
+    dados = _corpo_json()
+    try:
+        intervalo = int(dados.get("intervalo") or 30)
+    except (TypeError, ValueError):
+        intervalo = 0
+    if intervalo not in integracao.INTERVALOS_MIN:
+        return jsonify({"ok": False, "mensagem": "Escolha um dos intervalos da lista."}), 400
+    ligado = bool(dados.get("ligado"))
+    if ligado and not integracao.situacao_config()["configurada"]:
+        return jsonify({"ok": False, "mensagem": "Coloque o endereço e a chave em /etc/cannal.env antes de ligar."}), 400
+    auth_mod.salvar_config({"integracao_ligado": "1" if ligado else "0", "integracao_intervalo_min": str(intervalo)})
+    _registrar("integracao_config", None, f"{'Ligada' if ligado else 'Desligada'}, a cada {intervalo} min")
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/integracao/sincronizar", methods=["POST"])
+@admin_required
+def admin_integracao_sincronizar():
+    if not integracao.situacao_config()["configurada"]:
+        return jsonify({"ok": False, "mensagem": "Coloque o endereço e a chave em /etc/cannal.env primeiro."}), 400
+    if auth_mod.integ_sincronizando():
+        return jsonify({"ok": True, "mensagem": "Já está sincronizando."})
+    _registrar("integracao_sincronizar", None, "Sincronização manual")
+    # roda em segundo plano: a 1ª vez pode levar alguns minutos
+    threading.Thread(target=integracao.sincronizar, args=(auth_mod, "manual"), daemon=True, name="integracao-manual").start()
+    return jsonify({"ok": True, "mensagem": "Sincronização começou."})
+
+
+@app.route("/admin/integracao/conflitos/<int:conflito_id>/resolver", methods=["POST"])
+@admin_required
+def admin_integracao_resolver(conflito_id):
+    admin = usuario_logado()
+    linha = auth_mod.integ_resolver_conflito(conflito_id, admin["nome"] if admin else "")
+    if not linha:
+        return jsonify({"ok": False, "mensagem": "Conflito não encontrado ou já resolvido."}), 404
+    try:
+        nome = json.loads(linha["dados"] or "{}").get("nome") or ""
+    except ValueError:
+        nome = ""
+    _registrar("integracao_conflito", None, nome)
     return jsonify({"ok": True})
 
 

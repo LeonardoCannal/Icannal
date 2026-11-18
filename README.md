@@ -36,6 +36,7 @@ Painel Médico pessoal por usuário (controle de prospecção/visita).
 - **Resumo semanal** — toda segunda às 7h, os números da semana da equipe (também chega no seu Telegram/WhatsApp).
 - **Relatório diário** — todo dia, no horário escolhido, cada promotor recebe no WhatsApp o resumo do painel médico dele: médicos no painel, já visitados, ainda não visitados e as próximas visitas agendadas. Precisa do robô do WhatsApp (`whatsapp_robo/LEIA-ME.md`).
 - **Registro** — tudo o que os admins fizeram, com filtros.
+- **Integração** — troca de médicos com o sistema interno, pelo CPF do promotor: os médicos dos painéis são cadastrados lá, e os de lá entram no painel do promotor certo aqui (sem duplicar, pelo CRM + UF). Conflitos ficam numa lista para o admin. Formato da troca em [`INTEGRACAO-CONTRATO.md`](INTEGRACAO-CONTRATO.md).
 - **Visitas** — histórico permanente de visitas por usuário, com filtro e
   exportação para Excel.
 - **Clientes** — importa a planilha de especialistas (coluna ULTIMO
@@ -257,6 +258,8 @@ ele não precisa mais dos outros arquivos do projeto pra funcionar.
 | `WHATSAPP_APIKEY` | Opcional, usada junto com `WHATSAPP_TELEFONE`. A chave que o [CallMeBot](https://www.callmebot.com) devolve depois de você autorizar o bot no seu WhatsApp. |
 | `TELEGRAM_USUARIO` | Opcional. Seu nome de usuário do Telegram (ex.: `@seunome`) para receber os avisos importantes do site: novo cadastro aguardando aprovação, pedido de senha, ações de outros admins (aprovar, dar acesso de admin, excluir conta), muitas senhas erradas, fonte de busca fora do ar, erro no site, falha no backup e (com o monitor) site/banco fora do ar. Antes, mande `/start` para o `@CallMeBot_txtbot` no Telegram. Não precisa de chave. |
 | `TRADUTOR_URL` | Opcional. Endereço do tradutor LibreTranslate instalado no próprio servidor (normalmente `http://127.0.0.1:5000`). Com ele, a página **Artigos científicos** mostra os títulos do PubMed em português e traduz o resumo quando o consultor clica em "Ler resumo em português". Grátis, sem conta e sem cota. Cada texto é traduzido uma vez só e fica guardado no banco (tabela `traducoes`). Instalação em [`tradutor/LEIA-ME.md`](tradutor/LEIA-ME.md). |
+| `INTEGRACAO_API_URL` | Opcional. Endereço do sistema interno (precisa ser `https://`). Liga a aba **Integração** do admin. |
+| `INTEGRACAO_API_CHAVE` | Opcional, usada junto com `INTEGRACAO_API_URL`: a chave de API gerada no sistema interno. Nunca aparece na tela. |
 | `GOOGLE_TRANSLATE_KEY` | Opcional e **não usado hoje**: alternativa paga ao tradutor local (Google Cloud Translation). Só vale se `TRADUTOR_URL` não estiver configurado. |
 
 ## Monitor (site fora do ar, disco, certificado)

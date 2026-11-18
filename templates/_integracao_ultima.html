@@ -1,0 +1,14 @@
+{% if sincronizando %}
+<p class="rd-texto"><span class="rd-st rd-st-enviando">Sincronizando…</span></p>
+{% endif %}
+{% if ultima %}
+<p class="rd-nota">Última: {{ ultima.quando }}{% if ultima.origem == 'manual' %} (manual){% endif %} —
+{% if ultima.ok %}
+{{ ultima.enviados or 0 }} enviado(s), {{ ultima.importados or 0 }} trazido(s) para os painéis{% if ultima.conflitos_novos %}, <strong>{{ ultima.conflitos_novos }} conflito(s) novo(s)</strong>{% endif %}{% if ultima.erros %}, <span class="rd-erro-txt">{{ ultima.erros }} com erro</span>{% endif %}.
+{% else %}
+<span class="rd-erro-txt">não deu certo: {{ ultima.mensagem }}</span>
+{% endif %}
+</p>
+{% elif not sincronizando %}
+<p class="rd-nota">Ainda não sincronizou nenhuma vez.</p>
+{% endif %}
