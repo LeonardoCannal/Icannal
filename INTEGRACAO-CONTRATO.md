@@ -115,6 +115,52 @@ Resposta:
   (o i.cannal guarda o maior que recebeu e pede a partir dele na próxima vez).
 - Ordene por `atualizado_em` e depois `id`.
 
+## 3. Transferir médico de promotor
+
+`POST /api/v1/medicos/transferir`
+
+Usado pelo botão "Transferir no MICHAEL" (Admin → Integração), quando o
+médico está com um promotor no i.cannal e com outro aqui. Passa o médico para
+o promotor do CPF enviado.
+
+```json
+{ "id": "987", "promotor_cpf": "39053344705", "icannal_id": 124 }
+```
+
+Respostas (sempre `200`; `404` só se o endereço não existir):
+
+```json
+{ "ok": true, "id": "987", "promotor_cpf": "39053344705", "promotor_nome": "Bruno" }
+{ "ok": false, "erro": "medico_nao_encontrado" }
+{ "ok": false, "erro": "promotor_nao_encontrado" }
+```
+
+Atualize o `atualizado_em` do médico. Só muda o promotor do cadastro do
+médico: pedidos, comissões e histórico já existentes não mudam.
+
+## 4. Completar o CRM
+
+`POST /api/v1/medicos/completar-crm`
+
+Quando um médico que já está aqui sem CRM ganha o CRM no i.cannal:
+
+```json
+{ "id": "987", "crm": "123456", "uf": "SP", "icannal_id": 124 }
+```
+
+Respostas (sempre `200`):
+
+```json
+{ "ok": true }
+{ "ok": false, "erro": "medico_nao_encontrado" }
+{ "ok": false, "erro": "ja_tem_crm" }
+{ "ok": false, "erro": "crm_em_uso" }
+```
+
+- Médico sem CRM → grava o CRM e a UF → `ok`. Se já tem exatamente esse CRM → `ok`.
+- Já tem outro CRM → `ja_tem_crm`, sem alterar.
+- Outro médico já tem esse CRM + UF → `crm_em_uso`, sem alterar.
+
 ## O que o i.cannal faz com cada médico recebido
 
 | Situação | O que acontece |
@@ -122,4 +168,4 @@ Resposta:
 | Promotor (CPF) existe no i.cannal e o médico não está em nenhum painel | Entra no painel desse promotor como **Prospectado** |
 | O médico já está no painel desse mesmo promotor | Só liga os dois cadastros |
 | O médico está no painel de **outro** promotor | Não mexe; vira conflito em Admin → Integração |
-| Não há promotor com esse CPF no i.cannal (ou a conta está desativada) | Não mexe; vira conflito. Resolve sozinho quando o promotor for criado |
+| Não há promotor com esse CPF no i.cannal (ou a conta está desativada ou sem aprovação) | Ignora, sem conflito. Se o promotor for cadastrado aqui depois, os médicos dele entram sozinhos |

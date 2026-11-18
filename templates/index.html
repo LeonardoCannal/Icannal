@@ -1387,6 +1387,10 @@
     </div>
     <p class="editar-subtitulo" id="editar-subtitulo"></p>
     <form id="form-editar-medico" novalidate>
+      <div class="campo" id="editar-crm-campo" hidden>
+        <label for="editar-crm">CRM <span class="editar-crm-dica">(este médico está sem CRM: informe o número, e a UF do CRM abaixo)</span></label>
+        <input type="text" id="editar-crm" name="crm" inputmode="numeric" autocomplete="off" placeholder="Só os números…" maxlength="12">
+      </div>
       <div class="campo linha-telefones">
         <div>
           <label for="editar-telefone">Telefone da clínica</label>
@@ -2279,6 +2283,10 @@
     camposEditar.endereco.value = semVazio(item.endereco);
     camposEditar.cidade.value = semVazio(item.cidade);
     camposEditar.uf.value = semVazio(item.uf).toUpperCase();
+    // CRM: só dá para informar quando o médico ainda não tem
+    const semCrm = !/\d/.test(String(item.crm || ''));
+    document.getElementById('editar-crm-campo').hidden = !semCrm;
+    document.getElementById('editar-crm').value = '';
     editarErro.textContent = '';
     modalEditar.classList.add('aberto');
     setTimeout(() => camposEditar.telefone.focus(), 50);
@@ -2291,6 +2299,12 @@
   formEditar.addEventListener('submit', (e) => {
     e.preventDefault();
     if(editarEntradaId === null) return;
+    const crmDigitado = document.getElementById('editar-crm-campo').hidden ? '' : document.getElementById('editar-crm').value.replace(/\D/g, '');
+    if(crmDigitado && !camposEditar.uf.value){
+      editarErro.textContent = 'Escolha a UF do CRM.';
+      camposEditar.uf.focus();
+      return;
+    }
     if(!camposEditar.cidade.value.trim()){
       editarErro.textContent = 'Informe a cidade.';
       camposEditar.cidade.focus();
@@ -2308,6 +2322,7 @@
         endereco: camposEditar.endereco.value,
         cidade: camposEditar.cidade.value,
         uf: camposEditar.uf.value,
+        crm: document.getElementById('editar-crm-campo').hidden ? '' : document.getElementById('editar-crm').value,
       })
     })
       .then(res => res.json())

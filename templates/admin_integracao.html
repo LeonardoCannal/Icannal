@@ -41,8 +41,8 @@
 
   <div class="hero-secao">
     <div class="hero-secao-conteudo">
-      <h1>Integração com o sistema interno</h1>
-      <p>Os médicos dos painéis vão para o sistema interno, e os de lá entram no painel do promotor certo aqui, sempre pelo CPF do promotor.</p>
+      <h1>Integração com o MICHAEL</h1>
+      <p>Os médicos dos painéis vão para o MICHAEL, e os de lá entram no painel do promotor certo aqui, sempre pelo CPF do promotor.</p>
     </div>
   </div>
 
@@ -66,7 +66,7 @@
         {% if situacao.problema %}<p class="rd-texto rd-erro-txt">{{ situacao.problema }}</p>{% endif %}
         <p class="rd-texto">No terminal do servidor, abra o arquivo de configuração:</p>
         <pre class="rd-cmd">sudo nano /etc/cannal.env</pre>
-        <p class="rd-texto">Coloque estas duas linhas no final, com o endereço e a chave do sistema interno:</p>
+        <p class="rd-texto">Coloque estas duas linhas no final, com o endereço e a chave do MICHAEL:</p>
         <pre class="rd-cmd" translate="no">INTEGRACAO_API_URL=https://endereco-do-sistema
 INTEGRACAO_API_CHAVE=a_chave_gerada_la</pre>
         <p class="rd-texto">Salve (Ctrl+O, Enter, Ctrl+X) e reinicie:</p>
@@ -107,7 +107,7 @@ INTEGRACAO_API_CHAVE=a_chave_gerada_la</pre>
           <h2 id="in-num-titulo"><span class="rd-passo">3</span> Médicos</h2>
         </div>
         <ul class="rd-lista in-numeros">
-          <li><span>Enviados ao sistema interno</span><strong>{{ contagens.get('enviado', 0) }}</strong></li>
+          <li><span>Enviados ao MICHAEL</span><strong>{{ contagens.get('enviado', 0) }}</strong></li>
           <li><span>Já existiam lá</span><strong>{{ contagens.get('ja_existia', 0) }}</strong></li>
           <li><span>Vieram de lá para os painéis</span><strong>{{ contagens.get('importado', 0) }}</strong></li>
           <li><span>Já estavam nos dois</span><strong>{{ contagens.get('vinculado', 0) }}</strong></li>
@@ -115,16 +115,58 @@ INTEGRACAO_API_CHAVE=a_chave_gerada_la</pre>
           <li><span>Com problema</span><strong>{{ contagens.get('erro', 0) + contagens.get('sem_promotor', 0) }}</strong></li>
           <li><span>Conflitos para decidir</span><strong>{{ contagens.get('conflitos', 0) }}</strong></li>
         </ul>
-        <p class="rd-nota">O mesmo médico é reconhecido pelo CRM + UF (sem CRM, pelo nome + cidade), então ninguém é cadastrado duas vezes. Médicos que chegam do sistema interno entram como <strong>Prospectados</strong>.</p>
+        <p class="rd-nota">O mesmo médico é reconhecido pelo CRM + UF (sem CRM, pelo nome + cidade), então ninguém é cadastrado duas vezes. Médicos que chegam do MICHAEL entram como <strong>Prospectados</strong>.</p>
       </section>
     </div>
 
+    <h3 class="modal-secao-titulo" id="sem-crm">Médicos sem CRM <span class="rd-sub">({{ total_sem_crm }})</span></h3>
+    <p class="rd-texto">Sem CRM, o médico só é reconhecido pelo nome + cidade, o que pode falhar. Informe o CRM aqui (ou o promotor, em <strong>Editar dados</strong> no painel dele). Depois de salvo, o CRM não muda mais, e o médico é reenviado na próxima sincronização. Para descobrir o número, use a <a href="https://portal.cfm.org.br/busca-medicos" target="_blank" rel="noopener noreferrer">busca de médicos do CFM</a>.</p>
+    {% if promotores_sem_crm|length > 1 %}
+    <form method="get" action="{{ url_for('admin_integracao') }}#sem-crm" class="in-filtro">
+      <label for="in-promotor">Promotor</label>
+      <select id="in-promotor" name="promotor" onchange="this.form.submit()">
+        <option value="">Todos</option>
+        {% for pid, pnome in promotores_sem_crm %}<option value="{{ pid }}" {{ 'selected' if promotor_sem_crm == pid|string }}>{{ pnome or '—' }}</option>{% endfor %}
+      </select>
+      <noscript><button type="submit" class="rd-btn-sec">Filtrar</button></noscript>
+    </form>
+    {% endif %}
+    {% if sem_crm %}
+    <div class="tabela-scroll">
+    <table class="tabela-admin rd-tabela in-tabela">
+      <thead><tr><th>Médico</th><th>Promotor</th><th>Integração</th><th>CRM</th></tr></thead>
+      <tbody>
+        {% for m in sem_crm %}
+        <tr data-id="{{ m.id }}">
+          <td data-rotulo="Médico">{{ m.nome }}<span class="api-sub">{{ [m.especialidade, m.cidade, m.uf]|reject('none')|reject('equalto', '')|reject('equalto', 'Não encontrado')|join(' · ') }}</span></td>
+          <td data-rotulo="Promotor">{{ m.promotor_nome or '—' }}</td>
+          <td data-rotulo="Integração">{% if m.integracao_status in ('erro', 'sem_promotor') %}<span class="rd-st rd-st-erro">Não foi</span>{% if m.integracao_detalhe %}<span class="api-sub">{{ m.integracao_detalhe }}</span>{% endif %}{% elif m.integracao_status %}<span class="rd-st rd-st-enviado">Já está lá</span>{% else %}<span class="rd-st">Ainda não enviado</span>{% endif %}</td>
+          <td data-rotulo="CRM">
+            <form class="in-crm">
+              <input type="text" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="Número…" aria-label="CRM de {{ m.nome }}" class="in-crm-num">
+              <select aria-label="UF do CRM de {{ m.nome }}" class="in-crm-uf">
+                <option value="">UF</option>
+                {% for uf in ufs %}<option {{ 'selected' if (m.uf or '')|upper == uf }}>{{ uf }}</option>{% endfor %}
+              </select>
+              <button type="submit" class="rd-btn-sec">Salvar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if total_sem_crm > sem_crm|length %}<p class="rd-nota">Mostrando {{ sem_crm|length }} de {{ total_sem_crm }}. Filtre por promotor para ver os outros.</p>{% endif %}
+    {% else %}
+    <p class="rd-nota">Todos os médicos têm CRM.</p>
+    {% endif %}
+
     <h3 class="modal-secao-titulo">Conflitos para decidir <span class="rd-sub">({{ conflitos|length }})</span></h3>
-    <p class="rd-texto">Nada aqui foi mexido. Resolva no i.cannal ou no sistema interno (ex.: transferindo o médico ou criando o promotor) e marque como resolvido. Quando o problema some, o conflito sai sozinho na próxima sincronização.</p>
+    <p class="rd-texto">Nada aqui foi mexido. Resolva no i.cannal ou no MICHAEL (ex.: transferindo o médico ou criando o promotor) e marque como resolvido. Quando o problema some, o conflito sai sozinho na próxima sincronização.</p>
     {% if conflitos %}
     <div class="tabela-scroll">
     <table class="tabela-admin rd-tabela in-tabela">
-      <thead><tr><th>Médico</th><th>CRM</th><th>Promotor no sistema interno</th><th>O que houve</th><th>Quando</th><th></th></tr></thead>
+      <thead><tr><th>Médico</th><th>CRM</th><th>Promotor no MICHAEL</th><th>O que houve</th><th>Quando</th><th></th></tr></thead>
       <tbody>
         {% for c in conflitos %}
         <tr>
@@ -133,7 +175,10 @@ INTEGRACAO_API_CHAVE=a_chave_gerada_la</pre>
           <td data-rotulo="Promotor">{{ c.d.promotor_nome or '—' }}</td>
           <td data-rotulo="O que houve"><span class="rd-st rd-st-enviando">{{ c.tipo_nome }}</span><span class="api-sub">{{ c.motivo }}</span></td>
           <td data-rotulo="Quando">{{ c.quando }}</td>
-          <td><button type="button" class="rd-btn-sec in-resolver" data-id="{{ c.id }}">Resolvido</button></td>
+          <td class="in-acoes">
+            {% if c.pode_transferir %}<button type="button" class="btn-primario in-transferir" data-id="{{ c.id }}" data-medico="{{ c.d.nome }}" data-promotor="{{ c.icannal_promotor }}">Transferir no MICHAEL</button><span class="api-sub">para {{ c.icannal_promotor }}, que está com ele no i.cannal</span>{% endif %}
+            <button type="button" class="rd-btn-sec in-resolver" data-id="{{ c.id }}">Resolvido</button>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -144,7 +189,7 @@ INTEGRACAO_API_CHAVE=a_chave_gerada_la</pre>
     {% endif %}
 
     {% if problemas %}
-    <h3 class="modal-secao-titulo">Não foram para o sistema interno <span class="rd-sub">({{ problemas|length }})</span></h3>
+    <h3 class="modal-secao-titulo">Não foram para o MICHAEL <span class="rd-sub">({{ problemas|length }})</span></h3>
     <p class="rd-texto">O i.cannal tenta de novo sozinho a cada 6 horas.</p>
     <div class="tabela-scroll">
     <table class="tabela-admin rd-tabela in-tabela">
