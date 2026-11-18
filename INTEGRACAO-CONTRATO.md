@@ -202,7 +202,8 @@ Promotor não encontrado: `{"ok": false, "erro": "promotor_nao_encontrado"}` (st
     "ja_prescreveram": 15, "nunca_prescreveram": 28,
     "ultimas_prescricoes": [{"nome": "Nome do médico", "data": "2026-11-09"}],
     "prescritores": [
-      {"nome": "Nome do médico", "crm": "123456", "uf": "SP", "cidade": "Sorocaba", "ultima_prescricao": "2026-11-09"}
+      {"nome": "Nome do médico", "crm": "123456", "uf": "SP", "cidade": "Sorocaba", "ultima_prescricao": "2026-11-09",
+       "pedidos_pagos_no_mes": 0}
     ]
   },
   "prescricoes_por_mes": {
@@ -216,6 +217,7 @@ Promotor não encontrado: `{"ok": false, "erro": "promotor_nao_encontrado"}` (st
 - `competencias`: meses que têm dados, do mais novo para o mais antigo.
 - `pacientes_recompra.lista`: os pacientes que vão recomprar e os que acabaram de vencer (`situacao`: `vai_recomprar` ou `acabou_de_vencer`), cada um com o médico que prescreveu. Até 300.
 - `medicos.prescritores`: todos os médicos que já prescreveram para esse promotor. Até 500.
+  `pedidos_pagos_no_mes`: quantos pedidos pagos de pacientes desse médico o promotor teve na competência (0 = sem venda no mês). O relatório diário do WhatsApp usa isso.
 - `serie`: 12 meses, do mais antigo para o mais novo.
 - Só esses campos: nada de CPF, telefone ou endereço de paciente.
 

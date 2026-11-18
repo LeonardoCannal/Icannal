@@ -145,7 +145,8 @@
         `<span class="ini-sub">${visitados} de ${m.prescritores.length} visitados em ${mesCurto(d.competencia)}</span></div>` +
         '<ul class="ini-lista ini-lista-rica">' + ordenados.map((x) =>
           `<li><div><span translate="no">${esc(x.nome)}</span><small>${[x.crm ? 'CRM ' + esc(x.crm) + (x.uf ? ' ' + esc(x.uf) : '') : '', esc(x.cidade),
-            x.ultima_prescricao ? 'última prescrição em ' + dataBr(x.ultima_prescricao) : ''].filter(Boolean).join(' · ')}</small></div>${seloVisita(x.visitado_em)}</li>`).join('') + '</ul>';
+            x.ultima_prescricao ? 'última prescrição em ' + dataBr(x.ultima_prescricao) : '',
+            x.pedidos_pagos_no_mes == null ? '' : (x.pedidos_pagos_no_mes ? plural(x.pedidos_pagos_no_mes, 'pedido pago', 'pedidos pagos') + ' em ' + mesCurto(d.competencia) : 'sem venda em ' + mesCurto(d.competencia))].filter(Boolean).join(' · ')}</small></div>${seloVisita(x.visitado_em)}</li>`).join('') + '</ul>';
     } else {
       listaMed = listaNomes('Últimas prescrições', m.ultimas_prescricoes, 'Nenhuma prescrição ainda.');
     }
