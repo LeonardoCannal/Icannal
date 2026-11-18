@@ -34,7 +34,7 @@ Painel Médico pessoal por usuário (controle de prospecção/visita).
   visitados e a revisitar).
 - **Dashboard** — números gerais, gráficos dos últimos 6 meses e ranking.
 - **Resumo semanal** — toda segunda às 7h, os números da semana da equipe (também chega no seu Telegram/WhatsApp).
-- **Relatório diário** — todo dia, no horário escolhido, cada promotor recebe no WhatsApp o resumo do painel médico dele: médicos no painel, já visitados, ainda não visitados e as próximas visitas agendadas. Precisa do robô do WhatsApp (`whatsapp_robo/LEIA-ME.md`).
+- **Relatório diário** — todo dia, no horário escolhido, cada promotor recebe no WhatsApp o resumo do painel médico dele: médicos no painel, já visitados, ainda não visitados e as próximas visitas agendadas. Precisa do robô do WhatsApp (`whatsapp_robo/LEIA-ME.md`). Com a integração com o MICHAEL ligada, a mensagem também traz os médicos que já prescreveram e estão sem venda e sem visita no mês, e os pacientes de recompra cujo médico ainda não foi visitado (nome do paciente abreviado).
 - **Registro** — tudo o que os admins fizeram, com filtros.
 - **Início** — com a integração configurada, a primeira página de cada promotor mostra os números de vendas dele no MICHAEL (faturamento e projeção do mês, comissão, pedidos pagos, pacientes de recompra, médicos que já prescreveram e quais foram visitados no mês). É buscado na hora pelo CPF e nada é gravado no banco do i.cannal.
 - **Integração** — troca de médicos com o sistema interno, pelo CPF do promotor: os médicos dos painéis são cadastrados lá, e os de lá entram no painel do promotor certo aqui (sem duplicar, pelo CRM + UF). Conflitos ficam numa lista para o admin. Formato da troca em [`INTEGRACAO-CONTRATO.md`](INTEGRACAO-CONTRATO.md).

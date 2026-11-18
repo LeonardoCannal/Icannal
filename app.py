@@ -1671,7 +1671,8 @@ def admin_relatorio_previa(user_id):
         return jsonify({"ok": False, "erro": "Usuário não encontrado."}), 404
     hoje = relatorio_diario.agora_br().date()
     painel = auth_mod.resumo_painel_para_relatorio(p["id"], hoje.isoformat())
-    return jsonify({"ok": True, "texto": relatorio_diario.montar_mensagem(p["nome"], painel, hoje)})
+    return jsonify({"ok": True, "texto": relatorio_diario.montar_mensagem(
+        p["nome"], painel, hoje, relatorio_diario.dados_vendas(auth_mod, p, hoje))})
 
 
 @app.route("/admin/relatorio-diario/enviar/<int:user_id>", methods=["POST"])

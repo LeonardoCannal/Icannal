@@ -94,6 +94,10 @@
           <li>✅ Médicos já visitados (e quantos estão para revisitar)</li>
           <li>⏳ Médicos ainda não visitados</li>
           <li>📅 Próximas visitas agendadas, com dia e horário</li>
+          {% if home_ligada %}
+          <li>🩺 Médicos que já prescreveram e estão sem venda e sem visita no mês (do MICHAEL)</li>
+          <li>🔁 Pacientes de recompra cujo médico ainda não foi visitado no mês, com o nome abreviado (do MICHAEL)</li>
+          {% endif %}
         </ul>
         <p class="rd-nota">Use <strong>Prévia</strong> na lista abaixo para ver a mensagem exata de cada um.</p>
       </section>

@@ -558,7 +558,9 @@ def _limpar_home(r):
         if isinstance(x, dict) and _texto(x.get("nome")):
             prescritores.append({"nome": _texto(x.get("nome"))[:120], "crm": crm_numero(_texto(x.get("crm"))),
                                  "uf": _texto(x.get("uf")).upper()[:2], "cidade": _texto(x.get("cidade"))[:80],
-                                 "ultima_prescricao": str(x.get("ultima_prescricao") or "")[:10]})
+                                 "ultima_prescricao": str(x.get("ultima_prescricao") or "")[:10],
+                                 # None = o MICHAEL ainda não informa as vendas do mês por médico
+                                 "pedidos_pagos_no_mes": _num(x.get("pedidos_pagos_no_mes"), True)})
     recompras = []
     for x in (rec.get("lista") if isinstance(rec.get("lista"), list) else [])[:300]:
         if isinstance(x, dict) and _texto(x.get("nome")):

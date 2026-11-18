@@ -63,8 +63,90 @@ def _quando_visita(data_txt, horario, hoje):
     return f"{dia} às {horario}" if horario else dia
 
 
-def montar_mensagem(nome, painel, hoje=None):
-    """`painel` vem de auth.resumo_painel_para_relatorio()."""
+MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto",
+         "setembro", "outubro", "novembro", "dezembro"]
+MAX_ITENS_VENDAS = 10
+_PARTICULAS = {"da", "de", "do", "das", "dos", "e", "di", "du"}
+
+
+def nome_bonito(nome):
+    """'FLAVIO MATEUS DE CARVALHO' → 'Flavio Mateus de Carvalho'."""
+    partes = [p for p in str(nome or "").split() if p]
+    return " ".join(p.lower() if p.lower() in _PARTICULAS else p.capitalize() for p in partes)
+
+
+def abreviar_paciente(nome):
+    """Nome de paciente na mensagem: só o primeiro nome e as iniciais
+    ('LUIZ PIRES DA COSTA' → 'Luiz P. C.'). O nome completo fica só no i.cannal."""
+    partes = [p for p in str(nome or "").split() if p and p.lower() not in _PARTICULAS]
+    if not partes:
+        return ""
+    return " ".join([partes[0].capitalize()] + [p[0].upper() + "." for p in partes[1:]])
+
+
+def _dia_mes(iso):
+    try:
+        return date.fromisoformat(str(iso)[:10]).strftime("%d/%m")
+    except ValueError:
+        return ""
+
+
+def dados_vendas(auth, promotor, hoje=None):
+    """O que o MICHAEL sabe do promotor e que entra na mensagem: médicos que já
+    prescreveram e estão sem venda e sem visita no mês, e pacientes de
+    recompra cujo médico ainda não foi visitado no mês. None se a integração
+    não está ligada, o promotor não está no MICHAEL ou o MICHAEL não respondeu
+    (a mensagem sai sem essa parte)."""
+    try:
+        import integracao
+        if not integracao.situacao_config()["configurada"]:
+            return None
+        hoje = hoje or agora_br().date()
+        estado, dados = integracao.buscar_home(promotor.get("cpf"), hoje.strftime("%Y-%m"))
+        if estado != "ok":
+            return None
+        inicio = datetime(hoje.year, hoje.month, 1) + FUSO
+        fim = datetime(hoje.year + (hoje.month == 12), hoje.month % 12 + 1, 1) + FUSO
+        dados = integracao.marcar_visitas(dados, auth.visitas_do_periodo(promotor["id"], inicio.isoformat(), fim.isoformat()))
+        prescritores = dados["medicos"]["prescritores"]
+        sabe_vendas = any(m.get("pedidos_pagos_no_mes") is not None for m in prescritores)
+        medicos = [m for m in prescritores if not m.get("visitado_em") and not m.get("pedidos_pagos_no_mes")]
+        recompras = [p for p in dados["pacientes_recompra"]["lista"] if not p.get("medico_visitado_em")]
+        recompras.sort(key=lambda p: p.get("data") or "9999")
+        return {"medicos": medicos, "sabe_vendas": sabe_vendas, "recompras": recompras}
+    except Exception:
+        return None
+
+
+def _linhas_vendas(vendas, hoje):
+    mes = MESES[hoje.month - 1]
+    linhas = []
+    medicos = vendas.get("medicos") or []
+    if medicos:
+        titulo = (f"Já prescreveram, sem venda e sem visita em {mes}" if vendas.get("sabe_vendas")
+                  else f"Já prescreveram e ainda sem visita em {mes}")
+        linhas += ["", f"🩺 *{titulo}* ({len(medicos)})"]
+        for m in medicos[:MAX_ITENS_VENDAS]:
+            linhas.append(f"• {nome_bonito(m.get('nome'))}" + (f" ({m['cidade']})" if m.get("cidade") else ""))
+        if len(medicos) > MAX_ITENS_VENDAS:
+            linhas.append(f"_e mais {len(medicos) - MAX_ITENS_VENDAS} médico(s)_")
+    recompras = vendas.get("recompras") or []
+    if recompras:
+        linhas += ["", f"🔁 *Pacientes de recompra para visitar* ({len(recompras)})"]
+        for p in recompras[:MAX_ITENS_VENDAS]:
+            quando = _dia_mes(p.get("data"))
+            situacao = ("venceu em " if p.get("situacao") == "acabou_de_vencer" else "recompra em ") + quando if quando else ""
+            medico = nome_bonito(p.get("medico_nome"))
+            linhas.append("• " + " — ".join(x for x in (abreviar_paciente(p.get("nome")), situacao) if x)
+                          + (f" · médico: {medico}" if medico else ""))
+        if len(recompras) > MAX_ITENS_VENDAS:
+            linhas.append(f"_e mais {len(recompras) - MAX_ITENS_VENDAS} paciente(s)_")
+    return linhas
+
+
+def montar_mensagem(nome, painel, hoje=None, vendas=None):
+    """`painel` vem de auth.resumo_painel_para_relatorio(); `vendas` (opcional)
+    vem de dados_vendas()."""
     hoje = hoje or agora_br().date()
     saudacao = "Bom dia" if agora_br().hour < 12 else "Olá"
     revisitar = painel.get("revisitar", 0)
@@ -88,6 +170,8 @@ def montar_mensagem(nome, painel, hoje=None):
         linhas.append(f"_e mais {len(proximas) - MAX_VISITAS_NA_MENSAGEM} visita(s) agendada(s)_")
     if not proximas:
         linhas.append("• Nenhuma visita agendada.")
+    if vendas:
+        linhas += _linhas_vendas(vendas, hoje)
     linhas += ["", "👉 Acesse seu painel: https://icannal.com.br", "", "Boas visitas! — _i.cannal_"]
     return "\n".join(linhas)
 
@@ -197,7 +281,8 @@ def enviar_para_promotor(auth, promotor, tipo="automatico", dia=None, chave=None
         auth.finalizar_envio(envio_id, "erro", "Promotor sem WhatsApp válido.")
         return "erro", "Promotor sem WhatsApp válido."
     hoje = agora_br().date()
-    texto = montar_mensagem(promotor.get("nome"), auth.resumo_painel_para_relatorio(promotor["id"], hoje.isoformat()), hoje)
+    texto = montar_mensagem(promotor.get("nome"), auth.resumo_painel_para_relatorio(promotor["id"], hoje.isoformat()), hoje,
+                            dados_vendas(auth, promotor, hoje))
     ok, erro = robo_enviar(numero, texto)
     if not ok and tipo == "automatico" and _robo_caiu(erro):
         # o WhatsApp caiu no meio: desfaz a reserva pra tentar de novo depois
