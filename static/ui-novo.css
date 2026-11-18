@@ -1312,3 +1312,11 @@ body.ui-novo .in-numeros strong{ font-variant-numeric: tabular-nums; }
 body.ui-novo .in-tabela td{ white-space: normal; vertical-align: top; }
 body.ui-novo #in-cfg .campo{ margin: 10px 0; }
 body.ui-novo #in-cfg select{ min-height: 38px; border-radius: 10px; border: 1px solid var(--linha-forte); background: var(--tela); color: var(--tinta); padding: 0 10px; font: inherit; }
+body.ui-novo .in-crm{ display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+body.ui-novo .in-crm input, body.ui-novo .in-crm select, body.ui-novo .in-filtro select{ min-height: 36px; border-radius: 10px; border: 1px solid var(--linha-forte); background: var(--tela); color: var(--tinta); padding: 0 10px; font: inherit; font-size: 14px; }
+body.ui-novo .in-crm input{ width: 110px; font-variant-numeric: tabular-nums; }
+body.ui-novo .in-filtro{ display: flex; gap: 8px; align-items: center; margin: 0 0 10px; font-size: 13.5px; }
+body.ui-novo .editar-crm-dica{ font-weight: 400; color: var(--pedra); font-size: 12px; }
+body.ui-novo .in-acoes{ min-width: 170px; }
+body.ui-novo .in-acoes .btn-primario{ min-height: 36px; padding: 0 14px; font-size: 13px; }
+body.ui-novo .in-acoes .rd-btn-sec{ margin-top: 8px; }

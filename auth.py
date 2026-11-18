@@ -2519,9 +2519,11 @@ ACOES_ADMIN = {
     "transferir_painel": "Transferiu painel médico",
     "criar_chave_api": "Criou chave de API",
     "revogar_chave_api": "Revogou chave de API",
-    "integracao_config": "Mudou a integração com o sistema interno",
-    "integracao_sincronizar": "Sincronizou com o sistema interno",
+    "integracao_config": "Mudou a integração com o MICHAEL",
+    "integracao_sincronizar": "Sincronizou com o MICHAEL",
     "integracao_conflito": "Resolveu conflito da integração",
+    "informar_crm": "Informou o CRM de um médico",
+    "integracao_transferir": "Transferiu médico de promotor no MICHAEL",
 }
 
 
@@ -3263,12 +3265,19 @@ def integ_apagar_conflito(externo_id, manter_tipo=None):
             conn.cursor().execute(_q("DELETE FROM integracao_conflitos WHERE externo_id = ?"), (externo_id,))
 
 
-def integ_conflitos(abertos=True, limite=300):
+# Médicos do sistema interno cujo promotor não está no i.cannal: não entram
+# e não aparecem para o admin (ficam guardados só para entrar sozinhos se o
+# promotor for cadastrado aqui depois).
+TIPO_AGUARDANDO_PROMOTOR = "aguardando_promotor"
+
+
+def integ_conflitos(abertos=True, limite=300, incluir_ocultos=False):
     with _conexao() as conn:
         cursor = conn.cursor()
         cursor.execute(f"""
             SELECT * FROM integracao_conflitos
             WHERE resolvido_em IS {"NULL" if abertos else "NOT NULL"}
+            {"" if incluir_ocultos else "AND tipo <> '" + TIPO_AGUARDANDO_PROMOTOR + "'"}
             ORDER BY atualizado_em DESC, id DESC LIMIT {int(limite)}
         """)
         return [dict(l) for l in cursor.fetchall()]
@@ -3312,7 +3321,8 @@ def integ_contagens():
         cursor.execute("""SELECT COUNT(*) AS total FROM painel_medicos p
                           LEFT JOIN integracao_medicos i ON i.painel_medico_id = p.id WHERE i.id IS NULL""")
         c["nao_enviados"] = int(cursor.fetchone()["total"] or 0)
-        cursor.execute("SELECT COUNT(*) AS total FROM integracao_conflitos WHERE resolvido_em IS NULL")
+        cursor.execute(f"SELECT COUNT(*) AS total FROM integracao_conflitos WHERE resolvido_em IS NULL "
+                       f"AND tipo <> '{TIPO_AGUARDANDO_PROMOTOR}'")
         c["conflitos"] = int(cursor.fetchone()["total"] or 0)
     return c
 
@@ -3351,3 +3361,123 @@ def integ_id_no_painel(usuario_id, chave_medico):
         cursor.execute(_q("SELECT id FROM painel_medicos WHERE usuario_id = ? AND chave_medico = ?"), (usuario_id, chave_medico))
         linha = cursor.fetchone()
     return linha["id"] if linha else None
+
+
+def _crm_digitos(crm):
+    return re.sub(r"\D", "", str(crm or "")).lstrip("0")
+
+
+def informar_crm_medico(entrada_id: int, crm: str, uf: str, usuario_id=None):
+    """Coloca o CRM num médico do painel que está SEM CRM (depois de
+    preenchido ele não muda mais: é por ele que o médico é reconhecido).
+    `usuario_id`: só no painel dessa pessoa (promotor); None = admin.
+    Devolve (ok, mensagem, linha_do_medico)."""
+    numero = _crm_digitos(crm)
+    uf = str(uf or "").strip().upper()
+    if not numero or len(numero) > 8:
+        return False, "CRM inválido: use só os números.", None
+    if uf not in UFS_VALIDAS:
+        return False, "Escolha a UF do CRM.", None
+    novo_crm = f"CRM {uf} {numero}"
+    chave = computar_chave_medico({"crm": novo_crm})
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        if usuario_id is None:
+            cursor.execute(_q("SELECT id, usuario_id, nome, crm, cidade FROM painel_medicos WHERE id = ?"), (entrada_id,))
+        else:
+            cursor.execute(_q("SELECT id, usuario_id, nome, crm, cidade FROM painel_medicos WHERE id = ? AND usuario_id = ?"),
+                           (entrada_id, usuario_id))
+        medico = cursor.fetchone()
+        if not medico:
+            return False, "Médico não encontrado.", None
+        if _crm_digitos(medico["crm"]):
+            return False, "Este médico já tem CRM.", None
+        # o mesmo CRM já está em algum painel (em qualquer formato)?
+        cursor.execute(_q("""SELECT p.id, p.crm, p.uf, p.usuario_id, u.nome AS promotor_nome FROM painel_medicos p
+                             LEFT JOIN usuarios u ON u.id = p.usuario_id
+                             WHERE p.id <> ? AND p.crm LIKE ?"""), (entrada_id, f"%{numero}%"))
+        for outro in cursor.fetchall():
+            if _crm_digitos(outro["crm"]) != numero:
+                continue
+            uf_outro = next((x.upper() for x in re.findall(r"[A-Za-z]{2}", str(outro["crm"]).replace("CRM", " ").replace("crm", " "))
+                             if x.upper() in UFS_VALIDAS), (outro["uf"] or "").upper())
+            if uf_outro == uf:
+                if outro["usuario_id"] == medico["usuario_id"]:
+                    return False, "Esse CRM já está em outro médico deste mesmo painel (cadastro repetido: remova um deles).", None
+                return False, f"Esse CRM já está no painel de {outro['promotor_nome'] or 'outro promotor'}.", None
+        cursor.execute(_q("UPDATE painel_medicos SET crm = ?, uf = ?, chave_medico = ? WHERE id = ?"),
+                       (novo_crm, uf, chave, entrada_id))
+        # se deu erro ao enviar para o sistema interno, tenta de novo já na próxima sincronização
+        cursor.execute(_q("DELETE FROM integracao_medicos WHERE painel_medico_id = ? AND status IN ('erro', 'sem_promotor')"),
+                       (entrada_id,))
+    return True, "", dict(medico)
+
+
+def listar_medicos_sem_crm(promotor_id=None, limite=300):
+    """Médicos dos painéis sem CRM (com o status deles na integração)."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        sql = """SELECT p.id, p.nome, p.crm, p.uf, p.cidade, p.especialidade, p.usuario_id,
+                        u.nome AS promotor_nome, i.status AS integracao_status, i.detalhe AS integracao_detalhe
+                 FROM painel_medicos p
+                 LEFT JOIN usuarios u ON u.id = p.usuario_id
+                 LEFT JOIN integracao_medicos i ON i.painel_medico_id = p.id"""
+        if promotor_id:
+            cursor.execute(_q(sql + " WHERE p.usuario_id = ? ORDER BY p.nome"), (promotor_id,))
+        else:
+            cursor.execute(sql + " ORDER BY u.nome, p.nome")
+        sem = [dict(l) for l in cursor.fetchall() if not _crm_digitos(l["crm"])]
+    return len(sem), sem[:int(limite)]
+
+
+def integ_medico_e_promotor(painel_medico_id):
+    """Médico do painel + CPF/nome do promotor dono + ligação com o sistema interno."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("""SELECT p.id, p.nome, p.crm, p.uf, p.usuario_id, u.cpf AS promotor_cpf, u.nome AS promotor_nome,
+                                    i.externo_id, i.status AS integracao_status, i.detalhe AS integracao_detalhe
+                             FROM painel_medicos p
+                             LEFT JOIN usuarios u ON u.id = p.usuario_id
+                             LEFT JOIN integracao_medicos i ON i.painel_medico_id = p.id
+                             WHERE p.id = ?"""), (painel_medico_id,))
+        linha = cursor.fetchone()
+    return dict(linha) if linha else None
+
+
+def integ_buscar_conflito(conflito_id):
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(_q("SELECT * FROM integracao_conflitos WHERE id = ?"), (conflito_id,))
+        linha = cursor.fetchone()
+    return dict(linha) if linha else None
+
+
+def integ_marcar_crm_pendente(painel_medico_id, pendente=True):
+    """O CRM foi informado aqui, mas ainda não chegou no sistema interno."""
+    with _conexao() as conn:
+        conn.cursor().execute(_q("UPDATE integracao_medicos SET detalhe = ? WHERE painel_medico_id = ?"),
+                              ("crm_pendente" if pendente else "", painel_medico_id))
+
+
+def integ_crms_pendentes(limite=500):
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""SELECT i.painel_medico_id FROM integracao_medicos i
+                           JOIN painel_medicos p ON p.id = i.painel_medico_id
+                           WHERE i.detalhe = 'crm_pendente' AND i.externo_id IS NOT NULL LIMIT {int(limite)}""")
+        return [l["painel_medico_id"] for l in cursor.fetchall()]
+
+
+def integ_ocultar_sem_promotor():
+    """Conflitos antigos de "promotor não está no i.cannal" deixam de aparecer."""
+    with _conexao() as conn:
+        conn.cursor().execute(_q("UPDATE integracao_conflitos SET tipo = ? WHERE tipo = 'sem_promotor'"),
+                              (TIPO_AGUARDANDO_PROMOTOR,))
+
+
+def integ_cpfs_ativos():
+    """CPFs das contas ativas e aprovadas do i.cannal."""
+    with _conexao() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT cpf, aprovado, desativado FROM usuarios")
+        return {limpar_cpf(l["cpf"]) for l in cursor.fetchall() if l["aprovado"] and not l["desativado"]}

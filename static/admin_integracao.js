@@ -51,6 +51,30 @@
     viuRodando = true; setTimeout(acompanhar, 2000);
   });
 
+  document.querySelectorAll('form.in-crm').forEach((f) => f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const tr = f.closest('tr');
+    const num = f.querySelector('.in-crm-num');
+    const uf = f.querySelector('.in-crm-uf');
+    if (!num.value.replace(/\D/g, '')) { avisar('Digite o número do CRM.', true); num.focus(); return; }
+    if (!uf.value) { avisar('Escolha a UF do CRM.', true); uf.focus(); return; }
+    const botao = f.querySelector('button');
+    botao.disabled = true; botao.textContent = 'Salvando…';
+    const r = await chamar(`/admin/integracao/medicos/${tr.dataset.id}/crm`, { crm: num.value, uf: uf.value });
+    if (r.ok) { tr.remove(); avisar('CRM salvo. O médico vai na próxima sincronização.'); return; }
+    botao.disabled = false; botao.textContent = 'Salvar';
+    avisar(r.mensagem || 'Não foi possível salvar.', true);
+  }));
+
+  document.querySelectorAll('.in-transferir').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm(`Passar ${b.dataset.medico} para ${b.dataset.promotor} no MICHAEL?`)) return;
+    b.disabled = true; b.textContent = 'Transferindo…';
+    const r = await chamar(`/admin/integracao/conflitos/${b.dataset.id}/transferir`, {});
+    if (r.ok) { b.closest('tr').remove(); avisar(r.mensagem || 'Transferido.'); return; }
+    b.disabled = false; b.textContent = 'Transferir no MICHAEL';
+    avisar(r.mensagem || 'Não foi possível transferir.', true);
+  }));
+
   document.querySelectorAll('.in-resolver').forEach((b) => b.addEventListener('click', async () => {
     b.disabled = true;
     const r = await chamar(`/admin/integracao/conflitos/${b.dataset.id}/resolver`, {});

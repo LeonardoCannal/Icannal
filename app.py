@@ -1989,14 +1989,14 @@ def admin_api_revogar_chave(chave_id):
 
 
 # ---------------------------------------------------------------------------
-# Admin: integração com o sistema interno (médicos nos dois sentidos, por CPF)
+# Admin: integração com o MICHAEL (médicos nos dois sentidos, por CPF)
 # ---------------------------------------------------------------------------
 _TIPOS_CONFLITO = {
     "sem_promotor": "Promotor não está no i.cannal",
     "outro_painel": "Médico no painel de outro promotor",
     "promotor_diferente": "Promotor diferente nos dois sistemas",
 }
-_STATUS_INTEGRACAO = {"erro": "Erro", "sem_promotor": "Promotor não está no sistema interno"}
+_STATUS_INTEGRACAO = {"erro": "Erro", "sem_promotor": "Promotor não está no MICHAEL"}
 
 
 def _quando_br(iso):
@@ -2022,13 +2022,27 @@ def admin_integracao():
         except ValueError:
             c["d"] = {}
         c["tipo_nome"] = _TIPOS_CONFLITO.get(c["tipo"], c["tipo"])
+        c["pode_transferir"] = False
+        if c["tipo"] in ("promotor_diferente", "outro_painel") and c.get("painel_medico_id"):
+            m = auth_mod.integ_medico_e_promotor(c["painel_medico_id"])
+            if m:
+                c["pode_transferir"] = True
+                c["icannal_promotor"] = m["promotor_nome"] or ""
         c["quando"] = _quando_br(c["atualizado_em"])
     problemas = auth_mod.integ_envios_com_problema()
     for e in problemas:
         e["quando"] = _quando_br(e["atualizado_em"])
         e["status_nome"] = _STATUS_INTEGRACAO.get(e["status"], e["status"])
+    promotor_sem_crm = request.args.get("promotor", "")
+    _, todos_sem_crm = auth_mod.listar_medicos_sem_crm(limite=1000000)
+    promotores_sem_crm = sorted({(m["usuario_id"], m["promotor_nome"] or "") for m in todos_sem_crm}, key=lambda x: x[1].lower())
+    if promotor_sem_crm.isdigit():
+        todos_sem_crm = [m for m in todos_sem_crm if m["usuario_id"] == int(promotor_sem_crm)]
+    total_sem_crm, sem_crm = len(todos_sem_crm), todos_sem_crm[:300]
     return render_template(
         "admin_integracao.html", situacao=integracao.situacao_config(), cfg=cfg,
+        total_sem_crm=total_sem_crm, sem_crm=sem_crm, promotores_sem_crm=promotores_sem_crm,
+        promotor_sem_crm=promotor_sem_crm, ufs=sorted(auth_mod.UFS_VALIDAS),
         intervalos=integracao.INTERVALOS_MIN, ultima=_resumo_integracao_para_tela(),
         sincronizando=auth_mod.integ_sincronizando(), contagens=auth_mod.integ_contagens(),
         conflitos=conflitos, problemas=problemas,
@@ -2078,6 +2092,35 @@ def admin_integracao_sincronizar():
     # roda em segundo plano: a 1ª vez pode levar alguns minutos
     threading.Thread(target=integracao.sincronizar, args=(auth_mod, "manual"), daemon=True, name="integracao-manual").start()
     return jsonify({"ok": True, "mensagem": "Sincronização começou."})
+
+
+@app.route("/admin/integracao/medicos/<int:entrada_id>/crm", methods=["POST"])
+@admin_required
+def admin_integracao_crm(entrada_id):
+    dados = _corpo_json()
+    ok, erro, medico = auth_mod.informar_crm_medico(entrada_id, dados.get("crm"), dados.get("uf"))
+    if not ok:
+        return jsonify({"ok": False, "mensagem": erro}), 400
+    integracao.enviar_crm_em_segundo_plano(auth_mod, entrada_id)
+    _registrar("informar_crm", auth_mod.buscar_usuario_por_id(medico["usuario_id"]),
+               f"{medico['nome']}: CRM {str(dados.get('uf') or '').upper()} {auth_mod._crm_digitos(dados.get('crm'))}")
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/integracao/conflitos/<int:conflito_id>/transferir", methods=["POST"])
+@admin_required
+def admin_integracao_transferir(conflito_id):
+    admin = usuario_logado()
+    c = auth_mod.integ_buscar_conflito(conflito_id)
+    ok, mensagem = integracao.transferir_conflito(auth_mod, conflito_id, admin["nome"] if admin else "")
+    if not ok:
+        return jsonify({"ok": False, "mensagem": mensagem}), 400
+    try:
+        nome = json.loads((c or {}).get("dados") or "{}").get("nome") or ""
+    except ValueError:
+        nome = ""
+    _registrar("integracao_transferir", None, f"{nome} — {mensagem}")
+    return jsonify({"ok": True, "mensagem": mensagem})
 
 
 @app.route("/admin/integracao/conflitos/<int:conflito_id>/resolver", methods=["POST"])
@@ -2424,7 +2467,14 @@ def api_painel_nota(entrada_id):
 @login_required
 def api_painel_editar(entrada_id):
     usuario = usuario_logado()
-    ok, erro = editar_dados_medico_painel(usuario["id"], entrada_id, _corpo_json())
+    dados = _corpo_json()
+    if str(dados.get("crm") or "").strip():
+        # CRM só pode ser informado quando o médico ainda não tem
+        ok, erro, _ = auth_mod.informar_crm_medico(entrada_id, dados.get("crm"), dados.get("uf"), usuario["id"])
+        if not ok:
+            return jsonify({"ok": False, "erro": erro}), 400
+        integracao.enviar_crm_em_segundo_plano(auth_mod, entrada_id)
+    ok, erro = editar_dados_medico_painel(usuario["id"], entrada_id, dados)
     if not ok:
         return jsonify({"ok": False, "erro": erro}), 400
     return jsonify({"ok": True})
