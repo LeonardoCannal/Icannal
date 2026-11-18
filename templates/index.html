@@ -1142,6 +1142,7 @@
     </div>
     {% endif %}
     <nav>
+      {% if home_ligada %}<a href="{{ url_for('inicio') }}" class="nav-link">Início</a>{% endif %}
       <button id="tab-buscar" class="ativo">Buscar</button>
       <button id="tab-painel">Painel Médico</button>
       <a href="{{ url_for('agenda') }}" class="nav-link">Agenda</a>

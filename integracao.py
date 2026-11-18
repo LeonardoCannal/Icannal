@@ -96,12 +96,12 @@ class ErroIntegracao(Exception):
     pass
 
 
-def _pedido(metodo, caminho, params=None, corpo=None):
+def _pedido(metodo, caminho, params=None, corpo=None, espera=(10, 90)):
     if not situacao_config()["configurada"]:
         raise ErroIntegracao(situacao_config()["problema"] or "Integração não configurada.")
     try:
         r = requests.request(
-            metodo, _url_base() + caminho, params=params, json=corpo, timeout=(10, 90),
+            metodo, _url_base() + caminho, params=params, json=corpo, timeout=espera,
             headers={"Authorization": "Bearer " + _chave(), "Accept": "application/json", "User-Agent": "i.cannal"},
         )
     except requests.Timeout:
@@ -495,6 +495,179 @@ def enviar_crms_pendentes(auth):
         ok, _ = enviar_crm(auth, pid)
         enviados += int(ok)
     return enviados
+
+
+# ---------------------------------------------------------------------------
+# 4. Home do promotor (números de vendas dele no MICHAEL)
+# ---------------------------------------------------------------------------
+# Nada disso é gravado no banco do i.cannal: fica só alguns minutos na
+# memória do servidor, para a página abrir rápido, e some sozinho.
+_CACHE_HOME = {}
+CACHE_HOME_SEG = 300
+CACHE_HOME_MAX = 300
+
+
+def _num(v, inteiro=False):
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return None
+    if n != n or n in (float("inf"), float("-inf")):
+        return None
+    return int(n) if inteiro else round(n, 2)
+
+
+def _indicador(d, inteiro=False):
+    d = d if isinstance(d, dict) else {}
+    return {"valor": _num(d.get("valor"), inteiro) or 0, "variacao_pct": _num(d.get("variacao_pct"))}
+
+
+def _lista_nome_data(itens, limite):
+    saida = []
+    for x in (itens if isinstance(itens, list) else [])[:limite]:
+        if isinstance(x, dict) and _texto(x.get("nome")):
+            saida.append({"nome": _texto(x.get("nome"))[:120], "data": str(x.get("data") or "")[:10]})
+    return saida
+
+
+def _limpar_home(r):
+    """Só deixa passar os campos combinados (nada além disso chega ao navegador)."""
+    ind = r.get("indicadores") if isinstance(r.get("indicadores"), dict) else {}
+    fat = ind.get("faturamento") if isinstance(ind.get("faturamento"), dict) else {}
+    cli = ind.get("clientes_novos") if isinstance(ind.get("clientes_novos"), dict) else {}
+    car = ind.get("carteira") if isinstance(ind.get("carteira"), dict) else {}
+    rec = r.get("pacientes_recompra") if isinstance(r.get("pacientes_recompra"), dict) else {}
+    med = r.get("medicos") if isinstance(r.get("medicos"), dict) else {}
+    pre = r.get("prescricoes_por_mes") if isinstance(r.get("prescricoes_por_mes"), dict) else {}
+    pedidos = []
+    for p in (r.get("pedidos_pagos") if isinstance(r.get("pedidos_pagos"), list) else [])[:300]:
+        if not isinstance(p, dict):
+            continue
+        pedidos.append({
+            "pedido": _texto(p.get("pedido"))[:40], "cliente": _texto(p.get("cliente"))[:120],
+            "pago_em": str(p.get("pago_em") or "")[:25], "pagamento": _texto(p.get("pagamento"))[:60],
+            "frascos": _num(p.get("frascos"), True) or 0, "valor_base": _num(p.get("valor_base")) or 0,
+            "comissao": _num(p.get("comissao")) or 0, "etapa": _texto(p.get("etapa"))[:60],
+        })
+    serie = []
+    for x in (pre.get("serie") if isinstance(pre.get("serie"), list) else [])[-12:]:
+        if isinstance(x, dict) and re.fullmatch(r"\d{4}-\d{2}", str(x.get("mes") or "")):
+            serie.append({"mes": x["mes"], "total": _num(x.get("total"), True) or 0})
+    prescritores = []
+    for x in (med.get("prescritores") if isinstance(med.get("prescritores"), list) else [])[:500]:
+        if isinstance(x, dict) and _texto(x.get("nome")):
+            prescritores.append({"nome": _texto(x.get("nome"))[:120], "crm": crm_numero(_texto(x.get("crm"))),
+                                 "uf": _texto(x.get("uf")).upper()[:2], "cidade": _texto(x.get("cidade"))[:80],
+                                 "ultima_prescricao": str(x.get("ultima_prescricao") or "")[:10]})
+    recompras = []
+    for x in (rec.get("lista") if isinstance(rec.get("lista"), list) else [])[:300]:
+        if isinstance(x, dict) and _texto(x.get("nome")):
+            situacao = x.get("situacao") if x.get("situacao") in ("vai_recomprar", "acabou_de_vencer", "venceu") else "vai_recomprar"
+            recompras.append({"nome": _texto(x.get("nome"))[:120], "data": str(x.get("data") or "")[:10], "situacao": situacao,
+                              "medico_nome": _texto(x.get("medico_nome"))[:120], "medico_crm": crm_numero(_texto(x.get("medico_crm"))),
+                              "medico_uf": _texto(x.get("medico_uf")).upper()[:2], "medico_cidade": _texto(x.get("medico_cidade"))[:80]})
+    competencias = [c for c in (r.get("competencias") if isinstance(r.get("competencias"), list) else [])
+                    if re.fullmatch(r"\d{4}-\d{2}", str(c))][:36]
+    return {
+        "competencia": str(r.get("competencia") or "")[:7],
+        "em_andamento": bool(r.get("em_andamento")),
+        "ate_dia": _num(r.get("ate_dia"), True),
+        "competencias": competencias,
+        "indicadores": {
+            "faturamento": {**_indicador(fat), "anterior_ate_dia": _num(fat.get("anterior_ate_dia")),
+                            "anterior_mes_inteiro": _num(fat.get("anterior_mes_inteiro"))},
+            "pedidos_pagos": _indicador(ind.get("pedidos_pagos"), True),
+            "ticket_medio": _indicador(ind.get("ticket_medio")),
+            "frascos_vendidos": _indicador(ind.get("frascos_vendidos"), True),
+            "comissao": _indicador(ind.get("comissao")),
+            "clientes_novos": {**_indicador(cli, True), "pacientes_compraram": _num(cli.get("pacientes_compraram"), True) or 0},
+            "carteira": {"clientes": _num(car.get("clientes"), True) or 0, "medicos": _num(car.get("medicos"), True) or 0,
+                         "medicos_novos": _num(car.get("medicos_novos"), True) or 0},
+        },
+        "pedidos_pagos": pedidos,
+        "pacientes_recompra": {
+            "vao_recomprar": _num(rec.get("vao_recomprar"), True) or 0,
+            "acabaram_de_vencer": _num(rec.get("acabaram_de_vencer"), True) or 0,
+            "venceram_ha_mais_tempo": _num(rec.get("venceram_ha_mais_tempo"), True) or 0,
+            "proximas": _lista_nome_data(rec.get("proximas"), 8),
+            "lista": recompras,
+        },
+        "medicos": {
+            "ja_prescreveram": _num(med.get("ja_prescreveram"), True) or 0,
+            "nunca_prescreveram": _num(med.get("nunca_prescreveram"), True) or 0,
+            "ultimas_prescricoes": _lista_nome_data(med.get("ultimas_prescricoes"), 8),
+            "prescritores": prescritores,
+        },
+        "prescricoes_por_mes": {"no_mes": _num(pre.get("no_mes"), True) or 0,
+                                "ultimos_12_meses": _num(pre.get("ultimos_12_meses"), True) or 0, "serie": serie},
+    }
+
+
+def marcar_visitas(dados, visitas):
+    """Junta os números do MICHAEL com as visitas do mês no i.cannal: diz, para
+    cada médico que já prescreveu e para o médico de cada paciente de
+    recompra, se o promotor o visitou no mês (e quando). Devolve uma cópia."""
+    por_crm, por_nome_cidade, por_nome = {}, {}, {}
+    for v in visitas:  # já vêm da mais recente para a mais antiga
+        quando = str(v.get("visitado_em") or "")
+        c = chave_crm_uf(v.get("medico_crm"), v.get("medico_uf"))
+        if c:
+            por_crm.setdefault(c, quando)
+        n = chave_nome_cidade(v.get("medico_nome"), v.get("medico_cidade"))
+        if n:
+            por_nome_cidade.setdefault(n, quando)
+            por_nome.setdefault(n.split("|")[0], quando)
+
+    def visitado(nome, crm, uf, cidade):
+        c = chave_crm_uf(crm, uf)
+        if c:
+            if c in por_crm:
+                return por_crm[c]
+            if uf:  # tem CRM e UF e não bateu: não arrisca pelo nome
+                return None
+        n = chave_nome_cidade(nome, cidade)
+        if not n:
+            return None
+        return por_nome_cidade.get(n) if cidade else por_nome.get(n.split("|")[0])
+
+    novo = json.loads(json.dumps(dados))
+    for m in novo["medicos"]["prescritores"]:
+        m["visitado_em"] = visitado(m["nome"], m["crm"], m["uf"], m["cidade"])
+    for p in novo["pacientes_recompra"]["lista"]:
+        p["medico_visitado_em"] = (visitado(p["medico_nome"], p["medico_crm"], p["medico_uf"], p["medico_cidade"])
+                                   if p["medico_nome"] else None)
+    return novo
+
+
+def buscar_home(cpf, competencia=""):
+    """Números do promotor (pelo CPF) no MICHAEL. Devolve (estado, dados):
+    "ok" + os dados, "sem_dados" (o CPF não é promotor lá) ou "erro" + mensagem."""
+    cpf = cpf_digitos(cpf)
+    competencia = competencia if re.fullmatch(r"\d{4}-\d{2}", competencia or "") else ""
+    if len(cpf) != 11:
+        return "sem_dados", None
+    chave = (cpf, competencia)
+    agora = time.monotonic()
+    guardado = _CACHE_HOME.get(chave)
+    if guardado and agora - guardado[0] < CACHE_HOME_SEG:
+        return guardado[1], guardado[2]
+    try:
+        r = _pedido("GET", f"/api/v1/promotores/{cpf}/home", params={"competencia": competencia} if competencia else None,
+                    espera=(5, 25))
+    except ErroIntegracao as e:
+        return "erro", str(e)
+    if not isinstance(r, dict):
+        return "erro", "O MICHAEL respondeu fora do formato combinado."
+    if r.get("ok") is False:
+        estado, dados = ("sem_dados", None) if r.get("erro") == "promotor_nao_encontrado" else ("erro", _erro_externo(r))
+    else:
+        estado, dados = "ok", _limpar_home(r)
+    if estado != "erro":
+        if len(_CACHE_HOME) >= CACHE_HOME_MAX:
+            for k in sorted(_CACHE_HOME, key=lambda k: _CACHE_HOME[k][0])[:CACHE_HOME_MAX // 3]:
+                _CACHE_HOME.pop(k, None)
+        _CACHE_HOME[chave] = (agora, estado, dados)
+    return estado, dados
 
 
 # ---------------------------------------------------------------------------

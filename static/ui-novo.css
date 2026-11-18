@@ -1320,3 +1320,112 @@ body.ui-novo .editar-crm-dica{ font-weight: 400; color: var(--pedra); font-size:
 body.ui-novo .in-acoes{ min-width: 170px; }
 body.ui-novo .in-acoes .btn-primario{ min-height: 36px; padding: 0 14px; font-size: 13px; }
 body.ui-novo .in-acoes .rd-btn-sec{ margin-top: 8px; }
+
+/* ---------- Início (números de vendas do promotor, vindos do MICHAEL) ---------- */
+body.ui-novo main.ini{ max-width: 1240px; --ini-ruim: #A41F1F; --ini-atencao: #9A6200; }
+body.ui-novo.escuro main.ini{ --ini-ruim: #FF9A9A; --ini-atencao: #F2C46B; }
+body.ui-novo .ini-hero{ display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 0; padding-bottom: 28px; }
+body.ui-novo .ini-hero h1{ max-width: none; text-wrap: balance; }
+body.ui-novo .ini-filtros{ display: flex; gap: 12px; flex-wrap: wrap; }
+body.ui-novo .ini-filtro label{ display: block; font-size: 12px; font-weight: 600; color: var(--ardosia); margin-bottom: 5px; }
+body.ui-novo .ini-filtro select{ min-height: 40px; min-width: 130px; max-width: 260px; border-radius: 10px; border: 1px solid var(--linha-forte); background-color: var(--tela); color: var(--tinta); padding: 0 12px; font: inherit; font-size: 14px; }
+body.ui-novo .ini-filtro select:focus-visible, body.ui-novo .ini-atalho:focus-visible{ outline: 2px solid var(--verde); outline-offset: 2px; }
+body.ui-novo .ini [hidden]{ display: none !important; }
+body.ui-novo .ini-so-leitor{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+body.ui-novo .ini-kpis{ display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+body.ui-novo .ini-kpi{ background: var(--tela); border: 1px solid var(--linha); border-radius: 16px; padding: 16px 16px 14px; min-width: 0; min-height: 132px; box-shadow: 0 1px 2px rgba(23,27,34,.04); }
+body.ui-novo .ini-kpi h3{ font-size: 12.5px; font-weight: 600; color: var(--ardosia); margin: 0 0 10px; }
+body.ui-novo .ini-valor{ font-family: 'Montserrat', sans-serif; font-size: clamp(19px, 1.5vw, 23px); font-weight: 700; line-height: 1.15; color: var(--tinta); margin: 0 0 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+body.ui-novo .ini-valor small{ font-size: 13px; font-weight: 500; color: var(--ardosia); }
+body.ui-novo .ini-var{ font-size: 11.5px; line-height: 1.4; margin: 0; color: var(--pedra); }
+body.ui-novo .ini-var strong{ font-weight: 700; white-space: nowrap; }
+body.ui-novo .ini-var.sobe strong{ color: var(--verde-texto); }
+body.ui-novo .ini-var.desce strong{ color: var(--ini-ruim); }
+body.ui-novo .ini-nota{ font-size: 11.5px; line-height: 1.45; color: var(--pedra); margin: 6px 0 0; }
+body.ui-novo .ini-kpi.destaque{ background: var(--verde-acao); border-color: transparent; }
+body.ui-novo .ini-kpi.destaque h3, body.ui-novo .ini-kpi.destaque .ini-valor, body.ui-novo .ini-kpi.destaque .ini-var,
+body.ui-novo .ini-kpi.destaque .ini-var strong, body.ui-novo .ini-kpi.destaque .ini-nota{ color: #fff; }
+body.ui-novo .ini-kpi.destaque h3, body.ui-novo .ini-kpi.destaque .ini-var, body.ui-novo .ini-kpi.destaque .ini-nota{ opacity: .92; }
+
+body.ui-novo .ini-card{ background: var(--tela); border: 1px solid var(--linha); border-radius: 16px; padding: 20px 22px; margin-bottom: 16px; min-width: 0; box-shadow: 0 1px 2px rgba(23,27,34,.04); }
+body.ui-novo .ini-card-topo{ display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+body.ui-novo .ini-card h2{ font-size: 16px; font-weight: 700; color: var(--tinta); margin: 0; }
+body.ui-novo .ini-sub{ font-size: 13px; color: var(--pedra); }
+body.ui-novo .ini-vazio{ font-size: 13.5px; color: var(--pedra); margin: 4px 0 2px; }
+body.ui-novo .ini-rolagem{ overflow-x: auto; margin: 0 -6px; }
+body.ui-novo .ini-tabela{ width: 100%; border-collapse: collapse; font-size: 13.5px; }
+body.ui-novo .ini-tabela th{ text-align: left; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--pedra); padding: 8px 6px; border-bottom: 1px solid var(--linha-forte); white-space: nowrap; }
+body.ui-novo .ini-tabela td{ padding: 11px 6px; border-bottom: 1px solid var(--linha); color: var(--tinta); vertical-align: top; }
+body.ui-novo .ini-tabela tr:last-child td{ border-bottom: 0; }
+body.ui-novo .ini-tabela .num{ text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+body.ui-novo .ini-etapa{ display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--verde-suave); color: var(--verde-texto); white-space: nowrap; }
+
+body.ui-novo .ini-tres{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+body.ui-novo .ini-numeros{ display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
+body.ui-novo .ini-numero strong{ display: block; font-family: 'Montserrat', sans-serif; font-size: 26px; font-weight: 700; line-height: 1.1; color: var(--ardosia); font-variant-numeric: tabular-nums; }
+body.ui-novo .ini-numero span{ font-size: 12px; color: var(--pedra); }
+body.ui-novo .ini-numero.bom strong{ color: var(--verde-texto); }
+body.ui-novo .ini-numero.atencao strong{ color: var(--ini-atencao); }
+body.ui-novo .ini-numero.ruim strong{ color: var(--ini-ruim); }
+body.ui-novo .ini-lista-titulo{ font-size: 12px; font-weight: 600; color: var(--pedra); margin: 0 0 4px; }
+body.ui-novo .ini-lista{ list-style: none; margin: 0; padding: 0; }
+body.ui-novo .ini-lista li{ display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--linha); font-size: 13px; color: var(--tinta); }
+body.ui-novo .ini-lista li span{ min-width: 0; overflow-wrap: anywhere; }
+body.ui-novo .ini-lista time{ color: var(--ardosia); font-variant-numeric: tabular-nums; white-space: nowrap; }
+body.ui-novo .ini-barra{ height: 8px; border-radius: 999px; background: var(--superficie); overflow: hidden; margin: 0 0 16px; }
+body.ui-novo .ini-barra span{ display: block; height: 100%; border-radius: 999px; background: var(--verde-acao); }
+body.ui-novo .ini-grafico{ display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 5px; height: 150px; align-items: end; }
+body.ui-novo .ini-coluna{ display: grid; grid-template-rows: 16px minmax(0, 1fr) 16px; height: 100%; text-align: center; min-width: 0; }
+body.ui-novo .ini-coluna-valor{ font-size: 10.5px; color: var(--ardosia); font-variant-numeric: tabular-nums; align-self: end; }
+body.ui-novo .ini-coluna-barra{ align-self: end; width: 100%; background: var(--verde); opacity: .45; border-radius: 4px 4px 0 0; }
+body.ui-novo .ini-coluna.atual .ini-coluna-barra{ opacity: 1; background: var(--verde-acao); }
+body.ui-novo .ini-coluna.atual .ini-coluna-mes{ color: var(--tinta); font-weight: 700; }
+body.ui-novo .ini-coluna-mes{ font-size: 10.5px; color: var(--pedra); align-self: end; border-top: 1px solid var(--linha-forte); padding-top: 3px; }
+
+body.ui-novo .ini-atalhos{ display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; background: none; padding: 0; border-radius: 0; }
+body.ui-novo .ini-atalho{ display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--linha-forte); background: var(--tela); color: var(--tinta); font: inherit; font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer; transition: border-color .15s ease, background-color .15s ease; }
+body.ui-novo .ini-atalho:hover{ border-color: var(--verde); background: var(--verde-suave); }
+body.ui-novo .ini-atalho.principal{ background: var(--verde-acao); border-color: transparent; color: #fff; }
+body.ui-novo .ini-atalho.principal:hover{ filter: brightness(.94); background: var(--verde-acao); }
+body.ui-novo .ini-aviso h2{ margin-bottom: 8px; }
+body.ui-novo .ini-aviso p{ font-size: 14.5px; line-height: 1.6; color: var(--ardosia); margin: 0 0 14px; max-width: 60ch; }
+body.ui-novo .ini-carregando{ font-size: 13.5px; color: var(--pedra); margin: 0 0 16px; }
+body.ui-novo .ini-esqueleto{ border-color: transparent; background: linear-gradient(100deg, var(--superficie) 30%, var(--tela) 50%, var(--superficie) 70%); background-size: 300% 100%; animation: ini-brilho 1.4s ease-in-out infinite; }
+@keyframes ini-brilho{ from{ background-position: 100% 0; } to{ background-position: 0 0; } }
+body.ui-novo #ini-conteudo.trocando{ opacity: .5; transition: opacity .15s ease; }
+@media (prefers-reduced-motion: reduce){ body.ui-novo .ini-esqueleto{ animation: none; } }
+@media (max-width: 1180px){ body.ui-novo .ini-kpis{ grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 900px){ body.ui-novo .ini-tres{ grid-template-columns: 1fr; } body.ui-novo .ini-kpis{ grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px){
+  body.ui-novo .ini-kpis{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  body.ui-novo .ini-kpi{ min-height: 0; padding: 14px; }
+  body.ui-novo .ini-kpi.destaque{ grid-column: 1 / -1; }
+  body.ui-novo .ini-valor{ font-size: 21px; }
+  body.ui-novo .ini-card{ padding: 16px; }
+  body.ui-novo .ini-filtro select{ font-size: 16px; }
+  body.ui-novo .ini-rolagem{ overflow: visible; margin: 0; }
+  body.ui-novo .ini-tabela thead{ display: none; }
+  body.ui-novo .ini-tabela, body.ui-novo .ini-tabela tbody, body.ui-novo .ini-tabela tr, body.ui-novo .ini-tabela td{ display: block; }
+  body.ui-novo .ini-tabela tr{ border: 1px solid var(--linha); border-radius: 12px; padding: 6px 12px; margin-bottom: 10px; }
+  body.ui-novo .ini-tabela td{ display: flex; justify-content: space-between; gap: 14px; padding: 7px 0; text-align: right; }
+  body.ui-novo .ini-tabela td::before{ content: attr(data-rotulo); color: var(--pedra); font-size: 12px; font-weight: 600; text-align: left; flex: none; }
+  body.ui-novo .ini-atalho{ flex: 1 1 auto; justify-content: center; }
+}
+body.ui-novo .ini-projecao{ font-size: 12px; line-height: 1.4; margin: 0 0 6px; color: var(--ardosia); }
+body.ui-novo .ini-projecao strong{ font-size: 13.5px; white-space: nowrap; }
+body.ui-novo .ini-kpi.destaque .ini-projecao{ color: #fff; }
+body.ui-novo .ini-lista-topo{ display: flex; align-items: baseline; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; margin-bottom: 4px; }
+body.ui-novo .ini-lista-topo .ini-lista-titulo{ margin: 0; }
+body.ui-novo .ini-lista-topo .ini-sub{ font-size: 12px; }
+body.ui-novo .ini-filtro-check{ display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ardosia); cursor: pointer; min-height: 28px; }
+body.ui-novo .ini-filtro-check input{ width: 16px; height: 16px; margin: 0; accent-color: var(--verde-acao); }
+body.ui-novo .ini-lista-rica{ max-height: 344px; overflow-y: auto; overscroll-behavior: contain; margin-right: -8px; padding-right: 8px; }
+body.ui-novo .ini-lista-rica li{ align-items: center; }
+body.ui-novo .ini-lista-rica li > div{ min-width: 0; }
+body.ui-novo .ini-lista-rica li span{ overflow-wrap: anywhere; }
+body.ui-novo .ini-lista-rica small{ display: block; font-size: 11.5px; color: var(--pedra); margin-top: 2px; line-height: 1.4; }
+body.ui-novo .ini-lista-rica li.ini-vazio{ display: block; }
+body.ui-novo .ini-selo{ flex: none; font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+body.ui-novo .ini-selo.ok{ background: var(--verde-suave); color: var(--verde-texto); }
+body.ui-novo .ini-selo.falta{ background: var(--alerta-fundo); color: var(--alerta-texto); }

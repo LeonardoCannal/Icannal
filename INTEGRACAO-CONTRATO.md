@@ -161,6 +161,67 @@ Respostas (sempre `200`):
 - Já tem outro CRM → `ja_tem_crm`, sem alterar.
 - Outro médico já tem esse CRM + UF → `crm_em_uso`, sem alterar.
 
+## 5. Home do promotor
+
+`GET /api/v1/promotores/<cpf>/home?competencia=AAAA-MM`
+
+Os números de vendas de UM promotor (pelo CPF, 11 dígitos), os mesmos da Home
+dele no MICHAEL. Sem `competencia` = mês atual. O i.cannal mostra isso na
+página **Início** do próprio promotor e não grava nada no banco dele.
+
+Promotor não encontrado: `{"ok": false, "erro": "promotor_nao_encontrado"}` (status 200).
+
+```json
+{
+  "competencia": "2026-11",
+  "em_andamento": true,
+  "ate_dia": 18,
+  "competencias": ["2026-11", "2026-10", "2026-09"],
+  "indicadores": {
+    "faturamento": {"valor": 8450.0, "variacao_pct": 184.9, "anterior_ate_dia": 2966.0, "anterior_mes_inteiro": 10700.0},
+    "pedidos_pagos": {"valor": 5, "variacao_pct": 150.0},
+    "ticket_medio": {"valor": 1690.0, "variacao_pct": 13.9},
+    "frascos_vendidos": {"valor": 14, "variacao_pct": 133.3},
+    "comissao": {"valor": 845.5, "variacao_pct": 184.9},
+    "clientes_novos": {"valor": 2, "variacao_pct": 0, "pacientes_compraram": 5},
+    "carteira": {"clientes": 438, "medicos": 43, "medicos_novos": 15}
+  },
+  "pedidos_pagos": [
+    {"pedido": "10482", "cliente": "Nome do paciente", "pago_em": "2026-11-16T14:20:00Z", "pagamento": "Pix",
+     "frascos": 3, "valor_base": 1890.0, "comissao": 189.0, "etapa": "Enviado"}
+  ],
+  "pacientes_recompra": {
+    "vao_recomprar": 24, "acabaram_de_vencer": 2, "venceram_ha_mais_tempo": 385,
+    "proximas": [{"nome": "Nome do paciente", "data": "2026-11-18"}],
+    "lista": [
+      {"nome": "Nome do paciente", "data": "2026-11-18", "situacao": "vai_recomprar",
+       "medico_nome": "Nome do médico", "medico_crm": "123456", "medico_uf": "SP", "medico_cidade": "Sorocaba"}
+    ]
+  },
+  "medicos": {
+    "ja_prescreveram": 15, "nunca_prescreveram": 28,
+    "ultimas_prescricoes": [{"nome": "Nome do médico", "data": "2026-11-09"}],
+    "prescritores": [
+      {"nome": "Nome do médico", "crm": "123456", "uf": "SP", "cidade": "Sorocaba", "ultima_prescricao": "2026-11-09"}
+    ]
+  },
+  "prescricoes_por_mes": {
+    "no_mes": 1, "ultimos_12_meses": 57,
+    "serie": [{"mes": "2025-12", "total": 4}, {"mes": "2026-11", "total": 1}]
+  }
+}
+```
+
+- `variacao_pct`: variação contra o mês anterior, no mesmo intervalo de dias quando o mês está em andamento (`null` se não há base).
+- `competencias`: meses que têm dados, do mais novo para o mais antigo.
+- `pacientes_recompra.lista`: os pacientes que vão recomprar e os que acabaram de vencer (`situacao`: `vai_recomprar` ou `acabou_de_vencer`), cada um com o médico que prescreveu. Até 300.
+- `medicos.prescritores`: todos os médicos que já prescreveram para esse promotor. Até 500.
+- `serie`: 12 meses, do mais antigo para o mais novo.
+- Só esses campos: nada de CPF, telefone ou endereço de paciente.
+
+O i.cannal junta isso com as visitas que o promotor registrou no mês (que
+ficam no i.cannal) para mostrar quais médicos ele já visitou.
+
 ## O que o i.cannal faz com cada médico recebido
 
 | Situação | O que acontece |

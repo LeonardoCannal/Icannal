@@ -153,6 +153,7 @@
   <div class="header-direita">
     {% include '_botao_tema.html' %}
   <nav>
+      {% if home_ligada %}<a href="{{ url_for('inicio') }}" class="nav-link">Início</a>{% endif %}
       <a href="{{ url_for('index') }}" class="nav-link">Buscar</a>
       <a href="{{ url_for('index') }}#painel" class="nav-link">Painel Médico</a>
       <a href="{{ url_for('agenda') }}" class="nav-link">Agenda</a>

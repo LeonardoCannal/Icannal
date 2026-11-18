@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i.cannal · Início</title>
+<link rel="preload" href="/static/fontes/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fontes/montserrat.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="i.cannal">
+<style>
+  :root{
+    --roxo: #88AD36;
+    --roxo-escuro: #343C4C;
+    --roxo-suave: #E9F0DA;
+    --fundo: #F6F7F2;
+    --fundo-card: #FFFFFF;
+    --texto: #232935;
+    --texto-suave: #7A8175;
+    --borda: #E7EADF;
+    --marinho-profundo: #171B22;
+  }
+  *{ box-sizing: border-box; }
+  body{ margin:0; font-family:'Montserrat',sans-serif; background:var(--fundo); color:var(--texto); }
+
+  h1,h2,h3,.brand{ font-family:'Montserrat',sans-serif; }
+
+  header{ background:var(--marinho-profundo); color:#fff; padding:20px 32px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+  .brand{ display:flex; align-items:center; }
+  .logo-completo{ height:36px; width:auto; display:block; }
+
+  nav{ display:flex; gap:4px; background:rgba(255,255,255,.07); padding:4px; border-radius:999px; align-items:center; flex-wrap:wrap; }
+  .nav-link{ color:rgba(255,255,255,.72); text-decoration:none; padding:9px 19px; font-size:14px; font-weight:500; border-radius:999px; }
+  .nav-link:hover{ color:#fff; }
+  .nav-link.ativo{ background:var(--roxo); color:#fff; }
+
+  .sub-header{ background:var(--roxo); color:#fff; padding:10px 32px; font-size:13px; text-align:center; }
+
+  main{ max-width:720px; margin:0 auto; padding:0 24px 80px; }
+
+  .hero{
+    background:var(--marinho-profundo);
+    border-radius:24px;
+    padding:36px 32px 76px;
+    margin:32px 0 -48px;
+    position:relative;
+    overflow:hidden;
+  }
+  .hero::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background-image:
+      radial-gradient(circle at 88% 24%, rgba(136,173,54,.5) 0, rgba(136,173,54,.5) 3px, transparent 4px),
+      radial-gradient(circle at 78% 58%, rgba(168,204,90,.4) 0, rgba(168,204,90,.4) 2.5px, transparent 3.5px);
+    pointer-events:none;
+  }
+  .hero h1{ position:relative; font-size:27px; font-weight:800; letter-spacing:-0.02em; margin:0 0 8px; color:#fff; }
+  .hero p{ position:relative; color:rgba(255,255,255,.62); font-size:14.5px; line-height:1.6; margin:0; }
+
+  .card-flutuante{ position:relative; z-index:2; }
+
+  .card{
+    background:var(--fundo-card);
+    border:1px solid var(--borda);
+    border-radius:16px;
+    padding:26px;
+    box-shadow:0 1px 2px rgba(23,27,34,.05), 0 18px 36px rgba(23,27,34,.07);
+    margin-bottom:24px;
+  }
+
+  .card h2{ font-size:16px; font-weight:700; margin:0 0 18px; color:var(--roxo-escuro); }
+
+
+
+
+
+
+</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='ui-novo.css') }}">
+</head>
+<body class="ui-novo">
+{% include '_tema_body.html' %}
+<header>
+  <div class="brand">
+    <svg class="logo-completo" viewBox="0 0 280 44" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="i.cannal">
+      <polygon points="2,0 16,0 32,44 18,44" fill="#88AD36"/>
+      <polygon points="25,0 39,0 55,44 41,44" fill="#88AD36"/>
+      <text x="72" y="34" font-family="Montserrat, sans-serif" font-weight="900" font-size="34" textLength="204" lengthAdjust="spacing">
+        <tspan fill="#A8CC5A">I.</tspan><tspan fill="#FFFFFF">CANNAL</tspan>
+      </text>
+    </svg>
+  </div>
+  <div class="header-direita">
+    {% include '_botao_tema.html' %}
+  <nav>
+      <a href="{{ url_for('inicio') }}" class="nav-link ativo" aria-current="page">Início</a>
+      <a href="{{ url_for('index') }}" class="nav-link">Buscar</a>
+      <a href="{{ url_for('index') }}#painel" class="nav-link">Painel Médico</a>
+      <a href="{{ url_for('agenda') }}" class="nav-link">Agenda</a>
+      <a href="{{ url_for('artigos') }}" class="nav-link">Artigos</a>
+      {% if current_user.is_admin %}
+      <a href="{{ url_for('admin') }}" class="nav-link">Painel Admin</a>
+      {% endif %}
+      <a href="{{ url_for('perfil') }}" class="nav-link">Meu Perfil</a>
+      <a href="{{ url_for('logout') }}" class="nav-link">Sair</a>
+    </nav>
+  </div>
+</header>
+
+<main class="ini" id="ini" data-promotor="{{ alvo.id if vendo_outro else '' }}">
+  <div class="hero ini-hero">
+    <div>
+      <h1>{% if vendo_outro %}{{ alvo.nome }}{% else %}Olá, {{ primeiro_nome }}{% endif %}</h1>
+      <p id="ini-sub">Seus números de vendas neste mês.</p>
+    </div>
+    <div class="ini-filtros">
+      {% if promotores %}
+      <div class="ini-filtro">
+        <label for="ini-promotor">Promotor</label>
+        <select id="ini-promotor">
+          <option value="">Meus números</option>
+          {% for p in promotores %}{% if p.id != current_user.id %}<option value="{{ p.id }}" {{ 'selected' if vendo_outro and p.id == alvo.id }}>{{ p.nome }}</option>{% endif %}{% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <div class="ini-filtro">
+        <label for="ini-mes">Mês</label>
+        <select id="ini-mes" disabled><option value="">Mês atual</option></select>
+      </div>
+    </div>
+  </div>
+
+  <div id="ini-estado" class="ini-estado" aria-live="polite">
+    <div class="ini-kpis" aria-hidden="true">
+      {% for _ in range(7) %}<div class="ini-kpi ini-esqueleto"></div>{% endfor %}
+    </div>
+    <p class="ini-carregando">Buscando seus números…</p>
+  </div>
+
+  <div id="ini-conteudo" hidden>
+    <div class="ini-kpis" id="ini-kpis"></div>
+
+    <section class="ini-card" aria-labelledby="ini-pedidos-titulo">
+      <div class="ini-card-topo">
+        <h2 id="ini-pedidos-titulo">Pedidos pagos</h2>
+        <span class="ini-sub" id="ini-pedidos-qtd"></span>
+      </div>
+      <div id="ini-pedidos"></div>
+    </section>
+
+    <div class="ini-tres">
+      <section class="ini-card" aria-labelledby="ini-rec-titulo">
+        <div class="ini-card-topo"><h2 id="ini-rec-titulo">Pacientes e recompra</h2></div>
+        <div id="ini-rec"></div>
+      </section>
+      <section class="ini-card" aria-labelledby="ini-med-titulo">
+        <div class="ini-card-topo"><h2 id="ini-med-titulo">Médicos</h2></div>
+        <div id="ini-med"></div>
+      </section>
+      <section class="ini-card" aria-labelledby="ini-pre-titulo">
+        <div class="ini-card-topo"><h2 id="ini-pre-titulo">Prescrições por mês</h2></div>
+        <div id="ini-pre"></div>
+      </section>
+    </div>
+  </div>
+
+  <nav class="ini-atalhos" aria-label="Atalhos">
+    <a href="{{ url_for('index') }}" class="ini-atalho principal">Prospectar médicos</a>
+    <a href="{{ url_for('index') }}#painel" class="ini-atalho">Meu painel médico</a>
+    <a href="{{ url_for('agenda') }}" class="ini-atalho">Agenda</a>
+  </nav>
+</main>
+
+<script src="{{ url_for('static', filename='inicio.js') }}"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+  }
+</script>
+{% with aba_mobile='inicio' %}{% include '_barra_mobile.html' %}{% endwith %}
+</body>
+</html>

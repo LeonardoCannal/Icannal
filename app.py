@@ -617,7 +617,7 @@ def cadastro():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if usuario_logado():
-        return redirect(url_for("index"))
+        return redirect(_pagina_inicial())
 
     erro = None
     if request.method == "POST":
@@ -644,7 +644,7 @@ def login():
                 return render_template("login.html", erro=erro)
             atualizar_ultimo_login(usuario["id"])
             fazer_login(usuario["id"])
-            return redirect(url_for("index"))
+            return redirect(_pagina_inicial())
 
         _registrar_falha_login(chave)
         _passou_do_limite("login_ip", _ip_visitante(), 30, 600)
@@ -2502,6 +2502,81 @@ def api_painel_cancelar_agendamento(entrada_id):
     usuario = usuario_logado()
     ok = cancelar_agendamento(usuario["id"], entrada_id)
     return jsonify({"ok": ok})
+
+
+# ---------------------------------------------------------------------------
+# Início: os números de vendas do promotor, vindos do MICHAEL pelo CPF
+# ---------------------------------------------------------------------------
+def _home_ligada():
+    return integracao.situacao_config()["configurada"]
+
+
+def _pagina_inicial():
+    """Para onde a pessoa vai ao entrar: o Início (se a integração com o
+    MICHAEL está configurada) ou a prospecção."""
+    return url_for("inicio") if _home_ligada() else url_for("index")
+
+
+@app.context_processor
+def _injetar_home_ligada():
+    return {"home_ligada": _home_ligada()}
+
+
+def _promotor_da_home(usuario):
+    """O próprio usuário; o admin pode escolher outro com ?promotor=ID."""
+    pedido = request.args.get("promotor", "")
+    if usuario["is_admin"] and pedido.isdigit():
+        outro = auth_mod.buscar_usuario_por_id(int(pedido))
+        if outro:
+            return outro
+    return usuario
+
+
+@app.route("/inicio")
+@login_required
+def inicio():
+    if not _home_ligada():
+        return redirect(url_for("index"))
+    usuario = usuario_logado()
+    alvo = _promotor_da_home(usuario)
+    promotores = []
+    if usuario["is_admin"]:
+        promotores = [{"id": u["id"], "nome": u["nome"]} for u in auth_mod.listar_promotores_relatorio()]
+    resposta = app.make_response(render_template(
+        "inicio.html", alvo=alvo, vendo_outro=(alvo["id"] != usuario["id"]), promotores=promotores,
+        primeiro_nome=relatorio_diario.primeiro_nome(alvo["nome"]),
+    ))
+    resposta.headers["Cache-Control"] = "no-store"
+    return resposta
+
+
+@app.route("/api/inicio")
+@login_required
+def api_inicio():
+    if not _home_ligada():
+        return jsonify({"estado": "desligada"}), 404
+    usuario = usuario_logado()
+    if _passou_do_limite("inicio", str(usuario["id"]), 60, 300):
+        return jsonify({"estado": "erro", "mensagem": "Muitas atualizações seguidas. Aguarde um minuto."}), 429
+    alvo = _promotor_da_home(usuario)
+    estado, dados = integracao.buscar_home(alvo["cpf"], request.args.get("competencia", ""))
+    if estado == "ok":
+        # visitas do promotor no mês escolhido (ficam no i.cannal)
+        try:
+            ano, mes = (int(x) for x in dados["competencia"].split("-"))
+            fim = f"{ano + 1}-01-01" if mes == 12 else f"{ano}-{mes + 1:02d}-01"
+            visitas = auth_mod.visitas_do_periodo(alvo["id"], _dia_br_para_utc(f"{ano}-{mes:02d}-01"), _dia_br_para_utc(fim))
+        except (ValueError, KeyError, TypeError):
+            visitas = []
+        corpo = {"estado": "ok", "dados": integracao.marcar_visitas(dados, visitas)}
+    elif estado == "sem_dados":
+        corpo = {"estado": "sem_dados"}
+    else:
+        # o motivo técnico só interessa ao admin
+        corpo = {"estado": "erro", "mensagem": dados if usuario["is_admin"] else "Não foi possível buscar seus números agora."}
+    resposta = jsonify(corpo)
+    resposta.headers["Cache-Control"] = "no-store"
+    return resposta
 
 
 @app.route("/agenda")
