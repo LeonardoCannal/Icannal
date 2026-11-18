@@ -1306,3 +1306,9 @@ body.ui-novo .rg-acao-criar_chave_api, body.ui-novo .rg-acao-revogar_chave_api{ 
 body.ui-novo table.tabela-admin.api-endpoints{ min-width: 0; width: 100%; margin: 8px 0 12px; }
 body.ui-novo .api-endpoints td{ white-space: normal; vertical-align: top; font-size: 13px; }
 body.ui-novo .api-endpoints td:first-child{ white-space: nowrap; }
+body.ui-novo .in-numeros li{ display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--linha); }
+body.ui-novo .in-numeros li:last-child{ border-bottom: 0; }
+body.ui-novo .in-numeros strong{ font-variant-numeric: tabular-nums; }
+body.ui-novo .in-tabela td{ white-space: normal; vertical-align: top; }
+body.ui-novo #in-cfg .campo{ margin: 10px 0; }
+body.ui-novo #in-cfg select{ min-height: 38px; border-radius: 10px; border: 1px solid var(--linha-forte); background: var(--tela); color: var(--tinta); padding: 0 10px; font: inherit; }
