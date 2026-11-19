@@ -113,14 +113,36 @@ def dados_vendas(auth, promotor, hoje=None):
         medicos = [m for m in prescritores if not m.get("visitado_em") and not m.get("pedidos_pagos_no_mes")]
         recompras = [p for p in dados["pacientes_recompra"]["lista"] if not p.get("medico_visitado_em")]
         recompras.sort(key=lambda p: p.get("data") or "9999")
-        return {"medicos": medicos, "sabe_vendas": sabe_vendas, "recompras": recompras}
+        ind = dados["indicadores"]
+        faturamento = ind["faturamento"]["valor"] or 0
+        projecao = None
+        if dados.get("em_andamento") and dados.get("ate_dia"):
+            dias_no_mes = (date(hoje.year + (hoje.month == 12), hoje.month % 12 + 1, 1) - timedelta(days=1)).day
+            projecao = round(faturamento / dados["ate_dia"] * dias_no_mes)
+        return {"medicos": medicos, "sabe_vendas": sabe_vendas, "recompras": recompras,
+                "faturamento": faturamento, "projecao": projecao, "comissao": ind["comissao"]["valor"] or 0}
     except Exception:
         return None
+
+
+def moeda(valor):
+    """1234.5 → 'R$ 1.234,50'; valores redondos saem sem centavos."""
+    try:
+        v = float(valor)
+    except (TypeError, ValueError):
+        v = 0.0
+    texto = f"{v:,.0f}" if v == int(v) else f"{v:,.2f}"
+    return "R$ " + texto.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def _linhas_vendas(vendas, hoje):
     mes = MESES[hoje.month - 1]
     linhas = []
+    if vendas.get("faturamento") is not None:
+        linhas += ["", f"💰 *Suas vendas em {mes}*", f"• Faturamento até agora: {moeda(vendas['faturamento'])}"]
+        if vendas.get("projecao") is not None:
+            linhas.append(f"• Projeção até o fim do mês: {moeda(vendas['projecao'])}")
+        linhas.append(f"• Comissão do mês: {moeda(vendas.get('comissao'))}")
     medicos = vendas.get("medicos") or []
     if medicos:
         titulo = (f"Já prescreveram, sem venda e sem visita em {mes}" if vendas.get("sabe_vendas")
@@ -132,7 +154,7 @@ def _linhas_vendas(vendas, hoje):
             linhas.append(f"_e mais {len(medicos) - MAX_ITENS_VENDAS} médico(s)_")
     recompras = vendas.get("recompras") or []
     if recompras:
-        linhas += ["", f"🔁 *Pacientes de recompra para visitar* ({len(recompras)})"]
+        linhas += ["", f"🔁 *Pacientes de recompra para entrar em contato* ({len(recompras)})"]
         for p in recompras[:MAX_ITENS_VENDAS]:
             quando = _dia_mes(p.get("data"))
             situacao = ("venceu em " if p.get("situacao") == "acabou_de_vencer" else "recompra em ") + quando if quando else ""
